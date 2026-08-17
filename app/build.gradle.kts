@@ -5,10 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "com.example.misga"
+    namespace = "com.miss.ga"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.misga"
+        applicationId = "com.miss.ga"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
