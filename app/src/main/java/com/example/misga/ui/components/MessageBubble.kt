@@ -1,5 +1,6 @@
 package com.example.misga.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,13 +11,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.misga.data.model.SmsMessage
@@ -39,12 +48,17 @@ fun MessageBubble(
     val containerColor = if (isSent) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val contentColor = if (isSent) {
         MaterialTheme.colorScheme.onPrimaryContainer
     } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
+        MaterialTheme.colorScheme.onSurface
+    }
+    val border = if (isSent) {
+        null
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     }
 
     val alignment = if (isSent) Alignment.End else Alignment.Start
@@ -52,39 +66,57 @@ fun MessageBubble(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 14.dp, vertical = 3.dp),
         horizontalAlignment = alignment
     ) {
         Surface(
             shape = bubbleShape,
             color = containerColor,
+            border = border,
+            shadowElevation = if (isSent) 1.5.dp else 0.5.dp,
             modifier = Modifier
-                .widthIn(max = 300.dp)
+                .widthIn(min = 80.dp, max = 320.dp)
+                .clip(bubbleShape)
                 .combinedClickable(
                     onClick = {},
                     onLongClick = onLongClick
                 )
         ) {
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+            ) {
                 Text(
                     text = message.body,
                     style = MaterialTheme.typography.bodyLarge,
                     color = contentColor,
-                    lineHeight = 22.sp
+                    lineHeight = 23.sp,
+                    letterSpacing = 0.2.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.align(Alignment.End),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.date)),
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.6f),
-                        fontSize = 10.sp
+                        color = contentColor.copy(alpha = 0.65f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
                     )
+                    if (isSent) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.Done,
+                            contentDescription = "Sent",
+                            tint = contentColor.copy(alpha = 0.65f),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
             }
         }
     }
 }
+
