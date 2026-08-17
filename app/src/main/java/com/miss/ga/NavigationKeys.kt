@@ -18,3 +18,7 @@ data object FilterStudioNav : NavKey
 
 @Serializable
 data object ComposeNav : NavKey
+
+@Serializable
+data object TestLabNav : NavKey
+

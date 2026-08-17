@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -99,6 +100,7 @@ fun ConversationsScreen(
     onNavigateToChat: (ChatNav) -> Unit,
     onNavigateToFilterStudio: () -> Unit,
     onNavigateToCompose: () -> Unit,
+    onNavigateToTestLab: () -> Unit = {},
     viewModel: ConversationsViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -161,6 +163,22 @@ fun ConversationsScreen(
                     }
                 },
                 actions = {
+                    // Test Lab & Simulator Button
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        IconButton(onClick = onNavigateToTestLab) {
+                            Icon(
+                                imageVector = Icons.Default.BugReport,
+                                contentDescription = "Test Lab & Simulator",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    // Filter Studio Button
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,

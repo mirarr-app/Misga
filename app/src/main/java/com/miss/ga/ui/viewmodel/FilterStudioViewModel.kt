@@ -116,9 +116,17 @@ class FilterStudioViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    fun updateRule(rule: FilterRule) {
+        viewModelScope.launch {
+            dbHelper.updateRule(rule)
+            loadRules()
+            _uiState.value = _uiState.value.copy(toastMessage = "Rule '${rule.name}' updated successfully!")
+        }
+    }
+
     fun updateRuleAction(rule: FilterRule, action: FilterAction) {
         viewModelScope.launch {
-            dbHelper.updateCustomRule(rule.copy(action = action))
+            dbHelper.updateRule(rule.copy(action = action))
             loadRules()
         }
     }
@@ -127,11 +135,12 @@ class FilterStudioViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             dbHelper.deleteRule(ruleId)
             loadRules()
+            _uiState.value = _uiState.value.copy(toastMessage = "Rule deleted successfully")
         }
     }
 
     fun exportRulesJson(): String {
-        return json.encodeToString(_uiState.value.customRules)
+        return json.encodeToString(_uiState.value.rules)
     }
 
     fun importRulesJson(jsonString: String, onComplete: (Boolean, Int) -> Unit) {

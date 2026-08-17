@@ -79,8 +79,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             """
             CREATE TABLE IF NOT EXISTS predefined_rule_settings (
                 rule_id INTEGER PRIMARY KEY,
+                name TEXT,
+                pattern TEXT,
+                is_regex INTEGER,
+                action TEXT NOT NULL,
                 is_enabled INTEGER NOT NULL,
-                action TEXT NOT NULL
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                description TEXT
             )
             """.trimIndent()
         )
@@ -89,11 +94,25 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         PredefinedRules.getDefaultRules().forEach { rule ->
             val cv = ContentValues().apply {
                 put("rule_id", rule.id)
-                put("is_enabled", if (rule.isEnabled) 1 else 0)
+                put("name", rule.name)
+                put("pattern", rule.pattern)
+                put("is_regex", if (rule.isRegex) 1 else 0)
                 put("action", rule.action.name)
+                put("is_enabled", if (rule.isEnabled) 1 else 0)
+                put("is_deleted", 0)
+                put("description", rule.description)
             }
             db.insertWithOnConflict("predefined_rule_settings", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
         }
+    }
+
+    override fun onOpen(db: SQLiteDatabase) {
+        super.onOpen(db)
+        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN name TEXT") } catch (e: Exception) {}
+        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN pattern TEXT") } catch (e: Exception) {}
+        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_regex INTEGER DEFAULT 1") } catch (e: Exception) {}
+        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_deleted INTEGER DEFAULT 0") } catch (e: Exception) {}
+        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN description TEXT") } catch (e: Exception) {}
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -108,25 +127,64 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         // 1. Get predefined rules with overridden states
         val predefined = PredefinedRules.getDefaultRules().toMutableList()
         val db = readableDatabase
-        val cursor = db.query(
-            "predefined_rule_settings",
-            arrayOf("rule_id", "is_enabled", "action"),
-            null, null, null, null, null
-        )
-        val overrides = mutableMapOf<Long, Pair<Boolean, FilterAction>>()
-        cursor.use {
-            while (it.moveToNext()) {
-                val rId = it.getLong(0)
-                val enabled = it.getInt(1) == 1
-                val act = try { FilterAction.valueOf(it.getString(2)) } catch (e: Exception) { FilterAction.SPAM }
-                overrides[rId] = Pair(enabled, act)
+        val overrides = mutableMapOf<Long, FilterRuleOverride>()
+
+        try {
+            val cursor = db.query(
+                "predefined_rule_settings",
+                arrayOf("rule_id", "is_enabled", "action", "name", "pattern", "is_regex", "is_deleted", "description"),
+                null, null, null, null, null
+            )
+            cursor.use {
+                val idIdx = it.getColumnIndex("rule_id")
+                val enabledIdx = it.getColumnIndex("is_enabled")
+                val actionIdx = it.getColumnIndex("action")
+                val nameIdx = it.getColumnIndex("name")
+                val patternIdx = it.getColumnIndex("pattern")
+                val isRegexIdx = it.getColumnIndex("is_regex")
+                val isDeletedIdx = it.getColumnIndex("is_deleted")
+                val descIdx = it.getColumnIndex("description")
+
+                while (it.moveToNext()) {
+                    val rId = it.getLong(idIdx)
+                    val enabled = it.getInt(enabledIdx) == 1
+                    val act = try { FilterAction.valueOf(it.getString(actionIdx)) } catch (e: Exception) { FilterAction.SPAM }
+                    val name = if (nameIdx >= 0) it.getString(nameIdx) else null
+                    val pattern = if (patternIdx >= 0) it.getString(patternIdx) else null
+                    val isRegex = if (isRegexIdx >= 0 && !it.isNull(isRegexIdx)) it.getInt(isRegexIdx) == 1 else true
+                    val isDeleted = if (isDeletedIdx >= 0 && !it.isNull(isDeletedIdx)) it.getInt(isDeletedIdx) == 1 else false
+                    val desc = if (descIdx >= 0) it.getString(descIdx) else null
+
+                    overrides[rId] = FilterRuleOverride(
+                        isEnabled = enabled,
+                        action = act,
+                        name = name,
+                        pattern = pattern,
+                        isRegex = isRegex,
+                        isDeleted = isDeleted,
+                        description = desc
+                    )
+                }
             }
+        } catch (e: Exception) {
+            // Fallback for earlier database tables
         }
 
         predefined.forEach { rule ->
             val ov = overrides[rule.id]
             if (ov != null) {
-                rules.add(rule.copy(isEnabled = ov.first, action = ov.second))
+                if (!ov.isDeleted) {
+                    rules.add(
+                        rule.copy(
+                            name = ov.name ?: rule.name,
+                            pattern = ov.pattern ?: rule.pattern,
+                            isRegex = ov.isRegex,
+                            isEnabled = ov.isEnabled,
+                            action = ov.action,
+                            description = ov.description ?: rule.description
+                        )
+                    )
+                }
             } else {
                 rules.add(rule)
             }
@@ -166,13 +224,17 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         id
     }
 
-    suspend fun updateCustomRule(rule: FilterRule): Boolean = withContext(Dispatchers.IO) {
-        if (rule.isPredefined) {
-            // Update predefined rule override
+    suspend fun updateRule(rule: FilterRule): Boolean = withContext(Dispatchers.IO) {
+        if (rule.isPredefined || rule.id < 0) {
             val cv = ContentValues().apply {
                 put("rule_id", rule.id)
-                put("is_enabled", if (rule.isEnabled) 1 else 0)
+                put("name", rule.name)
+                put("pattern", rule.pattern)
+                put("is_regex", if (rule.isRegex) 1 else 0)
                 put("action", rule.action.name)
+                put("is_enabled", if (rule.isEnabled) 1 else 0)
+                put("is_deleted", 0)
+                put("description", rule.description)
             }
             val rows = writableDatabase.insertWithOnConflict(
                 "predefined_rule_settings",
@@ -205,22 +267,33 @@ class MisgaDatabaseHelper private constructor(context: Context) :
     }
 
     suspend fun deleteRule(ruleId: Long): Boolean = withContext(Dispatchers.IO) {
+        val db = writableDatabase
         if (ruleId < 0) {
-            // Predefined rules cannot be deleted, but disabled
-            false
+            val cv = ContentValues().apply {
+                put("rule_id", ruleId)
+                put("is_deleted", 1)
+                put("is_enabled", 0)
+            }
+            val rows = db.insertWithOnConflict(
+                "predefined_rule_settings",
+                null,
+                cv,
+                SQLiteDatabase.CONFLICT_REPLACE
+            )
+            _rulesChanged.value = System.currentTimeMillis()
+            rows > 0
         } else {
-            val rows = writableDatabase.delete("filter_rules", "id = ?", arrayOf(ruleId.toString()))
+            val rows = db.delete("filter_rules", "id = ?", arrayOf(ruleId.toString()))
             _rulesChanged.value = System.currentTimeMillis()
             rows > 0
         }
     }
 
     suspend fun setRuleEnabled(ruleId: Long, isEnabled: Boolean, isPredefined: Boolean) = withContext(Dispatchers.IO) {
-        if (isPredefined) {
+        if (isPredefined || ruleId < 0) {
             val cv = ContentValues().apply {
                 put("rule_id", ruleId)
                 put("is_enabled", if (isEnabled) 1 else 0)
-                put("action", FilterAction.SPAM.name)
             }
             writableDatabase.insertWithOnConflict(
                 "predefined_rule_settings",
@@ -417,3 +490,14 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
     }
 }
+
+data class FilterRuleOverride(
+    val isEnabled: Boolean,
+    val action: FilterAction,
+    val name: String?,
+    val pattern: String?,
+    val isRegex: Boolean,
+    val isDeleted: Boolean,
+    val description: String?
+)
+

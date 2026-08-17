@@ -27,6 +27,7 @@ fun MainNavigation() {
                     onNavigateToChat = { chatNav -> backStack.add(chatNav) },
                     onNavigateToFilterStudio = { backStack.add(FilterStudioNav) },
                     onNavigateToCompose = { backStack.add(ComposeNav) },
+                    onNavigateToTestLab = { backStack.add(TestLabNav) },
                     viewModel = conversationsViewModel,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -51,6 +52,12 @@ fun MainNavigation() {
                         backStack.removeLastOrNull()
                         backStack.add(chatNav)
                     },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            entry<TestLabNav> {
+                com.miss.ga.testing.TestLabScreen(
+                    onBackClick = { backStack.removeLastOrNull() },
                     modifier = Modifier.fillMaxSize()
                 )
             }

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
@@ -83,6 +84,7 @@ import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.SquircleMediumShape
 import com.miss.ga.theme.TagShape
+import com.miss.ga.ui.viewmodel.FilterStudioUiState
 import com.miss.ga.ui.viewmodel.FilterStudioViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -100,6 +102,9 @@ fun FilterStudioScreen(
     var showAddCustomDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var importJsonText by remember { mutableStateOf("") }
+
+    var editingRule by remember { mutableStateOf<FilterRule?>(null) }
+    var ruleToDelete by remember { mutableStateOf<FilterRule?>(null) }
 
     LaunchedEffect(state.toastMessage) {
         state.toastMessage?.let {
@@ -148,12 +153,12 @@ fun FilterStudioScreen(
                     }
                 },
                 actions = {
-                    // Export JSON
+                    // Export JSON (Presets + Custom Rules)
                     IconButton(onClick = {
                         val json = viewModel.exportRulesJson()
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("MISGA Rules", json))
-                        Toast.makeText(context, "Rules JSON copied to clipboard", Toast.LENGTH_SHORT).show()
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Misga Rules", json))
+                        Toast.makeText(context, "Exported ${state.rules.size} rules to clipboard", Toast.LENGTH_SHORT).show()
                     }) {
                         Icon(Icons.Default.Download, contentDescription = "Export Rules JSON")
                     }
@@ -187,16 +192,17 @@ fun FilterStudioScreen(
         ) {
             PrimaryTabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     text = {
-                        Text(
-                            "Playground",
-                            fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Playground", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium)
+                        }
                     }
                 )
                 Tab(
@@ -234,15 +240,60 @@ fun FilterStudioScreen(
                     rules = state.customRules,
                     onToggle = viewModel::toggleRule,
                     onUpdateAction = viewModel::updateRuleAction,
-                    onDelete = viewModel::deleteRule
+                    onEdit = { editingRule = it },
+                    onDelete = { ruleToDelete = it }
                 )
                 2 -> PredefinedRulesTab(
                     rules = state.predefinedRules,
                     onToggle = viewModel::toggleRule,
-                    onUpdateAction = viewModel::updateRuleAction
+                    onUpdateAction = viewModel::updateRuleAction,
+                    onEdit = { editingRule = it },
+                    onDelete = { ruleToDelete = it }
                 )
             }
         }
+    }
+
+    // Edit Rule Dialog (Works for Custom AND Predefined Rules)
+    editingRule?.let { rule ->
+        EditRuleDialog(
+            rule = rule,
+            onDismiss = { editingRule = null },
+            onSave = { updatedRule ->
+                viewModel.updateRule(updatedRule)
+                editingRule = null
+            }
+        )
+    }
+
+    // Delete Confirmation Dialog (Works for Custom AND Predefined Rules)
+    ruleToDelete?.let { rule ->
+        AlertDialog(
+            onDismissRequest = { ruleToDelete = null },
+            shape = SquircleCardShape,
+            title = { Text("Delete Rule?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete '${rule.name}'? This rule will no longer filter incoming messages.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteRule(rule.id)
+                        ruleToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = PillShape
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { ruleToDelete = null }) { Text("Cancel") }
+            }
+        )
     }
 
     // Save Playground Dialog
@@ -349,19 +400,21 @@ fun FilterStudioScreen(
             confirmButton = {
                 FilledTonalButton(
                     onClick = {
-                        viewModel.importRulesJson(importJsonText) { success, count ->
-                            if (success) {
-                                Toast.makeText(context, "Imported $count rules successfully!", Toast.LENGTH_SHORT).show()
-                                showImportDialog = false
-                                importJsonText = ""
-                            } else {
-                                Toast.makeText(context, "Failed to parse JSON", Toast.LENGTH_SHORT).show()
+                        if (importJsonText.isNotBlank()) {
+                            viewModel.importRulesJson(importJsonText) { success, count ->
+                                if (success) {
+                                    Toast.makeText(context, "Successfully imported $count rules!", Toast.LENGTH_SHORT).show()
+                                    showImportDialog = false
+                                    importJsonText = ""
+                                } else {
+                                    Toast.makeText(context, "Invalid JSON format", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     },
                     shape = PillShape
                 ) {
-                    Text("Import Rules", fontWeight = FontWeight.Bold)
+                    Text("Import", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -373,27 +426,25 @@ fun FilterStudioScreen(
 
 @Composable
 private fun PlaygroundTab(
-    state: com.miss.ga.ui.viewmodel.FilterStudioUiState,
+    state: FilterStudioUiState,
     onPatternChange: (String) -> Unit,
     onSampleChange: (String) -> Unit,
     onActionChange: (FilterAction) -> Unit,
-    onPresetSelect: (sample: String, pattern: String) -> Unit,
+    onPresetSelect: (String, String) -> Unit,
     onSaveClick: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        contentPadding = PaddingValues(bottom = 32.dp)
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp)
     ) {
         item {
             Text(
-                text = "Preset Real-World Iranian SMS Samples",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                text = "Preset Quick-Fill",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.outline,
+                fontWeight = FontWeight.SemiBold
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     AssistChip(
@@ -434,6 +485,21 @@ private fun PlaygroundTab(
                             )
                         },
                         label = { Text("Phishing Link (ثنا/عدالت)") },
+                        shape = PillShape,
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    )
+                }
+                item {
+                    AssistChip(
+                        onClick = {
+                            onPresetSelect(
+                                "بسته تخفیف ماهیانه اینترنت همراه ۵۰ گیگابایت با قیمت استثنایی فعال شد.",
+                                "(تخفیف\\s*(های\\s*)?ماه[ی]?انه|بسته\\s*(های\\s*)?تخفیف\\s*ماه[ی]?انه|پیشنهاد\\s*ماه[ی]?انه)"
+                            )
+                        },
+                        label = { Text("Monthly Discount (تخفیف ماهیانه)") },
                         shape = PillShape,
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -614,7 +680,8 @@ private fun CustomRulesTab(
     rules: List<FilterRule>,
     onToggle: (FilterRule, Boolean) -> Unit,
     onUpdateAction: (FilterRule, FilterAction) -> Unit,
-    onDelete: (Long) -> Unit
+    onEdit: (FilterRule) -> Unit,
+    onDelete: (FilterRule) -> Unit
 ) {
     if (rules.isEmpty()) {
         Box(
@@ -663,7 +730,8 @@ private fun CustomRulesTab(
                     rule = rule,
                     onToggle = { onToggle(rule, it) },
                     onUpdateAction = { onUpdateAction(rule, it) },
-                    onDelete = { onDelete(rule.id) }
+                    onEdit = { onEdit(rule) },
+                    onDelete = { onDelete(rule) }
                 )
             }
         }
@@ -674,7 +742,9 @@ private fun CustomRulesTab(
 private fun PredefinedRulesTab(
     rules: List<FilterRule>,
     onToggle: (FilterRule, Boolean) -> Unit,
-    onUpdateAction: (FilterRule, FilterAction) -> Unit
+    onUpdateAction: (FilterRule, FilterAction) -> Unit,
+    onEdit: (FilterRule) -> Unit,
+    onDelete: (FilterRule) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -699,7 +769,7 @@ private fun PredefinedRulesTab(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Built-in rules are tailored for Iranian telecom operators (MCI, Irancell, Rightel), shortcodes, and common Persian spam campaigns.",
+                        text = "Built-in rules are tailored for Iranian telecom operators, shortcodes, and spam campaigns. You can edit, customize, or delete any preset below.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         lineHeight = 18.sp
@@ -713,7 +783,8 @@ private fun PredefinedRulesTab(
                 rule = rule,
                 onToggle = { onToggle(rule, it) },
                 onUpdateAction = { onUpdateAction(rule, it) },
-                onDelete = null
+                onEdit = { onEdit(rule) },
+                onDelete = { onDelete(rule) }
             )
         }
     }
@@ -724,7 +795,8 @@ private fun RuleCard(
     rule: FilterRule,
     onToggle: (Boolean) -> Unit,
     onUpdateAction: (FilterAction) -> Unit,
-    onDelete: (() -> Unit)?
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -808,12 +880,24 @@ private fun RuleCard(
                     }
                 }
 
-                if (onDelete != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Edit Rule
+                    IconButton(onClick = onEdit) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Rule",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Delete Rule
                     IconButton(onClick = onDelete) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error
+                            contentDescription = "Delete Rule",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -822,3 +906,111 @@ private fun RuleCard(
     }
 }
 
+@Composable
+private fun EditRuleDialog(
+    rule: FilterRule,
+    onDismiss: () -> Unit,
+    onSave: (FilterRule) -> Unit
+) {
+    var name by remember { mutableStateOf(rule.name) }
+    var pattern by remember { mutableStateOf(rule.pattern) }
+    var description by remember { mutableStateOf(rule.description) }
+    var selectedAction by remember { mutableStateOf(rule.action) }
+    var isRegex by remember { mutableStateOf(rule.isRegex) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = SquircleCardShape,
+        title = {
+            Text(
+                text = if (rule.isPredefined) "Edit Preset Rule" else "Edit Custom Rule",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Rule Name") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = pattern,
+                    onValueChange = { pattern = it },
+                    label = { Text("Regex Pattern") },
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Action Tier:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterAction.values().forEach { act ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedAction == act,
+                                onClick = { selectedAction = act }
+                            )
+                            Text(
+                                text = act.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (selectedAction == act) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                onClick = {
+                    if (name.isNotBlank() && pattern.isNotBlank()) {
+                        onSave(
+                            rule.copy(
+                                name = name,
+                                pattern = pattern,
+                                description = description,
+                                action = selectedAction,
+                                isRegex = isRegex
+                            )
+                        )
+                    }
+                },
+                shape = PillShape
+            ) {
+                Text("Save Changes", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
