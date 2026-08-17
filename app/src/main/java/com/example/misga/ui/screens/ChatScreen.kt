@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -112,7 +113,7 @@ fun ChatScreen(
     }
 
     val state by viewModel.uiState.collectAsState()
-    val listState = rememberLazyListState()
+    val listState = remember(nav.threadId, nav.address) { LazyListState() }
     val coroutineScope = rememberCoroutineScope()
 
     var inputText by remember { mutableStateOf("") }
@@ -120,15 +121,21 @@ fun ChatScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
+    var hasInitiallyScrolled by remember(nav.threadId, nav.address) { mutableStateOf(false) }
 
     LaunchedEffect(nav.threadId, nav.address) {
         viewModel.loadMessages()
         viewModel.loadSenderSettings()
     }
 
-    LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.size - 1)
+    LaunchedEffect(state.messages.size, state.isLoading) {
+        if (!state.isLoading && state.messages.isNotEmpty()) {
+            if (!hasInitiallyScrolled) {
+                listState.scrollToItem(state.messages.size - 1)
+                hasInitiallyScrolled = true
+            } else {
+                listState.animateScrollToItem(state.messages.size - 1)
+            }
         }
     }
 
