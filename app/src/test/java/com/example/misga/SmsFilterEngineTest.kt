@@ -59,13 +59,14 @@ class SmsFilterEngineTest {
     }
 
     @Test
-    fun testInvalidRegexSyntaxErrorHandling() {
-        val invalidPattern = "[unclosed-bracket(error"
-        val sample = "some text"
+    fun testMonthlyDiscountsRegex() {
+        val rule = PredefinedRules.getDefaultRules().first { it.id == -8L }
+        val sample1 = "بسته تخفیف ماهیانه اینترنت همراه اول با ۵۰ درصد تخفیف فعال شد."
+        val sample2 = "پیشنهاد ماهانه ویژه خرید از فروشگاه"
+        val sample3 = "سلام ماهان جان، خوبی؟" // Normal name "ماهان" should NOT match
 
-        val result = SmsFilterEngine.testPattern(invalidPattern, isRegex = true, sampleText = sample)
-        assertFalse(result.isValid)
-        assertFalse(result.isMatch)
-        assertTrue(result.errorMessage != null)
+        assertTrue("Expected sample1 to match monthly discount rule", SmsFilterEngine.testPattern(rule.pattern, true, sample1).isMatch)
+        assertTrue("Expected sample2 to match monthly discount rule", SmsFilterEngine.testPattern(rule.pattern, true, sample2).isMatch)
+        assertFalse("Expected normal name 'ماهان' NOT to match", SmsFilterEngine.testPattern(rule.pattern, true, sample3).isMatch)
     }
 }

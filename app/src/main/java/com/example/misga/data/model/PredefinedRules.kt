@@ -82,6 +82,17 @@ object PredefinedRules {
                 isPredefined = true,
                 category = RuleCategory.FINANCIAL_SCAM,
                 description = "Phishing attempts mimicking official judicial notices with links"
+            ),
+            FilterRule(
+                id = -8,
+                name = "Monthly Discounts (تخفیف ماهیانه)",
+                pattern = "(تخفیف\\s*(های\\s*)?ماه[ی]?انه|بسته\\s*(های\\s*)?تخفیف\\s*ماه[ی]?انه|پیشنهاد\\s*ماه[ی]?انه)",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Filters recurring promotional monthly discount offers (تخفیف ماهیانه / ماهانه)"
             )
         )
     }
