@@ -31,10 +31,13 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         loadThreads()
     }
 
-    fun loadThreads() {
+    fun loadThreads(silent: Boolean = false) {
         viewModelScope.launch {
+            val showLoading = !silent && _uiState.value.threads.isEmpty()
+            if (showLoading) {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+            }
             _uiState.value = _uiState.value.copy(
-                isLoading = true,
                 isDefaultSmsApp = repository.isDefaultSmsApp()
             )
             try {

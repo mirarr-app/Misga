@@ -29,6 +29,9 @@ class SmsRepository(private val context: Context) {
         return Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
     }
 
+    private val recipientAddressCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val contactNameCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     suspend fun getThreads(): List<ConversationThread> = withContext(Dispatchers.IO) {
         val threads = mutableListOf<ConversationThread>()
         val contentResolver = context.contentResolver
@@ -72,13 +75,17 @@ class SmsRepository(private val context: Context) {
                     val snippet = it.getString(snippetIdx) ?: ""
                     val read = it.getInt(readIdx) == 1
 
-                    val address = resolveRecipientAddress(recipientIds)
-                    val contactName = resolveContactName(address)
+                    val address = recipientAddressCache.getOrPut(recipientIds) {
+                        resolveRecipientAddress(recipientIds)
+                    }
+                    val contactName = contactNameCache.getOrPut(address) {
+                        resolveContactName(address) ?: ""
+                    }.ifBlank { null }
 
-                    // Check unread count for this thread
+                    // Check unread count for this thread only if unread
                     val unreadCount = if (read) 0 else getUnreadCountForThread(threadId)
 
-                    // Check if any spam exists for this address
+                    val normalizedAddr = dbHelper.normalizeAddress(address)
                     val hasSpam = spamMetaMap.values.any { meta ->
                         meta.first // isSpam
                     }

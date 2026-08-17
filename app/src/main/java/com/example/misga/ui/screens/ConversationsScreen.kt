@@ -96,7 +96,7 @@ fun ConversationsScreen(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.loadThreads()
+        viewModel.loadThreads(silent = true)
         viewModel.checkDefaultSmsStatus()
     }
 
@@ -191,7 +191,7 @@ fun ConversationsScreen(
             }
 
             // Thread List
-            if (state.isLoading) {
+            if (state.isLoading && state.threads.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
