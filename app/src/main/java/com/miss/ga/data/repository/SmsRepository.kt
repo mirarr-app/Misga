@@ -13,6 +13,7 @@ import android.util.Log
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.FilterAction
+import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.model.SmsMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -50,14 +51,44 @@ class SmsRepository(private val context: Context) {
         )
 
         try {
+            // Batch query all unread messages in a single fast query
+            val unreadCounts = mutableMapOf<Long, Int>()
+            val latestUnreadMessage = mutableMapOf<Long, Pair<Long, String>>() // threadId -> (msgId, body)
+            try {
+                val unreadCursor = contentResolver.query(
+                    Telephony.Sms.Inbox.CONTENT_URI,
+                    arrayOf(Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.BODY),
+                    "${Telephony.Sms.READ} = 0",
+                    null,
+                    "${Telephony.Sms.DATE} DESC"
+                )
+                unreadCursor?.use { uCursor ->
+                    val idIdx = uCursor.getColumnIndexOrThrow(Telephony.Sms._ID)
+                    val tIdIdx = uCursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+                    val bodyIdx = uCursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                    while (uCursor.moveToNext()) {
+                        val tId = uCursor.getLong(tIdIdx)
+                        val msgId = uCursor.getLong(idIdx)
+                        val body = uCursor.getString(bodyIdx) ?: ""
+                        unreadCounts[tId] = (unreadCounts[tId] ?: 0) + 1
+                        if (!latestUnreadMessage.containsKey(tId)) {
+                            latestUnreadMessage[tId] = Pair(msgId, body)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SmsRepository", "Error querying unread batch", e)
+            }
+
+            val spamMetaMap = dbHelper.getAllSpamMetaMap()
+            val filterEngine = com.miss.ga.engine.SmsFilterEngine(dbHelper)
+
             val cursor = contentResolver.query(
                 uri,
                 projection,
                 null, null,
                 "${Telephony.Threads.DATE} DESC"
             )
-
-            val spamMetaMap = dbHelper.getAllSpamMetaMap()
 
             cursor?.use {
                 val idIdx = it.getColumnIndexOrThrow(Telephony.Threads._ID)
@@ -82,12 +113,25 @@ class SmsRepository(private val context: Context) {
                         resolveContactName(address) ?: ""
                     }.ifBlank { null }
 
-                    // Check unread count for this thread only if unread
-                    val unreadCount = if (read) 0 else getUnreadCountForThread(threadId)
+                    // Fast unread count from pre-fetched batch
+                    val unreadCount = if (read) 0 else (unreadCounts[threadId] ?: 0)
+                    var isUnreadSpam = false
 
-                    val normalizedAddr = dbHelper.normalizeAddress(address)
-                    val hasSpam = spamMetaMap.values.any { meta ->
-                        meta.first // isSpam
+                    if (unreadCount > 0) {
+                        val latest = latestUnreadMessage[threadId]
+                        if (latest != null) {
+                            val (msgId, body) = latest
+                            val meta = spamMetaMap[msgId]
+                            if (meta != null) {
+                                isUnreadSpam = meta.first
+                            } else {
+                                val eval = filterEngine.evaluateMessage(address, body)
+                                isUnreadSpam = eval.action == FilterAction.SPAM
+                                if (isUnreadSpam) {
+                                    dbHelper.markMessageSpam(msgId, address, eval.matchedRuleName, eval.action)
+                                }
+                            }
+                        }
                     }
 
                     threads.add(
@@ -99,7 +143,8 @@ class SmsRepository(private val context: Context) {
                             date = date,
                             messageCount = count,
                             unreadCount = unreadCount,
-                            hasSpam = hasSpam
+                            hasSpam = false,
+                            isUnreadSpam = isUnreadSpam
                         )
                     )
                 }
@@ -252,6 +297,41 @@ class SmsRepository(private val context: Context) {
         }
     }
 
+    suspend fun markThreadsRead(threadIds: Collection<Long>) = withContext(Dispatchers.IO) {
+        if (threadIds.isEmpty()) return@withContext
+        try {
+            val cv = ContentValues().apply {
+                put(Telephony.Sms.READ, 1)
+            }
+            val placeholders = threadIds.joinToString(",") { "?" }
+            val args = threadIds.map { it.toString() }.toTypedArray()
+            context.contentResolver.update(
+                Telephony.Sms.CONTENT_URI,
+                cv,
+                "${Telephony.Sms.THREAD_ID} IN ($placeholders) AND ${Telephony.Sms.READ} = 0",
+                args
+            )
+        } catch (e: Exception) {
+            Log.e("SmsRepository", "Failed to mark threads read $threadIds", e)
+        }
+    }
+
+    suspend fun markAllMessagesRead() = withContext(Dispatchers.IO) {
+        try {
+            val cv = ContentValues().apply {
+                put(Telephony.Sms.READ, 1)
+            }
+            context.contentResolver.update(
+                Telephony.Sms.CONTENT_URI,
+                cv,
+                "${Telephony.Sms.READ} = 0",
+                null
+            )
+        } catch (e: Exception) {
+            Log.e("SmsRepository", "Failed to mark all messages read", e)
+        }
+    }
+
     suspend fun deleteMessage(messageId: Long): Boolean = withContext(Dispatchers.IO) {
         try {
             val uri = ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, messageId)
@@ -326,6 +406,97 @@ class SmsRepository(private val context: Context) {
             Log.e("SmsRepository", "Failed to delete thread $threadId", e)
             false
         }
+    }
+
+    suspend fun deleteThreads(threadIds: Collection<Long>): Boolean = withContext(Dispatchers.IO) {
+        if (threadIds.isEmpty()) return@withContext false
+        var allSuccess = true
+        for (id in threadIds) {
+            val ok = deleteThread(id)
+            if (!ok) allSuccess = false
+        }
+        allSuccess
+    }
+
+    suspend fun searchAllMessages(query: String): List<SearchMessageResult> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val results = mutableListOf<SearchMessageResult>()
+        val contentResolver = context.contentResolver
+
+        val uri = Telephony.Sms.CONTENT_URI
+        val projection = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.THREAD_ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+            Telephony.Sms.READ,
+            Telephony.Sms.TYPE
+        )
+
+        val trimmedQuery = query.trim()
+        val selection = "${Telephony.Sms.BODY} LIKE ? OR ${Telephony.Sms.ADDRESS} LIKE ?"
+        val selectionArgs = arrayOf("%$trimmedQuery%", "%$trimmedQuery%")
+
+        try {
+            val spamMetaMap = dbHelper.getAllSpamMetaMap()
+            val cursor = contentResolver.query(
+                uri,
+                projection,
+                selection,
+                selectionArgs,
+                "${Telephony.Sms.DATE} DESC"
+            )
+
+            cursor?.use {
+                val idIdx = it.getColumnIndexOrThrow(Telephony.Sms._ID)
+                val threadIdIdx = it.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+                val addrIdx = it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                val bodyIdx = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
+                val readIdx = it.getColumnIndexOrThrow(Telephony.Sms.READ)
+                val typeIdx = it.getColumnIndexOrThrow(Telephony.Sms.TYPE)
+
+                while (it.moveToNext() && results.size < 250) {
+                    val msgId = it.getLong(idIdx)
+                    var threadId = it.getLong(threadIdIdx)
+                    val rawAddress = it.getString(addrIdx) ?: ""
+                    val body = it.getString(bodyIdx) ?: ""
+                    val date = it.getLong(dateIdx)
+                    val read = it.getInt(readIdx) == 1
+                    val type = it.getInt(typeIdx)
+
+                    val address = rawAddress
+                    if (threadId <= 0 && address.isNotBlank()) {
+                        threadId = Telephony.Threads.getOrCreateThreadId(context, address)
+                    }
+
+                    val contactName = contactNameCache.getOrPut(address) {
+                        resolveContactName(address) ?: ""
+                    }.ifBlank { null }
+
+                    val isSpam = spamMetaMap[msgId]?.first ?: false
+
+                    results.add(
+                        SearchMessageResult(
+                            messageId = msgId,
+                            threadId = threadId,
+                            address = address,
+                            contactName = contactName,
+                            body = body,
+                            date = date,
+                            read = read,
+                            type = type,
+                            isSpam = isSpam
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SmsRepository", "Error searching all messages for query: $query", e)
+        }
+
+        results
     }
 
     suspend fun searchContacts(query: String): List<ContactItem> = withContext(Dispatchers.IO) {

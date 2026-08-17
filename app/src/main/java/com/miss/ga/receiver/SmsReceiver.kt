@@ -88,6 +88,11 @@ class SmsReceiver : BroadcastReceiver() {
                 }
             }
 
+            // Ensure threadId is resolved
+            if (threadId <= 0) {
+                threadId = smsRepository.getOrCreateThreadId(sender)
+            }
+
             // Save filter metadata in MISGA's Room database
             dbHelper.markMessageSpam(
                 messageId = messageId,

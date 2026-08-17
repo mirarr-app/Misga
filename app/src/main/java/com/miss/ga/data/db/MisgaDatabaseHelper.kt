@@ -37,6 +37,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 pattern TEXT NOT NULL,
                 is_regex INTEGER NOT NULL DEFAULT 1,
                 action TEXT NOT NULL DEFAULT 'SPAM',
+                list_type TEXT NOT NULL DEFAULT 'BLOCKLIST',
                 is_enabled INTEGER NOT NULL DEFAULT 1,
                 is_predefined INTEGER NOT NULL DEFAULT 0,
                 category TEXT NOT NULL DEFAULT 'CUSTOM',
@@ -83,6 +84,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 pattern TEXT,
                 is_regex INTEGER,
                 action TEXT NOT NULL,
+                list_type TEXT NOT NULL DEFAULT 'BLOCKLIST',
                 is_enabled INTEGER NOT NULL,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
                 description TEXT
@@ -98,6 +100,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 put("pattern", rule.pattern)
                 put("is_regex", if (rule.isRegex) 1 else 0)
                 put("action", rule.action.name)
+                put("list_type", rule.listType.name)
                 put("is_enabled", if (rule.isEnabled) 1 else 0)
                 put("is_deleted", 0)
                 put("description", rule.description)
@@ -108,11 +111,29 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     override fun onOpen(db: SQLiteDatabase) {
         super.onOpen(db)
+        try { db.execSQL("ALTER TABLE filter_rules ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN name TEXT") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN pattern TEXT") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_regex INTEGER DEFAULT 1") } catch (e: Exception) {}
+        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_deleted INTEGER DEFAULT 0") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN description TEXT") } catch (e: Exception) {}
+
+        // Insert any newly added predefined rules that might be missing
+        PredefinedRules.getDefaultRules().forEach { rule ->
+            val cv = ContentValues().apply {
+                put("rule_id", rule.id)
+                put("name", rule.name)
+                put("pattern", rule.pattern)
+                put("is_regex", if (rule.isRegex) 1 else 0)
+                put("action", rule.action.name)
+                put("list_type", rule.listType.name)
+                put("is_enabled", if (rule.isEnabled) 1 else 0)
+                put("is_deleted", 0)
+                put("description", rule.description)
+            }
+            db.insertWithOnConflict("predefined_rule_settings", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+        }
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -132,7 +153,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         try {
             val cursor = db.query(
                 "predefined_rule_settings",
-                arrayOf("rule_id", "is_enabled", "action", "name", "pattern", "is_regex", "is_deleted", "description"),
+                arrayOf("rule_id", "is_enabled", "action", "name", "pattern", "is_regex", "list_type", "is_deleted", "description"),
                 null, null, null, null, null
             )
             cursor.use {
@@ -142,6 +163,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 val nameIdx = it.getColumnIndex("name")
                 val patternIdx = it.getColumnIndex("pattern")
                 val isRegexIdx = it.getColumnIndex("is_regex")
+                val listTypeIdx = it.getColumnIndex("list_type")
                 val isDeletedIdx = it.getColumnIndex("is_deleted")
                 val descIdx = it.getColumnIndex("description")
 
@@ -152,6 +174,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                     val name = if (nameIdx >= 0) it.getString(nameIdx) else null
                     val pattern = if (patternIdx >= 0) it.getString(patternIdx) else null
                     val isRegex = if (isRegexIdx >= 0 && !it.isNull(isRegexIdx)) it.getInt(isRegexIdx) == 1 else true
+                    val listType = if (listTypeIdx >= 0 && !it.isNull(listTypeIdx)) {
+                        try { com.miss.ga.data.model.RuleListType.valueOf(it.getString(listTypeIdx)) } catch (e: Exception) { null }
+                    } else null
                     val isDeleted = if (isDeletedIdx >= 0 && !it.isNull(isDeletedIdx)) it.getInt(isDeletedIdx) == 1 else false
                     val desc = if (descIdx >= 0) it.getString(descIdx) else null
 
@@ -161,6 +186,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         name = name,
                         pattern = pattern,
                         isRegex = isRegex,
+                        listType = listType,
                         isDeleted = isDeleted,
                         description = desc
                     )
@@ -181,6 +207,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                             isRegex = ov.isRegex,
                             isEnabled = ov.isEnabled,
                             action = ov.action,
+                            listType = ov.listType ?: rule.listType,
                             description = ov.description ?: rule.description
                         )
                     )
@@ -212,6 +239,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             put("pattern", rule.pattern)
             put("is_regex", if (rule.isRegex) 1 else 0)
             put("action", rule.action.name)
+            put("list_type", rule.listType.name)
             put("is_enabled", if (rule.isEnabled) 1 else 0)
             put("is_predefined", 0)
             put("category", rule.category.name)
@@ -232,6 +260,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 put("pattern", rule.pattern)
                 put("is_regex", if (rule.isRegex) 1 else 0)
                 put("action", rule.action.name)
+                put("list_type", rule.listType.name)
                 put("is_enabled", if (rule.isEnabled) 1 else 0)
                 put("is_deleted", 0)
                 put("description", rule.description)
@@ -250,6 +279,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 put("pattern", rule.pattern)
                 put("is_regex", if (rule.isRegex) 1 else 0)
                 put("action", rule.action.name)
+                put("list_type", rule.listType.name)
                 put("is_enabled", if (rule.isEnabled) 1 else 0)
                 put("category", rule.category.name)
                 put("sender_target", rule.senderTarget)
@@ -445,6 +475,32 @@ class MisgaDatabaseHelper private constructor(context: Context) :
     }
 
     private fun cursorToFilterRule(cursor: Cursor): FilterRule {
+        val listTypeIdx = cursor.getColumnIndex("list_type")
+        val categoryStr = cursor.getString(cursor.getColumnIndexOrThrow("category"))
+        val category = try {
+            RuleCategory.valueOf(categoryStr)
+        } catch (e: Exception) {
+            RuleCategory.CUSTOM
+        }
+
+        val listType = if (listTypeIdx >= 0 && !cursor.isNull(listTypeIdx)) {
+            try {
+                com.miss.ga.data.model.RuleListType.valueOf(cursor.getString(listTypeIdx))
+            } catch (e: Exception) {
+                if (category == RuleCategory.OTP_ALLOWLIST || category == RuleCategory.CUSTOM_ALLOWLIST) {
+                    com.miss.ga.data.model.RuleListType.ALLOWLIST
+                } else {
+                    com.miss.ga.data.model.RuleListType.BLOCKLIST
+                }
+            }
+        } else {
+            if (category == RuleCategory.OTP_ALLOWLIST || category == RuleCategory.CUSTOM_ALLOWLIST) {
+                com.miss.ga.data.model.RuleListType.ALLOWLIST
+            } else {
+                com.miss.ga.data.model.RuleListType.BLOCKLIST
+            }
+        }
+
         return FilterRule(
             id = cursor.getLong(cursor.getColumnIndexOrThrow("id")),
             name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
@@ -455,13 +511,10 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             } catch (e: Exception) {
                 FilterAction.SPAM
             },
+            listType = listType,
             isEnabled = cursor.getInt(cursor.getColumnIndexOrThrow("is_enabled")) == 1,
             isPredefined = cursor.getInt(cursor.getColumnIndexOrThrow("is_predefined")) == 1,
-            category = try {
-                RuleCategory.valueOf(cursor.getString(cursor.getColumnIndexOrThrow("category")))
-            } catch (e: Exception) {
-                RuleCategory.CUSTOM
-            },
+            category = category,
             senderTarget = cursor.getString(cursor.getColumnIndexOrThrow("sender_target")),
             description = cursor.getString(cursor.getColumnIndexOrThrow("description")) ?: "",
             createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("created_at"))
@@ -497,6 +550,7 @@ data class FilterRuleOverride(
     val name: String?,
     val pattern: String?,
     val isRegex: Boolean,
+    val listType: com.miss.ga.data.model.RuleListType? = null,
     val isDeleted: Boolean,
     val description: String?
 )

@@ -1,5 +1,7 @@
 package com.miss.ga.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -22,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,22 +43,36 @@ import java.util.Locale
 fun MessageBubble(
     message: SmsMessage,
     onLongClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isHighlighted: Boolean = false
 ) {
     val isSent = message.isSent
 
     val bubbleShape = if (isSent) OutgoingBubbleShape else IncomingBubbleShape
-    val containerColor = if (isSent) {
+    val baseContainerColor = if (isSent) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
     }
+    val targetContainerColor = if (isHighlighted) {
+        if (isSent) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        baseContainerColor
+    }
+    val animatedContainerColor by animateColorAsState(
+        targetValue = targetContainerColor,
+        animationSpec = spring(),
+        label = "bubbleBgColor"
+    )
+
     val contentColor = if (isSent) {
         MaterialTheme.colorScheme.onPrimaryContainer
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    val border = if (isSent) {
+    val border = if (isHighlighted) {
+        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+    } else if (isSent) {
         null
     } else {
         BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
@@ -71,9 +88,9 @@ fun MessageBubble(
     ) {
         Surface(
             shape = bubbleShape,
-            color = containerColor,
+            color = animatedContainerColor,
             border = border,
-            shadowElevation = if (isSent) 1.5.dp else 0.5.dp,
+            shadowElevation = if (isHighlighted) 4.dp else if (isSent) 1.5.dp else 0.5.dp,
             modifier = Modifier
                 .widthIn(min = 80.dp, max = 320.dp)
                 .clip(bubbleShape)

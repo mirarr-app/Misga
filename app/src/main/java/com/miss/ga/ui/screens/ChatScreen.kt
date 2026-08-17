@@ -3,6 +3,8 @@ package com.miss.ga.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -34,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
@@ -121,19 +124,38 @@ fun ChatScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
-    var hasInitiallyScrolled by remember(nav.threadId, nav.address) { mutableStateOf(false) }
+    var hasInitiallyScrolled by remember(nav.threadId, nav.address, nav.initialMessageId) { mutableStateOf(false) }
+    var highlightedMessageId by remember(nav.threadId, nav.address, nav.initialMessageId) {
+        mutableStateOf(nav.initialMessageId)
+    }
+
+    LaunchedEffect(highlightedMessageId) {
+        if (highlightedMessageId != null) {
+            kotlinx.coroutines.delay(2500)
+            highlightedMessageId = null
+        }
+    }
 
     LaunchedEffect(nav.threadId, nav.address) {
         viewModel.loadMessages()
         viewModel.loadSenderSettings()
     }
 
-    LaunchedEffect(state.messages.size, state.isLoading) {
+    LaunchedEffect(state.messages.size, state.isLoading, nav.initialMessageId) {
         if (!state.isLoading && state.messages.isNotEmpty()) {
             if (!hasInitiallyScrolled) {
-                listState.scrollToItem(state.messages.size - 1)
+                if (nav.initialMessageId != null) {
+                    val targetIndex = state.messages.indexOfFirst { it.id == nav.initialMessageId }
+                    if (targetIndex >= 0) {
+                        listState.scrollToItem(targetIndex)
+                    } else {
+                        listState.scrollToItem(state.messages.size - 1)
+                    }
+                } else {
+                    listState.scrollToItem(state.messages.size - 1)
+                }
                 hasInitiallyScrolled = true
-            } else {
+            } else if (nav.initialMessageId == null) {
                 listState.animateScrollToItem(state.messages.size - 1)
             }
         }
@@ -195,6 +217,34 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // Call Button (visible only if sender address is a callable phone number)
+                    if (isCallable(state.address)) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        val dialIntent = Intent(Intent.ACTION_DIAL).apply {
+                                            data = Uri.parse("tel:${Uri.encode(state.address)}")
+                                        }
+                                        context.startActivity(dialIntent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Cannot open dialer", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Call,
+                                    contentDescription = "Call Contact",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -382,9 +432,11 @@ fun ChatScreen(
                         items = state.messages,
                         key = { it.id }
                     ) { message ->
+                        val isHighlighted = message.id == highlightedMessageId
                         if (message.isSpam) {
                             SpamMessagePill(
                                 message = message,
+                                isHighlighted = isHighlighted,
                                 onRevealToggle = { revealed ->
                                     viewModel.toggleSpamReveal(message.id, revealed)
                                 },
@@ -398,6 +450,7 @@ fun ChatScreen(
                         } else {
                             MessageBubble(
                                 message = message,
+                                isHighlighted = isHighlighted,
                                 onLongClick = {
                                     selectedMessageForDialog = message
                                 }
@@ -522,5 +575,14 @@ fun ChatScreen(
             }
         )
     }
+}
+
+private fun isCallable(address: String): Boolean {
+    if (address.isBlank()) return false
+    val digits = address.filter { it.isDigit() }
+    val letters = address.filter { it.isLetter() }
+    // If it is an alphanumeric sender id (like "BankMellat", "Snapp", "Digikala") where letters exist and digits are fewer than 3, it is not a phone number
+    if (letters.isNotEmpty() && digits.length < 3) return false
+    return digits.length >= 3
 }
 

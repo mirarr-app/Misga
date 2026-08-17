@@ -13,10 +13,25 @@ import com.miss.ga.ui.screens.ConversationsScreen
 import com.miss.ga.ui.screens.FilterStudioScreen
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
 
+import androidx.compose.runtime.LaunchedEffect
+
 @Composable
-fun MainNavigation() {
+fun MainNavigation(
+    pendingChatNav: ChatNav? = null,
+    onChatNavHandled: () -> Unit = {}
+) {
     val backStack = rememberNavBackStack(ConversationsNav)
     val conversationsViewModel: ConversationsViewModel = viewModel()
+
+    LaunchedEffect(pendingChatNav) {
+        if (pendingChatNav != null) {
+            val current = backStack.lastOrNull()
+            if (current !is ChatNav || current.threadId != pendingChatNav.threadId) {
+                backStack.add(pendingChatNav)
+            }
+            onChatNavHandled()
+        }
+    }
 
     NavDisplay(
         backStack = backStack,

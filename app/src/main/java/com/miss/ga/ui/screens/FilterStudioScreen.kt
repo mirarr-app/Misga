@@ -32,11 +32,13 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.GppGood
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -53,7 +55,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -80,6 +82,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
+import com.miss.ga.data.model.RuleCategory
+import com.miss.ga.data.model.RuleListType
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.SquircleMediumShape
@@ -99,7 +103,8 @@ fun FilterStudioScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
 
     var showSaveDialog by remember { mutableStateOf(false) }
-    var showAddCustomDialog by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var initialAddListType by remember { mutableStateOf(RuleListType.ALLOWLIST) }
     var showImportDialog by remember { mutableStateOf(false) }
     var importJsonText by remember { mutableStateOf("") }
 
@@ -141,7 +146,7 @@ fun FilterStudioScreen(
                             }
                         }
                         Text(
-                            text = "Iranian Regex & Spam Rules Engine",
+                            text = "Allowlist & Iranian Spam Rules Engine",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -153,12 +158,12 @@ fun FilterStudioScreen(
                     }
                 },
                 actions = {
-                    // Export JSON (Presets + Custom Rules)
+                    // Export JSON (Allowlist + Blocklist rules)
                     IconButton(onClick = {
                         val json = viewModel.exportRulesJson()
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("Misga Rules", json))
-                        Toast.makeText(context, "Exported ${state.rules.size} rules to clipboard", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Exported ${state.rules.size} rules with listType to clipboard", Toast.LENGTH_SHORT).show()
                     }) {
                         Icon(Icons.Default.Download, contentDescription = "Export Rules JSON")
                     }
@@ -172,14 +177,20 @@ fun FilterStudioScreen(
             )
         },
         floatingActionButton = {
-            if (selectedTab == 1) {
+            if (selectedTab == 1 || selectedTab == 2) {
                 FloatingActionButton(
-                    onClick = { showAddCustomDialog = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    onClick = {
+                        initialAddListType = if (selectedTab == 1) RuleListType.ALLOWLIST else RuleListType.BLOCKLIST
+                        showAddDialog = true
+                    },
+                    containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primary,
+                    contentColor = if (selectedTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimary,
                     shape = PillShape
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Rule")
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = if (selectedTab == 1) "Add Allowlist Rule" else "Add Blocklist Rule"
+                    )
                 }
             }
         },
@@ -190,9 +201,10 @@ fun FilterStudioScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            PrimaryTabRow(
+            PrimaryScrollableTabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                edgePadding = 12.dp
             ) {
                 Tab(
                     selected = selectedTab == 0,
@@ -209,19 +221,37 @@ fun FilterStudioScreen(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     text = {
-                        Text(
-                            "Custom (${state.customRules.size})",
-                            fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.GppGood, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Allowlist (${state.allowlistRules.size})",
+                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
                     }
                 )
                 Tab(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
                     text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Blocklist (${state.blocklistRules.size})",
+                                fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                )
+                Tab(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    text = {
                         Text(
-                            "Presets (${state.predefinedRules.size})",
-                            fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Medium
+                            "All Presets (${state.predefinedRules.size})",
+                            fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Medium
                         )
                     }
                 )
@@ -233,17 +263,25 @@ fun FilterStudioScreen(
                     onPatternChange = viewModel::onPlaygroundPatternChanged,
                     onSampleChange = viewModel::onPlaygroundSampleTextChanged,
                     onActionChange = viewModel::onPlaygroundActionChanged,
+                    onListTypeChange = viewModel::onPlaygroundListTypeChanged,
                     onPresetSelect = viewModel::setSamplePreset,
                     onSaveClick = { showSaveDialog = true }
                 )
-                1 -> CustomRulesTab(
-                    rules = state.customRules,
+                1 -> AllowlistTab(
+                    rules = state.allowlistRules,
                     onToggle = viewModel::toggleRule,
                     onUpdateAction = viewModel::updateRuleAction,
                     onEdit = { editingRule = it },
                     onDelete = { ruleToDelete = it }
                 )
-                2 -> PredefinedRulesTab(
+                2 -> BlocklistTab(
+                    rules = state.blocklistRules,
+                    onToggle = viewModel::toggleRule,
+                    onUpdateAction = viewModel::updateRuleAction,
+                    onEdit = { editingRule = it },
+                    onDelete = { ruleToDelete = it }
+                )
+                3 -> PredefinedRulesTab(
                     rules = state.predefinedRules,
                     onToggle = viewModel::toggleRule,
                     onUpdateAction = viewModel::updateRuleAction,
@@ -254,7 +292,7 @@ fun FilterStudioScreen(
         }
     }
 
-    // Edit Rule Dialog (Works for Custom AND Predefined Rules)
+    // Edit Rule Dialog
     editingRule?.let { rule ->
         EditRuleDialog(
             rule = rule,
@@ -266,7 +304,7 @@ fun FilterStudioScreen(
         )
     }
 
-    // Delete Confirmation Dialog (Works for Custom AND Predefined Rules)
+    // Delete Confirmation Dialog
     ruleToDelete?.let { rule ->
         AlertDialog(
             onDismissRequest = { ruleToDelete = null },
@@ -300,6 +338,8 @@ fun FilterStudioScreen(
     if (showSaveDialog) {
         var ruleName by remember { mutableStateOf("") }
         var ruleDesc by remember { mutableStateOf("") }
+        var selectedListType by remember { mutableStateOf(state.simulatedListType) }
+        var selectedAction by remember { mutableStateOf(state.simulatedAction) }
 
         AlertDialog(
             onDismissRequest = { showSaveDialog = false },
@@ -323,6 +363,59 @@ fun FilterStudioScreen(
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "List Classification:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 12.dp)) {
+                            RadioButton(
+                                selected = selectedListType == RuleListType.ALLOWLIST,
+                                onClick = {
+                                    selectedListType = RuleListType.ALLOWLIST
+                                    selectedAction = FilterAction.NORMAL
+                                }
+                            )
+                            Text("Allowlist", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = selectedListType == RuleListType.BLOCKLIST,
+                                onClick = {
+                                    selectedListType = RuleListType.BLOCKLIST
+                                    selectedAction = FilterAction.SPAM
+                                }
+                            )
+                            Text("Blocklist", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (selectedListType == RuleListType.BLOCKLIST) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Trigger Action:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            listOf(FilterAction.SPAM, FilterAction.SILENT).forEach { act ->
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+                                    RadioButton(
+                                        selected = selectedAction == act,
+                                        onClick = { selectedAction = act }
+                                    )
+                                    Text(act.name, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(10.dp))
                     Surface(
                         shape = TagShape,
@@ -342,7 +435,12 @@ fun FilterStudioScreen(
                 FilledTonalButton(
                     onClick = {
                         if (ruleName.isNotBlank()) {
-                            viewModel.savePlaygroundRuleAsCustom(ruleName, ruleDesc)
+                            viewModel.savePlaygroundRuleAsCustom(
+                                name = ruleName,
+                                description = ruleDesc,
+                                listType = selectedListType,
+                                action = selectedAction
+                            )
                             showSaveDialog = false
                         }
                     },
@@ -358,19 +456,27 @@ fun FilterStudioScreen(
     }
 
     // Add Custom Rule Dialog
-    if (showAddCustomDialog) {
+    if (showAddDialog) {
         AddRuleDialog(
             targetAddress = null,
-            onDismiss = { showAddCustomDialog = false },
-            onSave = { pattern, isRegex, action, name ->
+            initialListType = initialAddListType,
+            onDismiss = { showAddDialog = false },
+            onSave = { pattern, isRegex, action, name, listType ->
                 viewModel.onPlaygroundPatternChanged(pattern)
                 viewModel.onPlaygroundIsRegexChanged(isRegex)
                 viewModel.onPlaygroundActionChanged(action)
-                viewModel.savePlaygroundRuleAsCustom(name)
-                showAddCustomDialog = false
+                viewModel.onPlaygroundListTypeChanged(listType)
+                viewModel.savePlaygroundRuleAsCustom(
+                    name = name,
+                    description = "",
+                    listType = listType,
+                    action = action
+                )
+                showAddDialog = false
             }
         )
     }
+
 
     // Import JSON Dialog
     if (showImportDialog) {
@@ -381,7 +487,7 @@ fun FilterStudioScreen(
             text = {
                 Column {
                     Text(
-                        "Paste exported JSON rules array below:",
+                        "Paste exported JSON rules array below. Rules include listType (ALLOWLIST / BLOCKLIST):",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -389,7 +495,7 @@ fun FilterStudioScreen(
                     OutlinedTextField(
                         value = importJsonText,
                         onValueChange = { importJsonText = it },
-                        placeholder = { Text("[{\"name\": \"Sample Rule\", \"pattern\": \"...\"}]") },
+                        placeholder = { Text("[{\"name\": \"Sample OTP\", \"pattern\": \"...\", \"listType\": \"ALLOWLIST\"}]") },
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -401,9 +507,14 @@ fun FilterStudioScreen(
                 FilledTonalButton(
                     onClick = {
                         if (importJsonText.isNotBlank()) {
-                            viewModel.importRulesJson(importJsonText) { success, count ->
+                            viewModel.importRulesJson(importJsonText) { success, addedCount, skippedCount ->
                                 if (success) {
-                                    Toast.makeText(context, "Successfully imported $count rules!", Toast.LENGTH_SHORT).show()
+                                    val msg = if (skippedCount > 0) {
+                                        "Imported $addedCount rule${if (addedCount != 1) "s" else ""}, skipped $skippedCount duplicate${if (skippedCount != 1) "s" else ""}."
+                                    } else {
+                                        "Successfully imported $addedCount rule${if (addedCount != 1) "s" else ""}!"
+                                    }
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                     showImportDialog = false
                                     importJsonText = ""
                                 } else {
@@ -430,7 +541,8 @@ private fun PlaygroundTab(
     onPatternChange: (String) -> Unit,
     onSampleChange: (String) -> Unit,
     onActionChange: (FilterAction) -> Unit,
-    onPresetSelect: (String, String) -> Unit,
+    onListTypeChange: (RuleListType) -> Unit,
+    onPresetSelect: (String, String, RuleListType) -> Unit,
     onSaveClick: () -> Unit
 ) {
     LazyColumn(
@@ -438,8 +550,73 @@ private fun PlaygroundTab(
         contentPadding = PaddingValues(16.dp)
     ) {
         item {
+            // OTP Allowlist Quick-Fills
             Text(
-                text = "Preset Quick-Fill",
+                text = "OTP & Allowlist Presets (Highest Priority)",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    AssistChip(
+                        onClick = {
+                            onPresetSelect(
+                                "کد تایید شما برای ورود به اسنپ: 481923",
+                                "(?i)(کد\\s*(ت[اأآ]یید|ورود|فعالسازی)|(verification|auth|login)\\s*code|passcode)",
+                                RuleListType.ALLOWLIST
+                            )
+                        },
+                        label = { Text("OTP Code (کد ورود / تایید)") },
+                        leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        shape = PillShape,
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    )
+                }
+                item {
+                    AssistChip(
+                        onClick = {
+                            onPresetSelect(
+                                "بانک سامان: رمز یکبار مصرف پویا برای کارت ۶۲۱۹ شما: 918234",
+                                "(رمز\\s*(پویا|دوم|یکبار\\s*مصرف)|(one[ -]?time\\s*password|otp\\s*code))",
+                                RuleListType.ALLOWLIST
+                            )
+                        },
+                        label = { Text("Bank OTP (رمز پویا / دوم)") },
+                        leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        shape = PillShape,
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    )
+                }
+                item {
+                    AssistChip(
+                        onClick = {
+                            onPresetSelect(
+                                "دیجی کالا: کد: 582103 برای ورود استفاده شود.",
+                                "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8})",
+                                RuleListType.ALLOWLIST
+                            )
+                        },
+                        label = { Text("Direct Code (کد: / رمز:)") },
+                        leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        shape = PillShape,
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Spam Blocklist Quick-Fills
+            Text(
+                text = "Spam & Blocklist Presets",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.outline,
                 fontWeight = FontWeight.SemiBold
@@ -451,7 +628,8 @@ private fun PlaygroundTab(
                         onClick = {
                             onPresetSelect(
                                 "مشترک گرامی، ۵۰ درصد تخفیف ویژه خرید اینترنت برای شما فعال شد. جهت انصراف لغو ۱۱ را ارسال فرمایید.",
-                                "(لغو\\s*(11|۱۱)|تخفیف|اینترنت)"
+                                "(لغو\\s*(11|۱۱)|تخفیف|اینترنت)",
+                                RuleListType.BLOCKLIST
                             )
                         },
                         label = { Text("Promo Opt-out (لغو ۱۱)") },
@@ -466,7 +644,8 @@ private fun PlaygroundTab(
                         onClick = {
                             onPresetSelect(
                                 "وام فوری بدون ضامن تا سقف ۵۰ میلیون تومان، پرداخت ۲۴ ساعته. ثبت نام سریع:",
-                                "وام\\s*(فوری|بدون\\s*ضامن)|پرداخت\\s*۲۴\\s*ساعته"
+                                "وام\\s*(فوری|بدون\\s*ضامن)|پرداخت\\s*۲۴\\s*ساعته",
+                                RuleListType.BLOCKLIST
                             )
                         },
                         label = { Text("Loan Scam (وام فوری)") },
@@ -481,7 +660,8 @@ private fun PlaygroundTab(
                         onClick = {
                             onPresetSelect(
                                 "سامانه ثنا: ابلاغیه جدید علیه شما صادر گردید. مشاهده در: http://sana-adlieh.top/apk",
-                                "(ابلاغیه|سامانه\\s*ثنا).*http"
+                                "(ابلاغیه|سامانه\\s*ثنا).*http",
+                                RuleListType.BLOCKLIST
                             )
                         },
                         label = { Text("Phishing Link (ثنا/عدالت)") },
@@ -496,7 +676,8 @@ private fun PlaygroundTab(
                         onClick = {
                             onPresetSelect(
                                 "بسته تخفیف ماهیانه اینترنت همراه ۵۰ گیگابایت با قیمت استثنایی فعال شد.",
-                                "(تخفیف\\s*(های\\s*)?ماه[ی]?انه|بسته\\s*(های\\s*)?تخفیف\\s*ماه[ی]?انه|پیشنهاد\\s*ماه[ی]?انه)"
+                                "(تخفیف\\s*(های\\s*)?ماه[ی]?انه|بسته\\s*(های\\s*)?تخفیف\\s*ماه[ی]?انه|پیشنهاد\\s*ماه[ی]?انه)",
+                                RuleListType.BLOCKLIST
                             )
                         },
                         label = { Text("Monthly Discount (تخفیف ماهیانه)") },
@@ -555,7 +736,11 @@ private fun PlaygroundTab(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = SquircleCardShape,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (state.simulatedListType == RuleListType.ALLOWLIST)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                ),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
@@ -581,24 +766,32 @@ private fun PlaygroundTab(
                             )
                         }
 
-                        // Simulated Action Badge
+                        // Simulated Classification Badge
                         Surface(
                             shape = PillShape,
-                            color = when (state.simulatedAction) {
-                                FilterAction.SPAM -> MaterialTheme.colorScheme.errorContainer
-                                FilterAction.SILENT -> MaterialTheme.colorScheme.secondaryContainer
-                                FilterAction.NORMAL -> MaterialTheme.colorScheme.primaryContainer
+                            color = if (state.simulatedListType == RuleListType.ALLOWLIST) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                when (state.simulatedAction) {
+                                    FilterAction.SPAM -> MaterialTheme.colorScheme.errorContainer
+                                    FilterAction.SILENT -> MaterialTheme.colorScheme.secondaryContainer
+                                    FilterAction.NORMAL -> MaterialTheme.colorScheme.primaryContainer
+                                }
                             }
                         ) {
                             Text(
-                                text = "Action: ${state.simulatedAction.name}",
+                                text = if (state.simulatedListType == RuleListType.ALLOWLIST) "ALLOWLIST (TOP PRIORITY)" else "BLOCKLIST: ${state.simulatedAction.name}",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                color = when (state.simulatedAction) {
-                                    FilterAction.SPAM -> MaterialTheme.colorScheme.onErrorContainer
-                                    FilterAction.SILENT -> MaterialTheme.colorScheme.onSecondaryContainer
-                                    FilterAction.NORMAL -> MaterialTheme.colorScheme.onPrimaryContainer
+                                color = if (state.simulatedListType == RuleListType.ALLOWLIST) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    when (state.simulatedAction) {
+                                        FilterAction.SPAM -> MaterialTheme.colorScheme.onErrorContainer
+                                        FilterAction.SILENT -> MaterialTheme.colorScheme.onSecondaryContainer
+                                        FilterAction.NORMAL -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    }
                                 }
                             )
                         }
@@ -612,7 +805,7 @@ private fun PlaygroundTab(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "Matched: ${state.testResult.matchedSubstrings.joinToString()}",
+                                text = "Matched Substring: ${state.testResult.matchedSubstrings.joinToString()}",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary,
@@ -623,31 +816,68 @@ private fun PlaygroundTab(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
+                    // List Classification Selector
+                    Text(
+                        text = "Rule List Target:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Set Action:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 16.dp)) {
+                            RadioButton(
+                                selected = state.simulatedListType == RuleListType.ALLOWLIST,
+                                onClick = { onListTypeChange(RuleListType.ALLOWLIST) }
+                            )
+                            Text(
+                                text = "Allowlist (Top Priority)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (state.simulatedListType == RuleListType.ALLOWLIST) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            FilterAction.values().forEach { act ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(start = 6.dp)
-                                ) {
-                                    RadioButton(
-                                        selected = state.simulatedAction == act,
-                                        onClick = { onActionChange(act) }
-                                    )
-                                    Text(
-                                        text = act.name,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = if (state.simulatedAction == act) FontWeight.Bold else FontWeight.Normal
-                                    )
+                            RadioButton(
+                                selected = state.simulatedListType == RuleListType.BLOCKLIST,
+                                onClick = { onListTypeChange(RuleListType.BLOCKLIST) }
+                            )
+                            Text(
+                                text = "Blocklist",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (state.simulatedListType == RuleListType.BLOCKLIST) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+
+                    if (state.simulatedListType == RuleListType.BLOCKLIST) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Blocklist Action:",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                listOf(FilterAction.SPAM, FilterAction.SILENT).forEach { act ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(start = 6.dp)
+                                    ) {
+                                        RadioButton(
+                                            selected = state.simulatedAction == act,
+                                            onClick = { onActionChange(act) }
+                                        )
+                                        Text(
+                                            text = act.name,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = if (state.simulatedAction == act) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -667,7 +897,10 @@ private fun PlaygroundTab(
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Save as Permanent Rule", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (state.simulatedListType == RuleListType.ALLOWLIST) "Save as Allowlist Rule" else "Save as Blocklist Rule",
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -676,55 +909,112 @@ private fun PlaygroundTab(
 }
 
 @Composable
-private fun CustomRulesTab(
+private fun AllowlistTab(
     rules: List<FilterRule>,
     onToggle: (FilterRule, Boolean) -> Unit,
     onUpdateAction: (FilterRule, FilterAction) -> Unit,
     onEdit: (FilterRule) -> Unit,
     onDelete: (FilterRule) -> Unit
 ) {
-    if (rules.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.size(72.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = SquircleMediumShape,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Code,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
+                    Icon(
+                        imageVector = Icons.Default.GppGood,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Allowlist Priority System",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Allowlist rules have higher priority than blocklists. If an incoming message matches an allowlist rule (e.g. OTP verification codes, banking passwords), it is immediately treated as safe and delivered with alert sound, overriding all blocklists.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            lineHeight = 17.sp
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "No custom rules yet",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Create one with '+' or save from the Regex Playground.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
+            }
+        }
+
+        if (rules.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No allowlist rules active. Tap '+' to create one.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+        } else {
+            items(rules, key = { it.id }) { rule ->
+                RuleCard(
+                    rule = rule,
+                    onToggle = { onToggle(rule, it) },
+                    onUpdateAction = { onUpdateAction(rule, it) },
+                    onEdit = { onEdit(rule) },
+                    onDelete = { onDelete(rule) }
                 )
             }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+    }
+}
+
+@Composable
+private fun BlocklistTab(
+    rules: List<FilterRule>,
+    onToggle: (FilterRule, Boolean) -> Unit,
+    onUpdateAction: (FilterRule, FilterAction) -> Unit,
+    onEdit: (FilterRule) -> Unit,
+    onDelete: (FilterRule) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (rules.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No blocklist rules active. Tap '+' to create one.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+        } else {
             items(rules, key = { it.id }) { rule ->
                 RuleCard(
                     rule = rule,
@@ -753,7 +1043,7 @@ private fun PredefinedRulesTab(
     ) {
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                 shape = SquircleMediumShape,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -764,14 +1054,14 @@ private fun PredefinedRulesTab(
                     Icon(
                         imageVector = Icons.Default.Security,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Built-in rules are tailored for Iranian telecom operators, shortcodes, and spam campaigns. You can edit, customize, or delete any preset below.",
+                        text = "Built-in rules include Iranian OTP presets (Allowlist) and telecom spam filters (Blocklist). You can toggle, customize, or delete any preset below.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurface,
                         lineHeight = 18.sp
                     )
                 }
@@ -798,13 +1088,20 @@ private fun RuleCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isAllowlist = rule.listType == RuleListType.ALLOWLIST
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = SquircleMediumShape,
         colors = CardDefaults.cardColors(
-            containerColor = if (rule.isEnabled) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLowest
+            containerColor = if (rule.isEnabled) {
+                if (isAllowlist) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerHigh
+            } else MaterialTheme.colorScheme.surfaceContainerLowest
         ),
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+        border = BorderStroke(
+            if (isAllowlist && rule.isEnabled) 1.dp else 0.5.dp,
+            if (isAllowlist && rule.isEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -813,11 +1110,13 @@ private fun RuleCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = rule.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = rule.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     if (rule.description.isNotBlank()) {
                         Text(
                             text = rule.description,
@@ -852,31 +1151,57 @@ private fun RuleCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Action: ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Surface(
-                        shape = PillShape,
-                        color = when (rule.action) {
-                            FilterAction.SPAM -> MaterialTheme.colorScheme.errorContainer
-                            FilterAction.SILENT -> MaterialTheme.colorScheme.secondaryContainer
-                            FilterAction.NORMAL -> MaterialTheme.colorScheme.primaryContainer
-                        },
-                        modifier = Modifier.padding(start = 4.dp)
-                    ) {
-                        Text(
-                            text = rule.action.name,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            color = when (rule.action) {
-                                FilterAction.SPAM -> MaterialTheme.colorScheme.onErrorContainer
-                                FilterAction.SILENT -> MaterialTheme.colorScheme.onSecondaryContainer
-                                FilterAction.NORMAL -> MaterialTheme.colorScheme.onPrimaryContainer
+                    if (isAllowlist) {
+                        Surface(
+                            shape = PillShape,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GppGood,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "ALLOWLIST • TOP PRIORITY",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
                             }
+                        }
+                    } else {
+                        Text(
+                            text = "Action: ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
                         )
+                        Surface(
+                            shape = PillShape,
+                            color = when (rule.action) {
+                                FilterAction.SPAM -> MaterialTheme.colorScheme.errorContainer
+                                FilterAction.SILENT -> MaterialTheme.colorScheme.secondaryContainer
+                                FilterAction.NORMAL -> MaterialTheme.colorScheme.primaryContainer
+                            },
+                            modifier = Modifier.padding(start = 4.dp)
+                        ) {
+                            Text(
+                                text = rule.action.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                color = when (rule.action) {
+                                    FilterAction.SPAM -> MaterialTheme.colorScheme.onErrorContainer
+                                    FilterAction.SILENT -> MaterialTheme.colorScheme.onSecondaryContainer
+                                    FilterAction.NORMAL -> MaterialTheme.colorScheme.onPrimaryContainer
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -915,6 +1240,7 @@ private fun EditRuleDialog(
     var name by remember { mutableStateOf(rule.name) }
     var pattern by remember { mutableStateOf(rule.pattern) }
     var description by remember { mutableStateOf(rule.description) }
+    var selectedListType by remember { mutableStateOf(rule.listType) }
     var selectedAction by remember { mutableStateOf(rule.action) }
     var isRegex by remember { mutableStateOf(rule.isRegex) }
 
@@ -961,7 +1287,7 @@ private fun EditRuleDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "Action Tier:",
+                    text = "List Classification:",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -970,20 +1296,55 @@ private fun EditRuleDialog(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterAction.values().forEach { act ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            RadioButton(
-                                selected = selectedAction == act,
-                                onClick = { selectedAction = act }
-                            )
-                            Text(
-                                text = act.name,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (selectedAction == act) FontWeight.Bold else FontWeight.Normal
-                            )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 12.dp)) {
+                        RadioButton(
+                            selected = selectedListType == RuleListType.ALLOWLIST,
+                            onClick = {
+                                selectedListType = RuleListType.ALLOWLIST
+                                selectedAction = FilterAction.NORMAL
+                            }
+                        )
+                        Text("Allowlist", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = selectedListType == RuleListType.BLOCKLIST,
+                            onClick = {
+                                selectedListType = RuleListType.BLOCKLIST
+                                if (selectedAction == FilterAction.NORMAL) selectedAction = FilterAction.SPAM
+                            }
+                        )
+                        Text("Blocklist", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (selectedListType == RuleListType.BLOCKLIST) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Action Tier:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(FilterAction.SPAM, FilterAction.SILENT).forEach { act ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = selectedAction == act,
+                                    onClick = { selectedAction = act }
+                                )
+                                Text(
+                                    text = act.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (selectedAction == act) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
                         }
                     }
                 }
@@ -998,7 +1359,8 @@ private fun EditRuleDialog(
                                 name = name,
                                 pattern = pattern,
                                 description = description,
-                                action = selectedAction,
+                                listType = selectedListType,
+                                action = if (selectedListType == RuleListType.ALLOWLIST) FilterAction.NORMAL else selectedAction,
                                 isRegex = isRegex
                             )
                         )
@@ -1014,3 +1376,117 @@ private fun EditRuleDialog(
         }
     )
 }
+
+@Composable
+fun AddRuleDialog(
+    targetAddress: String?,
+    initialListType: RuleListType = RuleListType.ALLOWLIST,
+    onDismiss: () -> Unit,
+    onSave: (pattern: String, isRegex: Boolean, action: FilterAction, name: String, listType: RuleListType) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var pattern by remember { mutableStateOf("") }
+    var isRegex by remember { mutableStateOf(true) }
+    var listType by remember { mutableStateOf(initialListType) }
+    var action by remember { mutableStateOf(if (initialListType == RuleListType.ALLOWLIST) FilterAction.NORMAL else FilterAction.SPAM) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = SquircleCardShape,
+        title = { Text(if (listType == RuleListType.ALLOWLIST) "New Allowlist Rule" else "New Blocklist Rule", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(if (listType == RuleListType.ALLOWLIST) "Rule Name (e.g. Bank OTP)" else "Rule Name (e.g. Discount codes)") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = pattern,
+                    onValueChange = { pattern = it },
+                    label = { Text("Regex Pattern") },
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "List Classification:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 12.dp)) {
+                        RadioButton(
+                            selected = listType == RuleListType.ALLOWLIST,
+                            onClick = {
+                                listType = RuleListType.ALLOWLIST
+                                action = FilterAction.NORMAL
+                            }
+                        )
+                        Text("Allowlist", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = listType == RuleListType.BLOCKLIST,
+                            onClick = {
+                                listType = RuleListType.BLOCKLIST
+                                action = FilterAction.SPAM
+                            }
+                        )
+                        Text("Blocklist", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (listType == RuleListType.BLOCKLIST) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Trigger Action:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        listOf(FilterAction.SPAM, FilterAction.SILENT).forEach { act ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = action == act, onClick = { action = act })
+                                Text(
+                                    text = act.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (action == act) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                onClick = {
+                    if (pattern.isNotBlank()) {
+                        onSave(pattern, isRegex, action, name, listType)
+                    }
+                },
+                shape = PillShape
+            ) {
+                Text("Save Rule", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+

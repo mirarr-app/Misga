@@ -69,9 +69,11 @@ class NotificationHelper(private val context: Context) {
         val displayName = contactName ?: sender
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            setAction(Intent.ACTION_VIEW)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("EXTRA_THREAD_ID", threadId)
             putExtra("EXTRA_ADDRESS", sender)
+            putExtra("EXTRA_CONTACT_NAME", contactName)
         }
         val contentPendingIntent = PendingIntent.getActivity(
             context,

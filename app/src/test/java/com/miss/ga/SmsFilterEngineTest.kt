@@ -69,4 +69,77 @@ class SmsFilterEngineTest {
         assertTrue("Expected sample2 to match monthly discount rule", SmsFilterEngine.testPattern(rule.pattern, true, sample2).isMatch)
         assertFalse("Expected normal name 'ماهان' NOT to match", SmsFilterEngine.testPattern(rule.pattern, true, sample3).isMatch)
     }
+
+    @Test
+    fun testOtpVerificationAllowlistPresets() {
+        val otpRules = PredefinedRules.getDefaultRules().filter { it.id in listOf(-101L, -102L, -103L) }
+
+        val testSamples = listOf(
+            "کد ورود شما به اسنپ: 481923",
+            "کد تایید: 829104",
+            "کد فعالسازی حساب کاربری: 554201",
+            "بانک ملت: رمز دوم یکبار مصرف (پویا) شما: 981240",
+            "بانک سامان: رمز پویا برای خرید اینترنتی: 618293",
+            "کد: 182390 جهت احراز هویت",
+            "Your login verification code is 491029",
+            "Snap OTP code: 991823"
+        )
+
+        testSamples.forEach { sample ->
+            val matched = otpRules.any { rule ->
+                SmsFilterEngine.testPattern(rule.pattern, rule.isRegex, sample).isMatch
+            }
+            assertTrue("Expected sample '$sample' to match at least one OTP allowlist rule", matched)
+        }
+    }
+
+    @Test
+    fun testAllowlistPriorityOverBlocklistAndCommercialShortcodes() {
+        val rules = PredefinedRules.getDefaultRules()
+
+        // Message from commercial shortcode 10001234 (normally flagged as SPAM by shortcode rule -1)
+        // but containing an OTP code
+        val otpShortcodeSms = "کد ورود شما به اپلیکیشن: 918234. تخفیف خرید اول نیز برای شما لحاظ شد."
+        val sender = "10008899"
+
+        val filterResult = SmsFilterEngine.evaluateMessage(
+            sender = sender,
+            body = otpShortcodeSms,
+            rules = rules,
+            senderPreference = null
+        )
+
+        assertEquals(
+            "Allowlist rule MUST override shortcode and keyword blocklists",
+            FilterAction.NORMAL,
+            filterResult.action
+        )
+        assertTrue("Result should be marked as allowlisted", filterResult.isAllowlisted)
+    }
+
+    @Test
+    fun testAllowlistPriorityOverBlockedSender() {
+        val rules = PredefinedRules.getDefaultRules()
+        val bankOtpSms = "بانک سپه: رمز یکبار مصرف پویا برای انتقال وجه: 339182"
+        val blockedSender = "+989120000000"
+
+        val blockedPref = com.miss.ga.data.model.SenderPreference(
+            address = blockedSender,
+            isBlocked = true
+        )
+
+        val result = SmsFilterEngine.evaluateMessage(
+            sender = blockedSender,
+            body = bankOtpSms,
+            rules = rules,
+            senderPreference = blockedPref
+        )
+
+        assertEquals(
+            "Allowlist must have top priority even if sender preference isBlocked = true",
+            FilterAction.NORMAL,
+            result.action
+        )
+        assertTrue(result.isAllowlisted)
+    }
 }

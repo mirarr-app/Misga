@@ -9,6 +9,7 @@ data class FilterRule(
     val pattern: String,
     val isRegex: Boolean = true,
     val action: FilterAction = FilterAction.SPAM,
+    val listType: RuleListType = RuleListType.BLOCKLIST,
     val isEnabled: Boolean = true,
     val isPredefined: Boolean = false,
     val category: RuleCategory = RuleCategory.CUSTOM,
@@ -16,3 +17,4 @@ data class FilterRule(
     val description: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
+

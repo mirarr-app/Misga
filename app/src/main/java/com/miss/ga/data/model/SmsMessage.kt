@@ -25,5 +25,20 @@ data class ConversationThread(
     val messageCount: Int,
     val unreadCount: Int,
     val hasSpam: Boolean = false,
+    val isUnreadSpam: Boolean = false,
     val lastMessageAction: FilterAction = FilterAction.NORMAL
+) {
+    val isContact: Boolean get() = !contactName.isNullOrBlank()
+}
+
+data class SearchMessageResult(
+    val messageId: Long,
+    val threadId: Long,
+    val address: String,
+    val contactName: String?,
+    val body: String,
+    val date: Long,
+    val read: Boolean,
+    val type: Int,
+    val isSpam: Boolean = false
 )

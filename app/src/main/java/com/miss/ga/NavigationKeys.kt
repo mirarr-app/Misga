@@ -10,7 +10,8 @@ data object ConversationsNav : NavKey
 data class ChatNav(
     val threadId: Long,
     val address: String,
-    val contactName: String? = null
+    val contactName: String? = null,
+    val initialMessageId: Long? = null
 ) : NavKey
 
 @Serializable

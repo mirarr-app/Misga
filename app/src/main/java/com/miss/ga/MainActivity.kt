@@ -8,6 +8,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -16,6 +20,8 @@ import androidx.core.content.ContextCompat
 import com.miss.ga.theme.MISGATheme
 
 class MainActivity : ComponentActivity() {
+
+    private var pendingChatNav by mutableStateOf<ChatNav?>(null)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -26,6 +32,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleIntent(intent)
 
         requestRequiredPermissions()
 
@@ -35,9 +42,32 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainNavigation()
+                    MainNavigation(
+                        pendingChatNav = pendingChatNav,
+                        onChatNavHandled = { pendingChatNav = null }
+                    )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val threadId = intent.getLongExtra("EXTRA_THREAD_ID", -1L)
+        val address = intent.getStringExtra("EXTRA_ADDRESS")
+        val contactName = intent.getStringExtra("EXTRA_CONTACT_NAME")
+        if (threadId > 0 && !address.isNullOrBlank()) {
+            pendingChatNav = ChatNav(
+                threadId = threadId,
+                address = address,
+                contactName = contactName
+            )
         }
     }
 

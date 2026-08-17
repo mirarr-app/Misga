@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.miss.ga.data.model.ConversationThread
+import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.repository.SmsRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,17 +14,23 @@ import kotlinx.coroutines.launch
 
 data class ConversationsUiState(
     val isLoading: Boolean = true,
+    val isSearching: Boolean = false,
     val threads: List<ConversationThread> = emptyList(),
     val filteredThreads: List<ConversationThread> = emptyList(),
+    val matchingMessages: List<SearchMessageResult> = emptyList(),
     val searchQuery: String = "",
+    val showContactsOnly: Boolean = false,
     val isDefaultSmsApp: Boolean = false,
     val hasSmsPermission: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val selectedThreadIds: Set<Long> = emptySet(),
+    val isSelectionMode: Boolean = false
 )
 
 class ConversationsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = SmsRepository(application)
+    private var searchJob: Job? = null
 
     private val _uiState = MutableStateFlow(ConversationsUiState())
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -42,7 +50,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
             )
             try {
                 val threads = repository.getThreads()
-                val query = _uiState.value.searchQuery
+                val query = _uiState.value.searchQuery.trim()
                 val filtered = if (query.isBlank()) {
                     threads
                 } else {
@@ -58,6 +66,13 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                     filteredThreads = filtered,
                     error = null
                 )
+                if (query.isNotBlank()) {
+                    val messages = repository.searchAllMessages(query)
+                    _uiState.value = _uiState.value.copy(
+                        matchingMessages = messages,
+                        isSearching = false
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -68,24 +83,97 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun onSearchQueryChanged(query: String) {
-        val threads = _uiState.value.threads
-        val filtered = if (query.isBlank()) {
-            threads
-        } else {
-            threads.filter {
-                (it.contactName?.contains(query, ignoreCase = true) == true) ||
-                        it.address.contains(query, ignoreCase = true) ||
-                        it.snippet.contains(query, ignoreCase = true)
-            }
+        searchJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                searchQuery = query,
+                filteredThreads = _uiState.value.threads,
+                matchingMessages = emptyList(),
+                isSearching = false
+            )
+            return
         }
+
+        val threads = _uiState.value.threads
+        val filtered = threads.filter {
+            (it.contactName?.contains(trimmed, ignoreCase = true) == true) ||
+                    it.address.contains(trimmed, ignoreCase = true) ||
+                    it.snippet.contains(trimmed, ignoreCase = true)
+        }
+
         _uiState.value = _uiState.value.copy(
             searchQuery = query,
-            filteredThreads = filtered
+            filteredThreads = filtered,
+            isSearching = true
+        )
+
+        searchJob = viewModelScope.launch {
+            val messageResults = repository.searchAllMessages(trimmed)
+            _uiState.value = _uiState.value.copy(
+                matchingMessages = messageResults,
+                isSearching = false
+            )
+        }
+    }
+
+    fun toggleContactsOnly() {
+        _uiState.value = _uiState.value.copy(
+            showContactsOnly = !_uiState.value.showContactsOnly
         )
     }
 
     fun checkDefaultSmsStatus() {
         _uiState.value = _uiState.value.copy(isDefaultSmsApp = repository.isDefaultSmsApp())
+    }
+
+    fun enterSelectionMode(threadId: Long) {
+        _uiState.value = _uiState.value.copy(
+            isSelectionMode = true,
+            selectedThreadIds = setOf(threadId)
+        )
+    }
+
+    fun toggleSelectThread(threadId: Long) {
+        val currentSelected = _uiState.value.selectedThreadIds.toMutableSet()
+        if (currentSelected.contains(threadId)) {
+            currentSelected.remove(threadId)
+        } else {
+            currentSelected.add(threadId)
+        }
+        val isStillSelecting = currentSelected.isNotEmpty()
+        _uiState.value = _uiState.value.copy(
+            selectedThreadIds = currentSelected,
+            isSelectionMode = isStillSelecting
+        )
+    }
+
+    fun selectAllThreads() {
+        val visibleThreads = if (_uiState.value.showContactsOnly) {
+            _uiState.value.filteredThreads.filter { it.isContact }
+        } else {
+            _uiState.value.filteredThreads
+        }
+        val allFilteredIds = visibleThreads.map { it.threadId }.toSet()
+        val allSelected = _uiState.value.selectedThreadIds.containsAll(allFilteredIds) && allFilteredIds.isNotEmpty()
+        if (allSelected) {
+            _uiState.value = _uiState.value.copy(
+                selectedThreadIds = emptySet(),
+                isSelectionMode = false
+            )
+        } else {
+            _uiState.value = _uiState.value.copy(
+                selectedThreadIds = allFilteredIds,
+                isSelectionMode = true
+            )
+        }
+    }
+
+    fun clearSelection() {
+        _uiState.value = _uiState.value.copy(
+            selectedThreadIds = emptySet(),
+            isSelectionMode = false
+        )
     }
 
     fun deleteConversation(threadId: Long) {
@@ -94,11 +182,33 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
             if (success) {
                 val updatedThreads = _uiState.value.threads.filter { it.threadId != threadId }
                 val updatedFiltered = _uiState.value.filteredThreads.filter { it.threadId != threadId }
+                val updatedSelected = _uiState.value.selectedThreadIds - threadId
                 _uiState.value = _uiState.value.copy(
                     threads = updatedThreads,
-                    filteredThreads = updatedFiltered
+                    filteredThreads = updatedFiltered,
+                    selectedThreadIds = updatedSelected,
+                    isSelectionMode = updatedSelected.isNotEmpty()
                 )
             }
+        }
+    }
+
+    fun deleteSelectedConversations(onComplete: (Int) -> Unit = {}) {
+        val targetIds = _uiState.value.selectedThreadIds
+        if (targetIds.isEmpty()) return
+
+        viewModelScope.launch {
+            val count = targetIds.size
+            repository.deleteThreads(targetIds)
+            val updatedThreads = _uiState.value.threads.filter { it.threadId !in targetIds }
+            val updatedFiltered = _uiState.value.filteredThreads.filter { it.threadId !in targetIds }
+            _uiState.value = _uiState.value.copy(
+                threads = updatedThreads,
+                filteredThreads = updatedFiltered,
+                selectedThreadIds = emptySet(),
+                isSelectionMode = false
+            )
+            onComplete(count)
         }
     }
 
@@ -106,6 +216,27 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             repository.markThreadRead(threadId)
             loadThreads(silent = true)
+        }
+    }
+
+    fun markSelectedConversationsRead(onComplete: (Int) -> Unit = {}) {
+        val targetIds = _uiState.value.selectedThreadIds
+        if (targetIds.isEmpty()) return
+
+        viewModelScope.launch {
+            val count = targetIds.size
+            repository.markThreadsRead(targetIds)
+            clearSelection()
+            loadThreads(silent = true)
+            onComplete(count)
+        }
+    }
+
+    fun markAllConversationsRead(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.markAllMessagesRead()
+            loadThreads(silent = true)
+            onComplete()
         }
     }
 }

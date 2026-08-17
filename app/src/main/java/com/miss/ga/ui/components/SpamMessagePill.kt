@@ -71,14 +71,17 @@ fun SpamMessagePill(
     onRevealToggle: (Boolean) -> Unit,
     onMarkNotSpam: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isHighlighted: Boolean = false
 ) {
     val isDark = isSystemInDarkTheme()
     val bgColor = if (isDark) SpamWarningDark else SpamWarningLight
     val textColor = if (isDark) SpamWarningOnDark else SpamWarningOnLight
     val borderColor = if (isDark) SpamWarningBorderDark else SpamWarningBorderLight
 
-    var isRevealed by remember(message.isRevealed) { mutableStateOf(message.isRevealed) }
+    var isRevealed by remember(message.isRevealed, isHighlighted) {
+        mutableStateOf(if (isHighlighted) true else message.isRevealed)
+    }
     val rotationAngle by animateFloatAsState(
         targetValue = if (isRevealed) 180f else 0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
@@ -91,8 +94,8 @@ fun SpamMessagePill(
             .padding(horizontal = 14.dp, vertical = 5.dp),
         shape = SpamCardShape,
         colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = BorderStroke(1.dp, borderColor.copy(alpha = 0.6f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = if (isHighlighted) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, borderColor.copy(alpha = 0.6f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isHighlighted) 4.dp else 1.dp)
     ) {
         Column(
             modifier = Modifier
