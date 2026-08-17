@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -27,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.misga.ChatNav
 import com.example.misga.data.repository.SmsRepository
+import com.example.misga.theme.InputBarShape
+import com.example.misga.theme.PillShape
+import com.example.misga.theme.SquircleCardShape
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,7 +72,13 @@ fun ComposeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("New Message", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        text = "New Message",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -78,13 +89,14 @@ fun ComposeScreen(
         },
         bottomBar = {
             Surface(
-                tonalElevation = 3.dp,
+                tonalElevation = 4.dp,
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding()
                     .navigationBarsPadding()
             ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
                     val isUnicode = messageBody.any { it.code > 127 }
                     val maxPerSegment = if (isUnicode) 70 else 160
                     val count = messageBody.length
@@ -94,15 +106,23 @@ fun ComposeScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.End
                         ) {
-                            Text(
-                                text = "$count/$maxPerSegment ($segments SMS ${if (isUnicode) "Unicode" else "GSM-7"})",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                                fontSize = 11.sp
-                            )
+                            Surface(
+                                shape = PillShape,
+                                color = if (segments > 1) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            ) {
+                                Text(
+                                    text = "$count/$maxPerSegment • $segments SMS (${if (isUnicode) "Persian/Unicode" else "GSM-7"})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (segments > 1) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.outline,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
 
@@ -113,11 +133,23 @@ fun ComposeScreen(
                         OutlinedTextField(
                             value = messageBody,
                             onValueChange = { messageBody = it },
-                            placeholder = { Text("Text message (SMS)...") },
+                            placeholder = {
+                                Text(
+                                    "Text message (SMS)...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            },
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(end = 8.dp),
-                            shape = MaterialTheme.shapes.extraLarge,
+                            shape = InputBarShape,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                            ),
                             maxLines = 5
                         )
 
@@ -149,18 +181,24 @@ fun ComposeScreen(
                             shape = CircleShape,
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                disabledContentColor = MaterialTheme.colorScheme.outline
                             ),
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(50.dp)
                         ) {
                             if (isSending) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(22.dp),
                                     color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 2.dp
+                                    strokeWidth = 2.5.dp
                                 )
                             } else {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Send",
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }
@@ -180,10 +218,23 @@ fun ComposeScreen(
                 onValueChange = { recipient = it },
                 label = { Text("To (Recipient Phone Number)") },
                 placeholder = { Text("e.g. 0912..., +98912..., 1000...") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
+                shape = SquircleCardShape,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
         }
     }
 }
+

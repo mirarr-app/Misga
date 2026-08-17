@@ -1,7 +1,10 @@
 package com.example.misga.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,26 +15,28 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.outlined.Rule
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,11 +46,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.misga.data.model.FilterAction
 import com.example.misga.data.model.FilterRule
 import com.example.misga.data.model.SenderPreference
+import com.example.misga.theme.PillShape
+import com.example.misga.theme.SquircleCardShape
+import com.example.misga.theme.SquircleMediumShape
+import com.example.misga.theme.TagShape
+import com.example.misga.theme.getAvatarGradient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +73,7 @@ fun ParticipantSettingsSheet(
     onAddSenderRule: (pattern: String, isRegex: Boolean, action: FilterAction, name: String) -> Unit
 ) {
     var showAddRuleDialog by remember { mutableStateOf(false) }
+    val avatarBrush = getAvatarGradient(address)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -69,20 +83,45 @@ fun ParticipantSettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
-            // Title & Sender Info
-            Text(
-                text = contactName ?: address,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            if (contactName != null) {
-                Text(
-                    text = address,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline
-                )
+            // Title & Sender Avatar Info
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(avatarBrush),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val displayName = contactName ?: address
+                    Text(
+                        text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "#",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = contactName ?: address,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (contactName != null) {
+                        Text(
+                            text = address,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -91,7 +130,7 @@ fun ParticipantSettingsSheet(
             Text(
                 text = "Participant Notification Tier",
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -102,28 +141,37 @@ fun ParticipantSettingsSheet(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
-                shape = MaterialTheme.shapes.medium
+                shape = SquircleMediumShape,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
             ) {
-                Column(modifier = Modifier.padding(8.dp)) {
+                Column(modifier = Modifier.padding(6.dp)) {
                     ActionOptionRow(
                         title = "Normal Notifications",
-                        subtitle = "Play sound, vibrate, and show heads-up popups",
+                        subtitle = "Play sound, vibrate, and show alert banners",
                         icon = Icons.Default.Notifications,
                         selected = currentAction == FilterAction.NORMAL,
                         onClick = { onUpdateAction(FilterAction.NORMAL) }
                     )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
                     ActionOptionRow(
                         title = "Silent (Mute)",
-                        subtitle = "Receive messages quietly in chat without alerts",
+                        subtitle = "Deliver quietly in conversation without alerts",
                         icon = Icons.Default.NotificationsOff,
                         selected = currentAction == FilterAction.SILENT,
                         onClick = { onUpdateAction(FilterAction.SILENT) }
                     )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
                     ActionOptionRow(
                         title = "Spam / Auto-Hide",
-                        subtitle = "Suppress alerts and collapse messages under reveal button",
+                        subtitle = "Suppress notifications and collapse behind reveal pill",
                         icon = Icons.Default.Shield,
                         selected = currentAction == FilterAction.SPAM,
                         onClick = { onUpdateAction(FilterAction.SPAM) }
@@ -131,7 +179,7 @@ fun ParticipantSettingsSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Sender-Specific Content Rules
             Row(
@@ -140,37 +188,48 @@ fun ParticipantSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Participant Content Rules (${senderRules.size})",
+                    text = "Custom Rules for this Sender (${senderRules.size})",
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
 
-                FilledTonalButton(onClick = { showAddRuleDialog = true }) {
+                FilledTonalButton(
+                    onClick = { showAddRuleDialog = true },
+                    shape = PillShape,
+                    modifier = Modifier.height(34.dp)
+                ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Rule", style = MaterialTheme.typography.labelMedium)
+                    Text("Add Rule", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             if (senderRules.isEmpty()) {
-                Text(
-                    text = "No custom regex rules configured for this participant. Global rules will apply.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "No sender-specific regex rules. Global filter rules will apply to incoming messages.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
             } else {
-                LazyColumn(modifier = Modifier.height(140.dp)) {
+                LazyColumn(modifier = Modifier.height(150.dp)) {
                     items(senderRules, key = { it.id }) { rule ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp),
-                            shape = MaterialTheme.shapes.small,
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            shape = SquircleMediumShape,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         ) {
                             Row(
                                 modifier = Modifier
@@ -183,19 +242,25 @@ fun ParticipantSettingsSheet(
                                     Text(text = rule.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                     Text(text = rule.pattern, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                                 }
-                                Text(
-                                    text = rule.action.name,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (rule.action == FilterAction.SPAM) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                                )
+                                Surface(
+                                    shape = PillShape,
+                                    color = if (rule.action == FilterAction.SPAM) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        text = rule.action.name,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (rule.action == FilterAction.SPAM) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 
@@ -222,6 +287,7 @@ private fun ActionOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -237,7 +303,8 @@ private fun ActionOptionRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = subtitle,
@@ -262,7 +329,8 @@ fun AddRuleDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Content Filter Rule", fontWeight = FontWeight.Bold) },
+        shape = SquircleCardShape,
+        title = { Text("New Filter Rule", fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 OutlinedTextField(
@@ -270,17 +338,24 @@ fun AddRuleDialog(
                     onValueChange = { name = it },
                     label = { Text("Rule Name (e.g. Discount codes)") },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = { Text("Regex Pattern (e.g. تخفیف|حراج)") },
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Trigger Action:", style = MaterialTheme.typography.labelMedium)
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Trigger Action:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -288,7 +363,11 @@ fun AddRuleDialog(
                     FilterAction.values().forEach { act ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = action == act, onClick = { action = act })
-                            Text(act.name, style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                text = act.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (action == act) FontWeight.Bold else FontWeight.Normal
+                            )
                         }
                     }
                 }
@@ -300,9 +379,10 @@ fun AddRuleDialog(
                     if (pattern.isNotBlank()) {
                         onSave(pattern, isRegex, action, name)
                     }
-                }
+                },
+                shape = PillShape
             ) {
-                Text("Save Rule")
+                Text("Save Rule", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -312,3 +392,4 @@ fun AddRuleDialog(
         }
     )
 }
+

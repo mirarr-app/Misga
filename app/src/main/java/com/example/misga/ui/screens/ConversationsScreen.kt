@@ -1,6 +1,5 @@
 package com.example.misga.ui.screens
 
-import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
@@ -35,7 +34,6 @@ import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -60,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,8 +67,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.misga.ChatNav
 import com.example.misga.ComposeNav
-import com.example.misga.FilterStudioNav
 import com.example.misga.data.model.ConversationThread
+import com.example.misga.theme.PillShape
+import com.example.misga.theme.getAvatarGradient
 import com.example.misga.ui.components.DefaultSmsBanner
 import com.example.misga.ui.viewmodel.ConversationsViewModel
 import java.text.SimpleDateFormat
@@ -105,27 +105,51 @@ fun ConversationsScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = "MISGA",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = (-0.5).sp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "MISGA",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = (-0.5).sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = PillShape,
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 2.dp)
+                            ) {
+                                Text(
+                                    text = "SMS Defense",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
                         Text(
                             text = "Make Iran's SMS Great Again",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = MaterialTheme.colorScheme.outline,
                             fontWeight = FontWeight.Medium
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToFilterStudio) {
-                        Icon(
-                            imageVector = Icons.Default.FilterAlt,
-                            contentDescription = "Filter Studio",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        IconButton(onClick = onNavigateToFilterStudio) {
+                            Icon(
+                                imageVector = Icons.Default.FilterAlt,
+                                contentDescription = "Filter Studio",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -137,10 +161,16 @@ fun ConversationsScreen(
             ExtendedFloatingActionButton(
                 onClick = onNavigateToCompose,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("New Message", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        "New Message",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = MaterialTheme.shapes.extraLarge
+                shape = PillShape
             )
         },
         modifier = modifier
@@ -150,11 +180,11 @@ fun ConversationsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Search Input
+            // Expressive Search Bar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
                 SearchBar(
                     inputField = {
@@ -164,8 +194,20 @@ fun ConversationsScreen(
                             onSearch = {},
                             expanded = false,
                             onExpandedChange = {},
-                            placeholder = { Text("Search messages, numbers, senders...") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            placeholder = {
+                                Text(
+                                    "Search messages, numbers, keywords...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
                             trailingIcon = {
                                 if (state.searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
@@ -177,6 +219,10 @@ fun ConversationsScreen(
                     },
                     expanded = false,
                     onExpandedChange = {},
+                    shape = PillShape,
+                    colors = SearchBarDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {}
             }
@@ -196,7 +242,7 @@ fun ConversationsScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else if (state.filteredThreads.isEmpty()) {
                 Box(
@@ -206,17 +252,32 @@ fun ConversationsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.size(80.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Shield,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = if (state.searchQuery.isNotEmpty()) "No messages match your search" else "No SMS messages found",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (state.searchQuery.isNotEmpty()) "Try a different search keyword" else "Incoming SMS messages will appear here",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
                         )
                     }
                 }
@@ -242,9 +303,9 @@ fun ConversationsScreen(
                             }
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 76.dp, end = 16.dp),
+                            modifier = Modifier.padding(start = 78.dp, end = 16.dp),
                             thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                         )
                     }
                 }
@@ -260,33 +321,34 @@ private fun ConversationItem(
 ) {
     val displayName = thread.contactName ?: thread.address
     val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "#"
+    val avatarBrush = getAvatarGradient(thread.address)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar
+        // Gradient Avatar
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(50.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(avatarBrush),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = initial,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
             )
         }
 
         Spacer(modifier = Modifier.width(14.dp))
 
-        // Name, Snippet, Date
+        // Name, Snippet, Date, Badge
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -296,7 +358,7 @@ private fun ConversationItem(
                 Text(
                     text = displayName,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (thread.unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
+                    fontWeight = if (thread.unreadCount > 0) FontWeight.ExtraBold else FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -304,11 +366,12 @@ private fun ConversationItem(
                 Text(
                     text = formatThreadDate(thread.date),
                     style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (thread.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     color = if (thread.unreadCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -319,7 +382,7 @@ private fun ConversationItem(
                     text = thread.snippet,
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (thread.unreadCount > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (thread.unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
+                    fontWeight = if (thread.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -334,7 +397,8 @@ private fun ConversationItem(
                         Text(
                             text = thread.unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 2.dp)
                         )
                     }
                 }
@@ -371,3 +435,4 @@ private fun requestDefaultSmsApp(context: Context, launcher: (Intent) -> Unit) {
     }
     launcher(intent)
 }
+
