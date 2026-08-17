@@ -80,7 +80,9 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val viewModel: ChatViewModel = viewModel {
+    val viewModel: ChatViewModel = viewModel(
+        key = "ChatViewModel_${nav.threadId}_${nav.address}"
+    ) {
         ChatViewModel(
             application = context.applicationContext as android.app.Application,
             initialThreadId = nav.threadId,
@@ -98,6 +100,11 @@ fun ChatScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
+
+    LaunchedEffect(nav.threadId, nav.address) {
+        viewModel.loadMessages()
+        viewModel.loadSenderSettings()
+    }
 
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
