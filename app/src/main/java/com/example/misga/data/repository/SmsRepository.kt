@@ -136,6 +136,7 @@ class SmsRepository(private val context: Context) {
             )
 
             val spamMeta = dbHelper.getSpamMetaMapForThread(address)
+            val filterEngine = com.example.misga.engine.SmsFilterEngine(dbHelper)
 
             cursor?.use {
                 val idIdx = it.getColumnIndexOrThrow(Telephony.Sms._ID)
@@ -156,9 +157,29 @@ class SmsRepository(private val context: Context) {
                     val read = it.getInt(readIdx) == 1
 
                     val meta = spamMeta[msgId]
-                    val isSpam = meta?.first ?: false
-                    val matchedRule = meta?.second
-                    val isRevealed = meta?.third ?: false
+                    val isSpam: Boolean
+                    val matchedRule: String?
+                    val isRevealed: Boolean
+
+                    if (meta != null) {
+                        isSpam = meta.first
+                        matchedRule = meta.second
+                        isRevealed = meta.third
+                    } else {
+                        if (type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
+                            val eval = filterEngine.evaluateMessage(addr, body)
+                            isSpam = eval.action == FilterAction.SPAM
+                            matchedRule = eval.matchedRuleName
+                            isRevealed = false
+                            if (isSpam) {
+                                dbHelper.markMessageSpam(msgId, addr, matchedRule, eval.action)
+                            }
+                        } else {
+                            isSpam = false
+                            matchedRule = null
+                            isRevealed = false
+                        }
+                    }
 
                     messages.add(
                         SmsMessage(

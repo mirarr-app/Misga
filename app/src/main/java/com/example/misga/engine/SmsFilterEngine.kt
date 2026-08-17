@@ -23,7 +23,7 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
 
     suspend fun evaluateMessage(sender: String, body: String): FilterResult {
         val normalizedSender = dbHelper.normalizeAddress(sender)
-        val normalizedBody = body.trim()
+        val normalizedBody = normalizePersianText(body.trim())
 
         // 1. Check Sender Preference / Block status
         val senderPref = dbHelper.getSenderPreference(normalizedSender)
@@ -101,12 +101,13 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                     sender.contains(rule.pattern, ignoreCase = true)
                 }
             } else {
-                // Evaluated against message body
+                // Evaluated against normalized message body
+                val normalizedPattern = normalizePersianText(rule.pattern)
                 if (rule.isRegex) {
-                    val pattern = Pattern.compile(rule.pattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE or Pattern.DOTALL)
+                    val pattern = Pattern.compile(normalizedPattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE or Pattern.DOTALL)
                     pattern.matcher(body).find()
                 } else {
-                    body.contains(rule.pattern, ignoreCase = true)
+                    body.contains(normalizedPattern, ignoreCase = true)
                 }
             }
         } catch (e: Exception) {
@@ -115,20 +116,32 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
     }
 
     companion object {
+        fun normalizePersianText(text: String): String {
+            return text
+                .replace('\u064A', '\u06CC') // Arabic Yeh -> Persian Yeh
+                .replace('\u0643', '\u06A9') // Arabic Kaf -> Persian Kaf
+                .replace('\u200C', ' ')       // ZWNJ -> space for flexible matching
+                .replace('\u0649', '\u06CC') // Alef Maksura -> Persian Yeh
+                .replace('\u06C0', '\u06C1') // Urdu Heh -> Standard Heh
+        }
+
         fun testPattern(patternStr: String, isRegex: Boolean, sampleText: String): RegexTestResult {
             if (patternStr.isBlank()) {
                 return RegexTestResult(isValid = false, isMatch = false, errorMessage = "Pattern cannot be empty")
             }
 
+            val normalizedSample = normalizePersianText(sampleText)
+            val normalizedPattern = normalizePersianText(patternStr)
+
             if (!isRegex) {
-                val matches = sampleText.contains(patternStr, ignoreCase = true)
+                val matches = normalizedSample.contains(normalizedPattern, ignoreCase = true)
                 val substrings = if (matches) listOf(patternStr) else emptyList()
                 return RegexTestResult(isValid = true, isMatch = matches, matchedSubstrings = substrings)
             }
 
             return try {
-                val pattern = Pattern.compile(patternStr, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE or Pattern.DOTALL)
-                val matcher = pattern.matcher(sampleText)
+                val pattern = Pattern.compile(normalizedPattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE or Pattern.DOTALL)
+                val matcher = pattern.matcher(normalizedSample)
                 val found = mutableListOf<String>()
                 while (matcher.find()) {
                     found.add(matcher.group())
