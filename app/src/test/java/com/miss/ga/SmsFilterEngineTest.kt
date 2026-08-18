@@ -164,7 +164,8 @@ class SmsFilterEngineTest {
             -21L to "خرید از اپلیکیشن با تخفیف ویژه فقط تا امشب.",
             -22L to "برای دریافت جایزه روی لینک کلیک کنید: https://b2n.ir/abc123",
             -23L to "بسته‌های تخفیفی اینترنت همراه اول برای شما فعال شد.",
-            -24L to "جهت فعالسازی بسته عدد ۱ را ارسال کنید."
+            -24L to "جهت فعالسازی بسته عدد ۱ را ارسال کنید.",
+            -25L to "شماره رُند ویژه با قیمت استثنایی."
         )
 
         cases.forEach { (id, sample) ->
@@ -272,6 +273,31 @@ class SmsFilterEngineTest {
             assertTrue(
                 "Activation-keyword variant should match: $sample",
                 SmsFilterEngine.testPattern(activationRule.pattern, true, sample).isMatch
+            )
+        }
+
+        val rondRule = PredefinedRules.getDefaultRules().first { it.id == -25L }
+        listOf(
+            "شماره رند",
+            "شماره رُند",
+            "شماره رُنْد",
+            "خط ر ند",
+            "سیم‌کارت ر\u200Cند",
+            "رــند موجود",
+            "رند."
+        ).forEach { sample ->
+            assertTrue(
+                "رُند variant should match: $sample",
+                SmsFilterEngine.testPattern(rondRule.pattern, true, sample).isMatch
+            )
+        }
+        listOf(
+            "برند جدید دیجی‌کالا",
+            "فرزندم زنگ زد"
+        ).forEach { sample ->
+            assertFalse(
+                "Substring lookalike must not match رُند: $sample",
+                SmsFilterEngine.testPattern(rondRule.pattern, true, sample).isMatch
             )
         }
     }
