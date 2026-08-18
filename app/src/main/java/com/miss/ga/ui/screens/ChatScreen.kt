@@ -381,10 +381,16 @@ fun ChatScreen(
                                 if (inputText.isNotBlank() && !state.isSending) {
                                     val text = inputText
                                     inputText = ""
-                                    viewModel.sendMessage(text) { success ->
-                                        if (!success) {
+                                    viewModel.sendMessage(text) { result ->
+                                        if (!result.sent) {
                                             inputText = text
                                             Toast.makeText(context, "Failed to send SMS", Toast.LENGTH_SHORT).show()
+                                        } else if (!result.storedInProvider) {
+                                            Toast.makeText(
+                                                context,
+                                                "Misga must be the default SMS app for sent messages to appear",
+                                                Toast.LENGTH_LONG
+                                            ).show()
                                         }
                                     }
                                 }

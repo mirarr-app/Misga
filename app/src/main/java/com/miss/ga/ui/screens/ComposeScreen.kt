@@ -187,9 +187,11 @@ fun ComposeScreen(
                                 if (recipient.isNotBlank() && messageBody.isNotBlank() && !isSending) {
                                     isSending = true
                                     coroutineScope.launch {
-                                        val success = repository.sendSms(recipient, messageBody)
+                                        val result = repository.sendSms(recipient, messageBody)
                                         isSending = false
-                                        if (success) {
+                                        if (!result.sent) {
+                                            Toast.makeText(context, "Failed to send message", Toast.LENGTH_SHORT).show()
+                                        } else if (result.storedInProvider) {
                                             val threadId = repository.getOrCreateThreadId(recipient)
                                             onNavigateToChat(
                                                 ChatNav(
@@ -199,7 +201,21 @@ fun ComposeScreen(
                                                 )
                                             )
                                         } else {
-                                            Toast.makeText(context, "Failed to send message", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(
+                                                context,
+                                                "Misga must be the default SMS app for sent messages to appear",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            val threadId = repository.getOrCreateThreadId(recipient)
+                                            if (threadId > 0) {
+                                                onNavigateToChat(
+                                                    ChatNav(
+                                                        threadId = threadId,
+                                                        address = recipient,
+                                                        contactName = selectedContactName ?: repository.resolveContactName(recipient)
+                                                    )
+                                                )
+                                            }
                                         }
                                     }
                                 }

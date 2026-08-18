@@ -216,7 +216,7 @@ class SmsRepository(private val context: Context) {
                 evaluatedActions[msgId]?.let { return it }
                 val meta = spamMetaMap[msgId]
                 val action = if (meta != null) {
-                    if (meta.first) FilterAction.SPAM else FilterAction.NORMAL
+                    meta.action
                 } else {
                     val prepared = preparedRules
                     if (prepared == null) {
@@ -224,7 +224,7 @@ class SmsRepository(private val context: Context) {
                     } else {
                         val pref = senderPrefs[dbHelper.normalizeAddress(address)]
                         val eval = SmsFilterEngine.evaluateMessage(address, body, prepared, pref)
-                        if (eval.action == FilterAction.SPAM) {
+                        if (eval.action != FilterAction.NORMAL) {
                             pendingSpamMarks.add(
                                 SpamMetaWrite(
                                     messageId = msgId,
@@ -266,7 +266,7 @@ class SmsRepository(private val context: Context) {
                         date = row.date,
                         messageCount = row.messageCount,
                         unreadCount = unreadCount,
-                        hasSpam = false,
+                        hasSpam = lastMessageAction == FilterAction.SPAM || isUnreadSpam,
                         isUnreadSpam = isUnreadSpam,
                         lastMessageAction = lastMessageAction
                     )
@@ -355,16 +355,16 @@ class SmsRepository(private val context: Context) {
                     val isRevealed: Boolean
 
                     if (meta != null) {
-                        isSpam = meta.first
-                        matchedRule = meta.second
-                        isRevealed = meta.third
+                        isSpam = meta.action == FilterAction.SPAM
+                        matchedRule = meta.matchedRuleName
+                        isRevealed = meta.isRevealed
                     } else {
                         if (type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
                             val eval = SmsFilterEngine.evaluateMessage(addr, body, preparedRules, senderPref)
                             isSpam = eval.action == FilterAction.SPAM
                             matchedRule = eval.matchedRuleName
                             isRevealed = false
-                            if (isSpam) {
+                            if (eval.action != FilterAction.NORMAL) {
                                 pendingSpamMarks.add(
                                     SpamMetaWrite(
                                         messageId = msgId,
@@ -409,36 +409,39 @@ class SmsRepository(private val context: Context) {
         messages
     }
 
-    suspend fun sendSms(address: String, body: String): Boolean = withContext(Dispatchers.IO) {
-        if (address.isBlank() || body.isBlank()) return@withContext false
+    suspend fun sendSms(address: String, body: String): SendSmsResult = withContext(Dispatchers.IO) {
+        if (address.isBlank() || body.isBlank()) {
+            return@withContext SendSmsResult(sent = false, storedInProvider = false)
+        }
 
         try {
             val smsManager = smsManager()
-
             val parts = smsManager.divideMessage(body)
             if (parts.size > 1) {
                 smsManager.sendMultipartTextMessage(address, null, parts, null, null)
             } else {
                 smsManager.sendTextMessage(address, null, body, null, null)
             }
-
-            // If default app, save outgoing message into Telephony.Sms.Sent
-            if (isDefaultSmsApp()) {
-                val cv = ContentValues().apply {
-                    put(Telephony.Sms.ADDRESS, address)
-                    put(Telephony.Sms.BODY, body)
-                    put(Telephony.Sms.DATE, System.currentTimeMillis())
-                    put(Telephony.Sms.READ, 1)
-                    put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
-                    putDefaultSmsSubscription(this)
-                }
-                context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, cv)
-            }
-            true
         } catch (e: Exception) {
             Log.e("SmsRepository", "Failed to send SMS to $address", e)
+            return@withContext SendSmsResult(sent = false, storedInProvider = false)
+        }
+
+        val storedInProvider = try {
+            val cv = ContentValues().apply {
+                put(Telephony.Sms.ADDRESS, address)
+                put(Telephony.Sms.BODY, body)
+                put(Telephony.Sms.DATE, System.currentTimeMillis())
+                put(Telephony.Sms.READ, 1)
+                put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+                putDefaultSmsSubscription(this)
+            }
+            context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, cv) != null
+        } catch (e: Exception) {
+            Log.w("SmsRepository", "Sent SMS but could not store in provider for $address", e)
             false
         }
+        SendSmsResult(sent = true, storedInProvider = storedInProvider)
     }
 
     suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
@@ -685,7 +688,7 @@ class SmsRepository(private val context: Context) {
 
                     val contactName = PhoneNumberKeys.lookup(contactNames, address)
 
-                    val isSpam = spamMetaMap[msgId]?.first ?: false
+                    val isSpam = spamMetaMap[msgId]?.isSpam ?: false
 
                     results.add(
                         SearchMessageResult(
@@ -773,6 +776,11 @@ class SmsRepository(private val context: Context) {
         return null
     }
 }
+
+data class SendSmsResult(
+    val sent: Boolean,
+    val storedInProvider: Boolean
+)
 
 data class ContactItem(
     val name: String,

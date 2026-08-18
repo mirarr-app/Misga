@@ -2,6 +2,7 @@ package com.miss.ga.engine
 
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -71,7 +72,11 @@ class FilterRulesCache private constructor(private val dbHelper: MisgaDatabaseHe
 
     suspend fun senderPreference(address: String): SenderPreference? {
         val prefs = senderPreferences()
-        return prefs[dbHelper.normalizeAddress(address)]
+        prefs[PhoneNumberKeys.canonical(address)]?.let { return it }
+        for (key in PhoneNumberKeys.keys(address)) {
+            prefs[key]?.let { return it }
+        }
+        return null
     }
 
     companion object {

@@ -9,6 +9,7 @@ import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SmsMessage
+import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -189,16 +190,16 @@ class ChatViewModel(
         }
     }
 
-    fun sendMessage(text: String, onComplete: (Boolean) -> Unit = {}) {
+    fun sendMessage(text: String, onComplete: (SendSmsResult) -> Unit = {}) {
         if (text.isBlank()) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true)
-            val success = repository.sendSms(initialAddress, text)
+            val result = repository.sendSms(initialAddress, text)
             _uiState.value = _uiState.value.copy(isSending = false)
-            if (success) {
+            if (result.sent) {
                 loadMessages()
             }
-            onComplete(success)
+            onComplete(result)
         }
     }
 

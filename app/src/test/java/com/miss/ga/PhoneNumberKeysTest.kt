@@ -30,4 +30,18 @@ class PhoneNumberKeysTest {
         assertEquals("Ali", PhoneNumberKeys.lookup(map, "+989121234567"))
         assertEquals("Ali", PhoneNumberKeys.lookup(map, "9121234567"))
     }
+
+    @Test
+    fun canonicalUnifiesIranianMobileFormats() {
+        val expected = "989121234567"
+        assertEquals(expected, PhoneNumberKeys.canonical("+989121234567"))
+        assertEquals(expected, PhoneNumberKeys.canonical("09121234567"))
+        assertEquals(expected, PhoneNumberKeys.canonical("9121234567"))
+    }
+
+    @Test
+    fun canonicalKeepsShortcodeAndAlphanumeric() {
+        assertEquals("10001234", PhoneNumberKeys.canonical("1000-1234"))
+        assertEquals("Snapp", PhoneNumberKeys.canonical(" Snapp "))
+    }
 }

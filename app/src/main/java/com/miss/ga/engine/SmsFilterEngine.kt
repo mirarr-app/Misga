@@ -3,6 +3,7 @@ package com.miss.ga.engine
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
+import com.miss.ga.data.util.PhoneNumberKeys
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
@@ -33,11 +34,7 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
 
     companion object {
         fun normalizeAddress(address: String): String {
-            return address.trim()
-                .replace(" ", "")
-                .replace("-", "")
-                .replace("(", "")
-                .replace(")", "")
+            return PhoneNumberKeys.canonical(address)
         }
 
         fun evaluateMessage(

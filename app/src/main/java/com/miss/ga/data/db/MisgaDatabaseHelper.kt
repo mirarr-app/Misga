@@ -11,6 +11,7 @@ import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.PredefinedRules
 import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -251,7 +252,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             put("is_enabled", if (rule.isEnabled) 1 else 0)
             put("is_predefined", 0)
             put("category", rule.category.name)
-            put("sender_target", rule.senderTarget)
+            put("sender_target", rule.senderTarget?.let { normalizeAddress(it) })
             put("description", rule.description)
             put("created_at", System.currentTimeMillis())
         }
@@ -291,7 +292,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 put("list_type", rule.listType.name)
                 put("is_enabled", if (rule.isEnabled) 1 else 0)
                 put("category", rule.category.name)
-                put("sender_target", rule.senderTarget)
+                put("sender_target", rule.senderTarget?.let { normalizeAddress(it) })
                 put("description", rule.description)
             }
             val rows = writableDatabase.update(
@@ -308,19 +309,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
     suspend fun deleteRule(ruleId: Long): Boolean = withContext(Dispatchers.IO) {
         val db = writableDatabase
         if (ruleId < 0) {
-            val cv = ContentValues().apply {
-                put("rule_id", ruleId)
+            val flags = ContentValues().apply {
                 put("is_deleted", 1)
                 put("is_enabled", 0)
             }
-            val rows = db.insertWithOnConflict(
-                "predefined_rule_settings",
-                null,
-                cv,
-                SQLiteDatabase.CONFLICT_REPLACE
-            )
+            val ok = updateOrInsertPredefinedSettings(db, ruleId, flags)
             _rulesChanged.value = System.currentTimeMillis()
-            rows > 0
+            ok
         } else {
             val rows = db.delete("filter_rules", "id = ?", arrayOf(ruleId.toString()))
             _rulesChanged.value = System.currentTimeMillis()
@@ -330,16 +325,10 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     suspend fun setRuleEnabled(ruleId: Long, isEnabled: Boolean, isPredefined: Boolean) = withContext(Dispatchers.IO) {
         if (isPredefined || ruleId < 0) {
-            val cv = ContentValues().apply {
-                put("rule_id", ruleId)
+            val flags = ContentValues().apply {
                 put("is_enabled", if (isEnabled) 1 else 0)
             }
-            writableDatabase.insertWithOnConflict(
-                "predefined_rule_settings",
-                null,
-                cv,
-                SQLiteDatabase.CONFLICT_REPLACE
-            )
+            updateOrInsertPredefinedSettings(writableDatabase, ruleId, flags)
         } else {
             val cv = ContentValues().apply {
                 put("is_enabled", if (isEnabled) 1 else 0)
@@ -352,13 +341,15 @@ class MisgaDatabaseHelper private constructor(context: Context) :
     // --- Sender Preferences Operations ---
 
     suspend fun getSenderPreference(address: String): SenderPreference? = withContext(Dispatchers.IO) {
-        val db = readableDatabase
-        val cursor = db.query(
+        val variants = addressLookupKeys(address)
+        val placeholders = variants.joinToString(",") { "?" }
+        val cursor = readableDatabase.query(
             "sender_preferences",
             null,
-            "address = ?",
-            arrayOf(normalizeAddress(address)),
-            null, null, null
+            "address IN ($placeholders)",
+            variants,
+            null, null,
+            "updated_at DESC"
         )
         cursor.use {
             if (it.moveToFirst()) cursorToSenderPreference(it) else null
@@ -375,7 +366,11 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         cursor.use {
             while (it.moveToNext()) {
                 val pref = cursorToSenderPreference(it)
-                result[pref.address] = pref
+                val key = PhoneNumberKeys.canonical(pref.address)
+                val existing = result[key]
+                if (existing == null || pref.updatedAt >= existing.updatedAt) {
+                    result[key] = pref
+                }
             }
         }
         result
@@ -468,42 +463,36 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         _spamMetaChanged.value = System.currentTimeMillis()
     }
 
-    suspend fun getSpamMetaMapForThread(address: String): Map<Long, Triple<Boolean, String?, Boolean>> =
+    suspend fun getSpamMetaMapForThread(address: String): Map<Long, SpamMessageMeta> =
         withContext(Dispatchers.IO) {
-            val result = mutableMapOf<Long, Triple<Boolean, String?, Boolean>>()
+            val result = mutableMapOf<Long, SpamMessageMeta>()
+            val variants = addressLookupKeys(address)
+            val placeholders = variants.joinToString(",") { "?" }
             val cursor = readableDatabase.query(
                 "spam_message_meta",
-                arrayOf("message_id", "is_spam", "matched_rule_name", "is_revealed"),
-                "address = ?",
-                arrayOf(normalizeAddress(address)),
+                arrayOf("message_id", "is_spam", "matched_rule_name", "is_revealed", "action"),
+                "address IN ($placeholders)",
+                variants,
                 null, null, null
             )
             cursor.use {
                 while (it.moveToNext()) {
-                    val msgId = it.getLong(0)
-                    val isSpam = it.getInt(1) == 1
-                    val rule = if (!it.isNull(2)) it.getString(2) else null
-                    val isRevealed = it.getInt(3) == 1
-                    result[msgId] = Triple(isSpam, rule, isRevealed)
+                    result[it.getLong(0)] = cursorToSpamMessageMeta(it)
                 }
             }
             result
         }
 
-    suspend fun getAllSpamMetaMap(): Map<Long, Triple<Boolean, String?, Boolean>> = withContext(Dispatchers.IO) {
-        val result = mutableMapOf<Long, Triple<Boolean, String?, Boolean>>()
+    suspend fun getAllSpamMetaMap(): Map<Long, SpamMessageMeta> = withContext(Dispatchers.IO) {
+        val result = mutableMapOf<Long, SpamMessageMeta>()
         val cursor = readableDatabase.query(
             "spam_message_meta",
-            arrayOf("message_id", "is_spam", "matched_rule_name", "is_revealed"),
+            arrayOf("message_id", "is_spam", "matched_rule_name", "is_revealed", "action"),
             null, null, null, null, null
         )
         cursor.use {
             while (it.moveToNext()) {
-                val msgId = it.getLong(0)
-                val isSpam = it.getInt(1) == 1
-                val rule = if (!it.isNull(2)) it.getString(2) else null
-                val isRevealed = it.getInt(3) == 1
-                result[msgId] = Triple(isSpam, rule, isRevealed)
+                result[it.getLong(0)] = cursorToSpamMessageMeta(it)
             }
         }
         result
@@ -700,11 +689,60 @@ class MisgaDatabaseHelper private constructor(context: Context) :
     }
 
     fun normalizeAddress(address: String): String {
-        return address.trim()
-            .replace(" ", "")
-            .replace("-", "")
-            .replace("(", "")
-            .replace(")", "")
+        return PhoneNumberKeys.canonical(address)
+    }
+
+    private fun addressLookupKeys(address: String): Array<String> {
+        val keys = LinkedHashSet<String>()
+        keys.add(normalizeAddress(address))
+        keys.addAll(PhoneNumberKeys.keys(address))
+        return keys.toTypedArray()
+    }
+
+    private fun updateOrInsertPredefinedSettings(
+        db: SQLiteDatabase,
+        ruleId: Long,
+        flags: ContentValues
+    ): Boolean {
+        val updated = db.update(
+            "predefined_rule_settings",
+            flags,
+            "rule_id = ?",
+            arrayOf(ruleId.toString())
+        )
+        if (updated > 0) return true
+        val defaults = PredefinedRules.getDefaultRules().find { it.id == ruleId } ?: return false
+        val cv = ContentValues().apply {
+            put("rule_id", defaults.id)
+            put("name", defaults.name)
+            put("pattern", defaults.pattern)
+            put("is_regex", if (defaults.isRegex) 1 else 0)
+            put("action", defaults.action.name)
+            put("list_type", defaults.listType.name)
+            put("is_enabled", if (defaults.isEnabled) 1 else 0)
+            put("is_deleted", 0)
+            put("description", defaults.description)
+            put("is_customized", 0)
+            putAll(flags)
+        }
+        return db.insert("predefined_rule_settings", null, cv) != -1L
+    }
+
+    private fun cursorToSpamMessageMeta(cursor: Cursor): SpamMessageMeta {
+        val isSpam = cursor.getInt(1) == 1
+        val rule = if (!cursor.isNull(2)) cursor.getString(2) else null
+        val isRevealed = cursor.getInt(3) == 1
+        val action = try {
+            FilterAction.valueOf(cursor.getString(4))
+        } catch (e: Exception) {
+            if (isSpam) FilterAction.SPAM else FilterAction.NORMAL
+        }
+        return SpamMessageMeta(
+            isSpam = isSpam,
+            matchedRuleName = rule,
+            isRevealed = isRevealed,
+            action = action
+        )
     }
 
     companion object {
@@ -726,6 +764,13 @@ data class SpamMetaWrite(
     val messageId: Long,
     val address: String,
     val matchedRuleName: String?,
+    val action: FilterAction
+)
+
+data class SpamMessageMeta(
+    val isSpam: Boolean,
+    val matchedRuleName: String?,
+    val isRevealed: Boolean,
     val action: FilterAction
 )
 
