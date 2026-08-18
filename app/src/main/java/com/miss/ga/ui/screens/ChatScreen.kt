@@ -39,12 +39,10 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,13 +66,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -115,8 +114,8 @@ fun ChatScreen(
         )
     }
 
-    val state by viewModel.uiState.collectAsState()
-    val listState = remember(nav.threadId, nav.address) { LazyListState() }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
     var inputText by remember { mutableStateOf("") }
@@ -136,35 +135,50 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(state.messages.size, state.isLoading, nav.initialMessageId) {
-        if (!state.isLoading && state.messages.isNotEmpty()) {
-            if (!hasInitiallyScrolled) {
-                if (nav.initialMessageId != null) {
-                    val targetIndex = state.messages.indexOfFirst { it.id == nav.initialMessageId }
-                    if (targetIndex >= 0) {
-                        listState.scrollToItem(targetIndex)
-                    } else {
-                        listState.scrollToItem(state.messages.size - 1)
-                    }
-                } else {
-                    listState.scrollToItem(state.messages.size - 1)
+    val newestMessageId = state.messages.lastOrNull()?.id
+    var previousMessageCount by remember(nav.threadId, nav.address) { mutableIntStateOf(0) }
+
+    LaunchedEffect(state.isLoading, newestMessageId, state.messages.size, nav.initialMessageId) {
+        if (state.isLoading || state.messages.isEmpty()) return@LaunchedEffect
+
+        if (!hasInitiallyScrolled) {
+            val initialId = nav.initialMessageId
+            if (initialId != null) {
+                val chronologicalIndex = state.messages.indexOfFirst { it.id == initialId }
+                if (chronologicalIndex >= 0) {
+                    // reverseLayout lists newest first, so invert the chronological index
+                    listState.scrollToItem(state.messages.lastIndex - chronologicalIndex)
                 }
-                hasInitiallyScrolled = true
-            } else if (nav.initialMessageId == null) {
-                listState.animateScrollToItem(state.messages.size - 1)
             }
+            hasInitiallyScrolled = true
+            previousMessageCount = state.messages.size
+            return@LaunchedEffect
+        }
+
+        val appended = state.messages.size > previousMessageCount
+        previousMessageCount = state.messages.size
+        if (appended && listState.firstVisibleItemIndex <= 1) {
+            listState.animateScrollToItem(0)
         }
     }
 
     val isScrolledUp by remember {
         derivedStateOf {
-            val totalItems = state.messages.size
-            if (totalItems <= 1) false
-            else {
-                val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: (totalItems - 1)
-                lastVisibleIndex < totalItems - 1
-            }
+            listState.firstVisibleItemIndex > 0
         }
+    }
+
+    val onRevealToggle = remember(viewModel) {
+        { id: Long, revealed: Boolean -> viewModel.toggleSpamReveal(id, revealed) }
+    }
+    val onMarkNotSpam = remember(viewModel) {
+        { id: Long -> viewModel.markMessageNotSpam(id) }
+    }
+    val onDeleteMessage = remember(viewModel) {
+        { id: Long -> viewModel.deleteMessage(id) }
+    }
+    val onLongClickMessage = remember {
+        { message: SmsMessage -> selectedMessageForDialog = message }
     }
 
     val avatarBrush = getAvatarGradient(state.address)
@@ -418,41 +432,15 @@ fun ChatScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    items(
-                        items = state.messages,
-                        key = { it.id }
-                    ) { message ->
-                        val isHighlighted = message.id == highlightedMessageId
-                        if (message.isSpam) {
-                            SpamMessagePill(
-                                message = message,
-                                isHighlighted = isHighlighted,
-                                onRevealToggle = { revealed ->
-                                    viewModel.toggleSpamReveal(message.id, revealed)
-                                },
-                                onMarkNotSpam = {
-                                    viewModel.markMessageNotSpam(message.id)
-                                },
-                                onDelete = {
-                                    viewModel.deleteMessage(message.id)
-                                }
-                            )
-                        } else {
-                            MessageBubble(
-                                message = message,
-                                isHighlighted = isHighlighted,
-                                onLongClick = {
-                                    selectedMessageForDialog = message
-                                }
-                            )
-                        }
-                    }
-                }
+                ChatMessageList(
+                    messages = state.messages,
+                    listState = listState,
+                    highlightedMessageId = highlightedMessageId,
+                    onRevealToggle = onRevealToggle,
+                    onMarkNotSpam = onMarkNotSpam,
+                    onDelete = onDeleteMessage,
+                    onLongClick = onLongClickMessage
+                )
             }
 
             // M3E Scroll to Bottom Floating Action Button
@@ -473,7 +461,7 @@ fun ChatScreen(
                     onClick = {
                         coroutineScope.launch {
                             if (state.messages.isNotEmpty()) {
-                                listState.animateScrollToItem(state.messages.size - 1)
+                                listState.animateScrollToItem(0)
                             }
                         }
                     },
@@ -569,6 +557,54 @@ fun ChatScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun ChatMessageList(
+    messages: List<SmsMessage>,
+    listState: LazyListState,
+    highlightedMessageId: Long?,
+    onRevealToggle: (Long, Boolean) -> Unit,
+    onMarkNotSpam: (Long) -> Unit,
+    onDelete: (Long) -> Unit,
+    onLongClick: (SmsMessage) -> Unit
+) {
+    val visibleMessages = remember(messages) { messages.asReversed() }
+    LazyColumn(
+        state = listState,
+        reverseLayout = true,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = 12.dp)
+    ) {
+        items(
+            items = visibleMessages,
+            key = { it.id },
+            contentType = { message ->
+                when {
+                    message.isSpam -> "spam"
+                    message.isSent -> "sent"
+                    else -> "inbox"
+                }
+            }
+        ) { message ->
+            val isHighlighted = message.id == highlightedMessageId
+            if (message.isSpam) {
+                SpamMessagePill(
+                    message = message,
+                    isHighlighted = isHighlighted,
+                    onRevealToggle = { revealed -> onRevealToggle(message.id, revealed) },
+                    onMarkNotSpam = { onMarkNotSpam(message.id) },
+                    onDelete = { onDelete(message.id) }
+                )
+            } else {
+                MessageBubble(
+                    message = message,
+                    isHighlighted = isHighlighted,
+                    onLongClick = { onLongClick(message) }
+                )
+            }
+        }
     }
 }
 

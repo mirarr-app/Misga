@@ -121,6 +121,13 @@ val AvatarGradients = listOf(
     AvatarGradient5, AvatarGradient6, AvatarGradient7, AvatarGradient8
 )
 
+val NonContactAvatarBrush = Brush.linearGradient(
+    listOf(
+        Color(0xFF5F6368),
+        Color(0xFF757B80)
+    )
+)
+
 fun getAvatarGradient(key: String): Brush {
     val hash = kotlin.math.abs(key.hashCode())
     return AvatarGradients[hash % AvatarGradients.size]

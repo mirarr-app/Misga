@@ -1,12 +1,9 @@
 package com.miss.ga.ui.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,25 +15,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
-import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.theme.IncomingBubbleShape
 import com.miss.ga.theme.OutgoingBubbleShape
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.miss.ga.ui.util.SmsDateFormats
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -47,53 +40,40 @@ fun MessageBubble(
     isHighlighted: Boolean = false
 ) {
     val isSent = message.isSent
-
     val bubbleShape = if (isSent) OutgoingBubbleShape else IncomingBubbleShape
-    val baseContainerColor = if (isSent) {
+    val containerColor = if (isHighlighted) {
+        if (isSent) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+        else MaterialTheme.colorScheme.secondaryContainer
+    } else if (isSent) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    val targetContainerColor = if (isHighlighted) {
-        if (isSent) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.secondaryContainer
-    } else {
-        baseContainerColor
-    }
-    val animatedContainerColor by animateColorAsState(
-        targetValue = targetContainerColor,
-        animationSpec = spring(),
-        label = "bubbleBgColor"
-    )
-
     val contentColor = if (isSent) {
         MaterialTheme.colorScheme.onPrimaryContainer
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    val border = if (isHighlighted) {
-        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-    } else if (isSent) {
-        null
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+    val border = when {
+        isHighlighted -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        isSent -> null
+        else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     }
-
-    val alignment = if (isSent) Alignment.End else Alignment.Start
+    val timeText = remember(message.date) { SmsDateFormats.clock(message.date) }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 3.dp),
-        horizontalAlignment = alignment
+        horizontalAlignment = if (isSent) Alignment.End else Alignment.Start
     ) {
         Surface(
             shape = bubbleShape,
-            color = animatedContainerColor,
+            color = containerColor,
             border = border,
-            shadowElevation = if (isHighlighted) 4.dp else if (isSent) 1.5.dp else 0.5.dp,
+            shadowElevation = 0.dp,
             modifier = Modifier
                 .widthIn(min = 80.dp, max = 320.dp)
-                .clip(bubbleShape)
                 .combinedClickable(
                     onClick = {},
                     onLongClick = onLongClick
@@ -116,7 +96,7 @@ fun MessageBubble(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.date)),
+                        text = timeText,
                         style = MaterialTheme.typography.labelSmall,
                         color = contentColor.copy(alpha = 0.65f),
                         fontSize = 11.sp,
@@ -136,4 +116,3 @@ fun MessageBubble(
         }
     }
 }
-

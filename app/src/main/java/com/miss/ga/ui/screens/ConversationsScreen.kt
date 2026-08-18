@@ -78,15 +78,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -102,10 +101,10 @@ import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.getAvatarGradient
+import com.miss.ga.theme.NonContactAvatarBrush
 import com.miss.ga.ui.components.DefaultSmsBanner
+import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,7 +117,7 @@ fun ConversationsScreen(
     viewModel: ConversationsViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     val defaultSmsLauncher = rememberLauncherForActivityResult(
@@ -140,7 +139,9 @@ fun ConversationsScreen(
         viewModel.clearSelection()
     }
 
-    val currentlyVisibleThreads = if (state.showContactsOnly) state.filteredThreads.filter { it.isContact } else state.filteredThreads
+    val currentlyVisibleThreads = remember(state.filteredThreads, state.showContactsOnly) {
+        if (state.showContactsOnly) state.filteredThreads.filter { it.isContact } else state.filteredThreads
+    }
     val allFilteredSelected = currentlyVisibleThreads.isNotEmpty() &&
             state.selectedThreadIds.containsAll(currentlyVisibleThreads.map { it.threadId })
 
@@ -428,15 +429,13 @@ fun ConversationsScreen(
             }
 
             val isSearchActive = state.searchQuery.isNotBlank()
-            val displayedThreads = if (state.showContactsOnly) {
-                state.filteredThreads.filter { it.isContact }
-            } else {
-                state.filteredThreads
-            }
-            val displayedMessages = if (state.showContactsOnly) {
-                state.matchingMessages.filter { !it.contactName.isNullOrBlank() }
-            } else {
-                state.matchingMessages
+            val displayedThreads = currentlyVisibleThreads
+            val displayedMessages = remember(state.matchingMessages, state.showContactsOnly) {
+                if (state.showContactsOnly) {
+                    state.matchingMessages.filter { !it.contactName.isNullOrBlank() }
+                } else {
+                    state.matchingMessages
+                }
             }
 
             if (state.isLoading && state.threads.isEmpty()) {
@@ -508,7 +507,8 @@ fun ConversationsScreen(
                             }
                             items(
                                 items = displayedThreads,
-                                key = { "thread_${it.threadId}" }
+                                key = { "thread_${it.threadId}" },
+                                contentType = { "thread" }
                             ) { thread ->
                                 ConversationItem(
                                     thread = thread,
@@ -542,7 +542,8 @@ fun ConversationsScreen(
                             }
                             items(
                                 items = displayedMessages,
-                                key = { "msg_${it.messageId}" }
+                                key = { "msg_${it.messageId}" },
+                                contentType = { "search_msg" }
                             ) { msg ->
                                 SearchMessageResultItem(
                                     item = msg,
@@ -611,7 +612,8 @@ fun ConversationsScreen(
                 ) {
                     items(
                         items = displayedThreads,
-                        key = { it.threadId }
+                        key = { it.threadId },
+                        contentType = { "thread" }
                     ) { thread ->
                         val isSelected = state.selectedThreadIds.contains(thread.threadId)
                         ConversationItem(
@@ -710,23 +712,15 @@ private fun ConversationItem(
     val avatarBrush = if (isContact) {
         getAvatarGradient(thread.address)
     } else {
-        Brush.linearGradient(
-            listOf(
-                Color(0xFF5F6368),
-                Color(0xFF757B80)
-            )
-        )
+        NonContactAvatarBrush
     }
 
-    val itemBgColor by animateColorAsState(
-        targetValue = if (isSelected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
-        } else {
-            Color.Transparent
-        },
-        animationSpec = spring(),
-        label = "itemBgColor"
-    )
+    val itemBgColor = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+    } else {
+        Color.Transparent
+    }
+    val dateText = remember(thread.date) { SmsDateFormats.conversationList(thread.date) }
 
     Row(
         modifier = Modifier
@@ -833,7 +827,7 @@ private fun ConversationItem(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = formatThreadDate(thread.date),
+                    text = dateText,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.Bold else FontWeight.Normal,
                     color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
@@ -890,20 +884,6 @@ private fun ConversationItem(
                 }
             }
         }
-    }
-}
-
-private fun formatThreadDate(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-    val oneDay = 24 * 60 * 60 * 1000L
-
-    return if (diff < oneDay) {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
-    } else if (diff < 7 * oneDay) {
-        SimpleDateFormat("EEE", Locale.getDefault()).format(Date(timestamp))
-    } else {
-        SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
     }
 }
 
@@ -969,12 +949,7 @@ private fun SearchMessageResultItem(
     val avatarBrush = if (isContact) {
         getAvatarGradient(item.address)
     } else {
-        Brush.linearGradient(
-            listOf(
-                Color(0xFF5F6368),
-                Color(0xFF757B80)
-            )
-        )
+        NonContactAvatarBrush
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -982,6 +957,7 @@ private fun SearchMessageResultItem(
     val annotatedSnippet = remember(item.body, searchQuery, primaryColor, textColor) {
         buildAnnotatedSearchSnippet(item.body, searchQuery, primaryColor, textColor)
     }
+    val dateText = remember(item.date) { SmsDateFormats.conversationList(item.date) }
 
     Row(
         modifier = Modifier
@@ -1031,7 +1007,7 @@ private fun SearchMessageResultItem(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = formatThreadDate(item.date),
+                    text = dateText,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )

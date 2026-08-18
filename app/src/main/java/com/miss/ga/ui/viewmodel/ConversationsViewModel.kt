@@ -7,6 +7,7 @@ import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.repository.SmsRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -127,6 +128,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         )
 
         searchJob = viewModelScope.launch {
+            delay(200)
             val messageResults = repository.searchAllMessages(trimmed)
             _uiState.value = _uiState.value.copy(
                 matchingMessages = messageResults,

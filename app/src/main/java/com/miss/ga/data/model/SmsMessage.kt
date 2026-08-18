@@ -1,5 +1,8 @@
 package com.miss.ga.data.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class SmsMessage(
     val id: Long,
     val threadId: Long,
@@ -16,6 +19,7 @@ data class SmsMessage(
     val isSent: Boolean get() = type == 2
 }
 
+@Immutable
 data class ConversationThread(
     val threadId: Long,
     val address: String,
@@ -31,6 +35,7 @@ data class ConversationThread(
     val isContact: Boolean get() = !contactName.isNullOrBlank()
 }
 
+@Immutable
 data class SearchMessageResult(
     val messageId: Long,
     val threadId: Long,

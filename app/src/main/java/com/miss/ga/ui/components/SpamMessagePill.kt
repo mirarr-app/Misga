@@ -2,7 +2,6 @@ package com.miss.ga.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -35,7 +33,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,9 +57,7 @@ import com.miss.ga.theme.SpamWarningLight
 import com.miss.ga.theme.SpamWarningOnDark
 import com.miss.ga.theme.SpamWarningOnLight
 import com.miss.ga.theme.TagShape
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.miss.ga.ui.util.SmsDateFormats
 
 @Composable
 fun SpamMessagePill(
@@ -82,11 +76,7 @@ fun SpamMessagePill(
     var isRevealed by remember(message.isRevealed, isHighlighted) {
         mutableStateOf(if (isHighlighted) true else message.isRevealed)
     }
-    val rotationAngle by animateFloatAsState(
-        targetValue = if (isRevealed) 180f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "arrowRotation"
-    )
+    val timeText = remember(message.date) { SmsDateFormats.monthDayClock(message.date) }
 
     Card(
         modifier = modifier
@@ -95,7 +85,7 @@ fun SpamMessagePill(
         shape = SpamCardShape,
         colors = CardDefaults.cardColors(containerColor = bgColor),
         border = if (isHighlighted) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, borderColor.copy(alpha = 0.6f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isHighlighted) 4.dp else 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -221,7 +211,7 @@ fun SpamMessagePill(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(message.date)),
+                            text = timeText,
                             style = MaterialTheme.typography.labelSmall,
                             color = textColor.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Medium,
