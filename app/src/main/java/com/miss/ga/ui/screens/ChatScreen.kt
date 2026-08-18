@@ -68,7 +68,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -106,13 +105,14 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val viewModel: ChatViewModel = viewModel(
-        key = "ChatViewModel_${nav.threadId}_${nav.address}"
+        key = "ChatViewModel_${nav.threadId}_${nav.address}_${nav.initialMessageId}"
     ) {
         ChatViewModel(
             application = context.applicationContext as android.app.Application,
             initialThreadId = nav.threadId,
             initialAddress = nav.address,
-            initialContactName = nav.contactName
+            initialContactName = nav.contactName,
+            initialMessageId = nav.initialMessageId
         )
     }
 
@@ -134,17 +134,25 @@ fun ChatScreen(
         mutableStateOf(nav.initialMessageId)
     }
 
-    LaunchedEffect(highlightedMessageId) {
-        if (highlightedMessageId != null) {
+    LaunchedEffect(highlightedMessageId, hasInitiallyScrolled) {
+        if (highlightedMessageId != null && hasInitiallyScrolled) {
             kotlinx.coroutines.delay(2500)
             highlightedMessageId = null
         }
     }
 
+    val oldestMessageId = state.messages.firstOrNull()?.id
     val newestMessageId = state.messages.lastOrNull()?.id
-    var previousMessageCount by remember(nav.threadId, nav.address) { mutableIntStateOf(0) }
+    var previousOldestId by remember(nav.threadId, nav.address) { mutableStateOf<Long?>(null) }
+    var previousNewestId by remember(nav.threadId, nav.address) { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(state.isLoading, newestMessageId, state.messages.size, nav.initialMessageId) {
+    LaunchedEffect(
+        state.isLoading,
+        oldestMessageId,
+        newestMessageId,
+        state.messages.size,
+        nav.initialMessageId
+    ) {
         if (state.isLoading || state.messages.isEmpty()) return@LaunchedEffect
 
         if (!hasInitiallyScrolled) {
@@ -157,14 +165,33 @@ fun ChatScreen(
                 }
             }
             hasInitiallyScrolled = true
-            previousMessageCount = state.messages.size
+            previousOldestId = oldestMessageId
+            previousNewestId = newestMessageId
             return@LaunchedEffect
         }
 
-        val appended = state.messages.size > previousMessageCount
-        previousMessageCount = state.messages.size
-        if (appended && listState.firstVisibleItemIndex <= 1) {
+        val prepended = oldestMessageId != previousOldestId
+        val appended = newestMessageId != previousNewestId
+        previousOldestId = oldestMessageId
+        previousNewestId = newestMessageId
+        if (appended && !prepended && listState.firstVisibleItemIndex <= 1) {
             listState.animateScrollToItem(0)
+        }
+    }
+
+    val shouldLoadOlder by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            if (total == 0) return@derivedStateOf false
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf false
+            lastVisible >= total - 5
+        }
+    }
+
+    LaunchedEffect(shouldLoadOlder, state.hasMoreOlder, state.isLoadingOlder, state.isLoading, state.messages.size) {
+        if (!state.isLoading && shouldLoadOlder && state.hasMoreOlder && !state.isLoadingOlder) {
+            viewModel.loadOlderMessages()
         }
     }
 
@@ -442,6 +469,7 @@ fun ChatScreen(
                     messages = state.messages,
                     listState = listState,
                     highlightedMessageId = highlightedMessageId,
+                    isLoadingOlder = state.isLoadingOlder,
                     onRevealToggle = onRevealToggle,
                     onMarkNotSpam = onMarkNotSpam,
                     onDelete = onDeleteMessage,
@@ -571,6 +599,7 @@ private fun ChatMessageList(
     messages: List<SmsMessage>,
     listState: LazyListState,
     highlightedMessageId: Long?,
+    isLoadingOlder: Boolean,
     onRevealToggle: (Long, Boolean) -> Unit,
     onMarkNotSpam: (Long) -> Unit,
     onDelete: (Long) -> Unit,
@@ -609,6 +638,22 @@ private fun ChatMessageList(
                     isHighlighted = isHighlighted,
                     onLongClick = { onLongClick(message) }
                 )
+            }
+        }
+        if (isLoadingOlder) {
+            item(key = "loading-older", contentType = "loading-older") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.dp
+                    )
+                }
             }
         }
     }

@@ -25,19 +25,23 @@ data class ChatUiState(
     val senderPreference: SenderPreference? = null,
     val senderRules: List<FilterRule> = emptyList(),
     val isSending: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val hasMoreOlder: Boolean = true,
+    val isLoadingOlder: Boolean = false
 )
 
 class ChatViewModel(
     application: Application,
     private val initialThreadId: Long,
     private val initialAddress: String,
-    private val initialContactName: String?
+    private val initialContactName: String?,
+    private val initialMessageId: Long? = null
 ) : AndroidViewModel(application) {
 
     private val repository = SmsRepository(application)
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
     private var messagesJob: Job? = null
+    private var olderJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         ChatUiState(
@@ -61,13 +65,30 @@ class ChatViewModel(
                 _uiState.value = _uiState.value.copy(isLoading = true)
             }
             try {
-                val msgs = repository.getMessagesForThread(initialThreadId, initialAddress)
-                repository.markThreadRead(initialThreadId)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    messages = msgs,
-                    error = null
+                val page = repository.getMessagesForThread(
+                    threadId = initialThreadId,
+                    address = initialAddress,
+                    beforeDate = null,
+                    limit = MESSAGE_PAGE_SIZE
                 )
+                if (!hadMessages) {
+                    repository.markThreadRead(initialThreadId)
+                    _uiState.value = _uiState.value.copy(
+                        messages = page,
+                        hasMoreOlder = page.size == MESSAGE_PAGE_SIZE,
+                        error = null
+                    )
+                    if (initialMessageId != null) {
+                        loadUntilMessageVisible(initialMessageId)
+                    }
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        messages = mergeLatestPage(_uiState.value.messages, page),
+                        error = null
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -75,6 +96,82 @@ class ChatViewModel(
                 )
             }
         }
+    }
+
+    fun loadOlderMessages() {
+        val state = _uiState.value
+        if (!state.hasMoreOlder || state.isLoadingOlder || state.isLoading) return
+        if (olderJob?.isActive == true) return
+        olderJob = viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingOlder = true)
+            try {
+                val beforeDate = _uiState.value.messages.firstOrNull()?.date
+                if (beforeDate == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingOlder = false,
+                        hasMoreOlder = false
+                    )
+                    return@launch
+                }
+                val page = repository.getMessagesForThread(
+                    threadId = initialThreadId,
+                    address = initialAddress,
+                    beforeDate = beforeDate,
+                    limit = MESSAGE_PAGE_SIZE
+                )
+                val current = _uiState.value.messages
+                val existingIds = current.mapTo(HashSet()) { it.id }
+                val older = page.filter { it.id !in existingIds }
+                _uiState.value = _uiState.value.copy(
+                    isLoadingOlder = false,
+                    messages = older + current,
+                    hasMoreOlder = page.size == MESSAGE_PAGE_SIZE && older.isNotEmpty()
+                )
+            } catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(isLoadingOlder = false)
+            }
+        }
+    }
+
+    private suspend fun loadUntilMessageVisible(messageId: Long) {
+        var pagesLoaded = 0
+        while (pagesLoaded < MAX_TARGET_PAGES) {
+            val state = _uiState.value
+            if (state.messages.any { it.id == messageId }) return
+            if (!state.hasMoreOlder) return
+            val beforeDate = state.messages.firstOrNull()?.date ?: return
+            val page = repository.getMessagesForThread(
+                threadId = initialThreadId,
+                address = initialAddress,
+                beforeDate = beforeDate,
+                limit = MESSAGE_PAGE_SIZE
+            )
+            val current = _uiState.value.messages
+            val existingIds = current.mapTo(HashSet()) { it.id }
+            val older = page.filter { it.id !in existingIds }
+            _uiState.value = _uiState.value.copy(
+                messages = older + current,
+                hasMoreOlder = page.size == MESSAGE_PAGE_SIZE && older.isNotEmpty()
+            )
+            pagesLoaded++
+            if (older.isEmpty()) return
+        }
+    }
+
+    private fun mergeLatestPage(
+        existing: List<SmsMessage>,
+        latestPage: List<SmsMessage>
+    ): List<SmsMessage> {
+        if (latestPage.isEmpty()) return existing
+        val latestIds = HashSet<Long>(latestPage.size)
+        var minDate = Long.MAX_VALUE
+        for (msg in latestPage) {
+            latestIds.add(msg.id)
+            if (msg.date < minDate) minDate = msg.date
+        }
+        val olderKept = existing.filter { it.id !in latestIds && it.date < minDate }
+        if (olderKept.isEmpty()) return latestPage
+        return olderKept + latestPage
     }
 
     fun loadSenderSettings() {
@@ -164,5 +261,10 @@ class ChatViewModel(
             dbHelper.insertCustomRule(rule)
             loadSenderSettings()
         }
+    }
+
+    companion object {
+        private const val MESSAGE_PAGE_SIZE = 100
+        private const val MAX_TARGET_PAGES = 20
     }
 }

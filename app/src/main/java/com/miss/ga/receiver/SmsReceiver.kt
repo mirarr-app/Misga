@@ -25,20 +25,19 @@ class SmsReceiver : BroadcastReceiver() {
             return
         }
 
-        // Default SMS apps receive SMS_DELIVER. SMS_RECEIVED is only a fallback for
-        // when we are not default; handling both would duplicate notifications.
-        if (action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION &&
-            SmsRepository(context).isDefaultSmsApp()
-        ) {
-            return
-        }
-
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages.isNullOrEmpty()) return
 
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Default SMS apps receive SMS_DELIVER. SMS_RECEIVED is only a fallback for
+                // when we are not default; handling both would duplicate notifications.
+                if (action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION &&
+                    SmsRepository(context).isDefaultSmsApp()
+                ) {
+                    return@launch
+                }
                 processIncomingMessages(context, messages, action == Telephony.Sms.Intents.SMS_DELIVER_ACTION)
             } catch (e: Exception) {
                 Log.e("SmsReceiver", "Error processing SMS", e)

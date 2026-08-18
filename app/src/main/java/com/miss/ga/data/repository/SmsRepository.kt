@@ -16,8 +16,11 @@ import com.miss.ga.data.db.SpamMetaWrite
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.SearchMessageResult
+import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.util.PhoneNumberKeys
+import com.miss.ga.engine.FilterRulesCache
+import com.miss.ga.engine.PreparedFilterRules
 import com.miss.ga.engine.SmsFilterEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -96,6 +99,41 @@ class SmsRepository(private val context: Context) {
         )
 
         try {
+            val threadRows = mutableListOf<ThreadProviderRow>()
+            val threadIds = mutableSetOf<Long>()
+            var threadsCursorOk = false
+
+            val cursor = contentResolver.query(
+                uri,
+                projection,
+                null, null,
+                "${Telephony.Threads.DATE} DESC"
+            )
+            cursor?.use {
+                threadsCursorOk = true
+                val idIdx = it.getColumnIndexOrThrow(Telephony.Threads._ID)
+                val dateIdx = it.getColumnIndexOrThrow(Telephony.Threads.DATE)
+                val msgCountIdx = it.getColumnIndexOrThrow(Telephony.Threads.MESSAGE_COUNT)
+                val recipientIdsIdx = it.getColumnIndexOrThrow(Telephony.Threads.RECIPIENT_IDS)
+                val snippetIdx = it.getColumnIndexOrThrow(Telephony.Threads.SNIPPET)
+                val readIdx = it.getColumnIndexOrThrow(Telephony.Threads.READ)
+
+                while (it.moveToNext()) {
+                    val threadId = it.getLong(idIdx)
+                    threadIds.add(threadId)
+                    threadRows.add(
+                        ThreadProviderRow(
+                            threadId = threadId,
+                            date = it.getLong(dateIdx),
+                            messageCount = it.getInt(msgCountIdx),
+                            recipientIds = it.getString(recipientIdsIdx) ?: "",
+                            snippet = it.getString(snippetIdx) ?: "",
+                            read = it.getInt(readIdx) == 1
+                        )
+                    )
+                }
+            }
+
             val canonicalAddresses = loadCanonicalAddressMap()
             val contactNames = loadContactNameMap()
 
@@ -129,25 +167,28 @@ class SmsRepository(private val context: Context) {
             }
 
             val latestInboxMessage = mutableMapOf<Long, Pair<Long, String>>() // threadId -> (msgId, body)
+            val remainingInboxThreadIds = threadIds.toMutableSet()
             try {
-                val inboxCursor = contentResolver.query(
-                    Telephony.Sms.Inbox.CONTENT_URI,
-                    arrayOf(Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.BODY),
-                    null,
-                    null,
-                    "${Telephony.Sms.DATE} DESC"
-                )
-                inboxCursor?.use { iCursor ->
-                    val idIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms._ID)
-                    val tIdIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
-                    val bodyIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
-                    while (iCursor.moveToNext()) {
-                        val tId = iCursor.getLong(tIdIdx)
-                        if (!latestInboxMessage.containsKey(tId)) {
-                            latestInboxMessage[tId] = Pair(
-                                iCursor.getLong(idIdx),
-                                iCursor.getString(bodyIdx) ?: ""
-                            )
+                if (remainingInboxThreadIds.isNotEmpty()) {
+                    val inboxCursor = contentResolver.query(
+                        Telephony.Sms.Inbox.CONTENT_URI,
+                        arrayOf(Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.BODY),
+                        null,
+                        null,
+                        "${Telephony.Sms.DATE} DESC"
+                    )
+                    inboxCursor?.use { iCursor ->
+                        val idIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms._ID)
+                        val tIdIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+                        val bodyIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                        while (iCursor.moveToNext() && remainingInboxThreadIds.isNotEmpty()) {
+                            val tId = iCursor.getLong(tIdIdx)
+                            if (remainingInboxThreadIds.remove(tId)) {
+                                latestInboxMessage[tId] = Pair(
+                                    iCursor.getLong(idIdx),
+                                    iCursor.getString(bodyIdx) ?: ""
+                                )
+                            }
                         }
                     }
                 }
@@ -156,11 +197,20 @@ class SmsRepository(private val context: Context) {
             }
 
             val spamMetaMap = dbHelper.getAllSpamMetaMap()
-            val allRules = dbHelper.getAllRules()
-            val preparedRules = SmsFilterEngine.prepareRules(allRules)
-            val senderPrefs = dbHelper.getAllSenderPreferences()
             val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
             val evaluatedActions = mutableMapOf<Long, FilterAction>()
+
+            val needsFilterEval =
+                latestInboxMessage.values.any { it.first !in spamMetaMap } ||
+                    latestUnreadMessage.values.any { it.first !in spamMetaMap }
+
+            var preparedRules: PreparedFilterRules? = null
+            var senderPrefs = emptyMap<String, SenderPreference>()
+            if (needsFilterEval) {
+                val cache = FilterRulesCache.getInstance(dbHelper)
+                preparedRules = cache.preparedRules()
+                senderPrefs = cache.senderPreferences()
+            }
 
             fun resolveInboxAction(msgId: Long, address: String, body: String): FilterAction {
                 evaluatedActions[msgId]?.let { return it }
@@ -168,83 +218,65 @@ class SmsRepository(private val context: Context) {
                 val action = if (meta != null) {
                     if (meta.first) FilterAction.SPAM else FilterAction.NORMAL
                 } else {
-                    val pref = senderPrefs[dbHelper.normalizeAddress(address)]
-                    val eval = SmsFilterEngine.evaluateMessage(address, body, preparedRules, pref)
-                    if (eval.action == FilterAction.SPAM) {
-                        pendingSpamMarks.add(
-                            SpamMetaWrite(
-                                messageId = msgId,
-                                address = address,
-                                matchedRuleName = eval.matchedRuleName,
-                                action = eval.action
+                    val prepared = preparedRules
+                    if (prepared == null) {
+                        FilterAction.NORMAL
+                    } else {
+                        val pref = senderPrefs[dbHelper.normalizeAddress(address)]
+                        val eval = SmsFilterEngine.evaluateMessage(address, body, prepared, pref)
+                        if (eval.action == FilterAction.SPAM) {
+                            pendingSpamMarks.add(
+                                SpamMetaWrite(
+                                    messageId = msgId,
+                                    address = address,
+                                    matchedRuleName = eval.matchedRuleName,
+                                    action = eval.action
+                                )
                             )
-                        )
+                        }
+                        eval.action
                     }
-                    eval.action
                 }
                 evaluatedActions[msgId] = action
                 return action
             }
 
-            val cursor = contentResolver.query(
-                uri,
-                projection,
-                null, null,
-                "${Telephony.Threads.DATE} DESC"
-            )
+            for (row in threadRows) {
+                val threadId = row.threadId
+                val address = resolveRecipientAddress(row.recipientIds, canonicalAddresses)
+                val contactName = PhoneNumberKeys.lookup(contactNames, address)
 
-            cursor?.use {
-                val idIdx = it.getColumnIndexOrThrow(Telephony.Threads._ID)
-                val dateIdx = it.getColumnIndexOrThrow(Telephony.Threads.DATE)
-                val msgCountIdx = it.getColumnIndexOrThrow(Telephony.Threads.MESSAGE_COUNT)
-                val recipientIdsIdx = it.getColumnIndexOrThrow(Telephony.Threads.RECIPIENT_IDS)
-                val snippetIdx = it.getColumnIndexOrThrow(Telephony.Threads.SNIPPET)
-                val readIdx = it.getColumnIndexOrThrow(Telephony.Threads.READ)
-
-                while (it.moveToNext()) {
-                    val threadId = it.getLong(idIdx)
-                    val date = it.getLong(dateIdx)
-                    val count = it.getInt(msgCountIdx)
-                    val recipientIds = it.getString(recipientIdsIdx) ?: ""
-                    val snippet = it.getString(snippetIdx) ?: ""
-                    val read = it.getInt(readIdx) == 1
-
-                    val address = resolveRecipientAddress(recipientIds, canonicalAddresses)
-                    val contactName = PhoneNumberKeys.lookup(contactNames, address)
-
-                    // Fast unread count from pre-fetched batch
-                    val unreadCount = if (read) 0 else (unreadCounts[threadId] ?: 0)
-                    val lastInbox = latestInboxMessage[threadId]
-                    val lastMessageAction = if (lastInbox != null) {
-                        resolveInboxAction(lastInbox.first, address, lastInbox.second)
-                    } else {
-                        FilterAction.NORMAL
-                    }
-                    val isUnreadSpam = unreadCount > 0 && latestUnreadMessage[threadId]?.let { latest ->
-                        resolveInboxAction(latest.first, address, latest.second) == FilterAction.SPAM
-                    } == true
-
-                    threads.add(
-                        ConversationThread(
-                            threadId = threadId,
-                            address = address,
-                            contactName = contactName,
-                            snippet = snippet,
-                            date = date,
-                            messageCount = count,
-                            unreadCount = unreadCount,
-                            hasSpam = false,
-                            isUnreadSpam = isUnreadSpam,
-                            lastMessageAction = lastMessageAction
-                        )
-                    )
+                val unreadCount = if (row.read) 0 else (unreadCounts[threadId] ?: 0)
+                val lastInbox = latestInboxMessage[threadId]
+                val lastMessageAction = if (lastInbox != null) {
+                    resolveInboxAction(lastInbox.first, address, lastInbox.second)
+                } else {
+                    FilterAction.NORMAL
                 }
+                val isUnreadSpam = unreadCount > 0 && latestUnreadMessage[threadId]?.let { latest ->
+                    resolveInboxAction(latest.first, address, latest.second) == FilterAction.SPAM
+                } == true
+
+                threads.add(
+                    ConversationThread(
+                        threadId = threadId,
+                        address = address,
+                        contactName = contactName,
+                        snippet = row.snippet,
+                        date = row.date,
+                        messageCount = row.messageCount,
+                        unreadCount = unreadCount,
+                        hasSpam = false,
+                        isUnreadSpam = isUnreadSpam,
+                        lastMessageAction = lastMessageAction
+                    )
+                )
             }
 
             if (pendingSpamMarks.isNotEmpty()) {
                 dbHelper.markMessagesSpam(pendingSpamMarks)
             }
-            if (cursor != null) {
+            if (threadsCursorOk) {
                 dbHelper.replaceCachedThreads(threads)
             }
         } catch (e: Exception) {
@@ -254,7 +286,12 @@ class SmsRepository(private val context: Context) {
         threads
     }
 
-    suspend fun getMessagesForThread(threadId: Long, address: String): List<SmsMessage> = withContext(Dispatchers.IO) {
+    suspend fun getMessagesForThread(
+        threadId: Long,
+        address: String,
+        beforeDate: Long? = null,
+        limit: Int = 100
+    ): List<SmsMessage> = withContext(Dispatchers.IO) {
         val messages = mutableListOf<SmsMessage>()
         val contentResolver = context.contentResolver
         val uri = Telephony.Sms.CONTENT_URI
@@ -269,19 +306,29 @@ class SmsRepository(private val context: Context) {
             Telephony.Sms.READ
         )
 
+        val selection: String
+        val selectionArgs: Array<String>
+        if (beforeDate != null) {
+            selection = "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.DATE} < ?"
+            selectionArgs = arrayOf(threadId.toString(), beforeDate.toString())
+        } else {
+            selection = "${Telephony.Sms.THREAD_ID} = ?"
+            selectionArgs = arrayOf(threadId.toString())
+        }
+
         try {
             val cursor = contentResolver.query(
                 uri,
                 projection,
-                "${Telephony.Sms.THREAD_ID} = ?",
-                arrayOf(threadId.toString()),
-                "${Telephony.Sms.DATE} ASC"
+                selection,
+                selectionArgs,
+                "${Telephony.Sms.DATE} DESC"
             )
 
             val spamMeta = dbHelper.getSpamMetaMapForThread(address)
-            val allRules = dbHelper.getAllRules()
-            val preparedRules = SmsFilterEngine.prepareRules(allRules)
-            val senderPref = dbHelper.getSenderPreference(address)
+            val cache = FilterRulesCache.getInstance(dbHelper)
+            val preparedRules = cache.preparedRules()
+            val senderPref = cache.senderPreference(address)
             val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
 
             cursor?.use {
@@ -293,7 +340,7 @@ class SmsRepository(private val context: Context) {
                 val typeIdx = it.getColumnIndexOrThrow(Telephony.Sms.TYPE)
                 val readIdx = it.getColumnIndexOrThrow(Telephony.Sms.READ)
 
-                while (it.moveToNext()) {
+                while (it.moveToNext() && messages.size < limit) {
                     val msgId = it.getLong(idIdx)
                     val tId = it.getLong(threadIdIdx)
                     val addr = it.getString(addrIdx) ?: address
@@ -358,6 +405,7 @@ class SmsRepository(private val context: Context) {
             Log.e("SmsRepository", "Error reading messages for thread $threadId", e)
         }
 
+        messages.reverse()
         messages
     }
 
@@ -729,6 +777,15 @@ class SmsRepository(private val context: Context) {
 data class ContactItem(
     val name: String,
     val number: String
+)
+
+private data class ThreadProviderRow(
+    val threadId: Long,
+    val date: Long,
+    val messageCount: Int,
+    val recipientIds: String,
+    val snippet: String,
+    val read: Boolean
 )
 
 private data class CachedLookupMap(

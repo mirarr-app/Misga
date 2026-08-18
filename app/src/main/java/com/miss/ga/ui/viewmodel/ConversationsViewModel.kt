@@ -1,11 +1,18 @@
 package com.miss.ga.ui.viewmodel
 
 import android.app.Application
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.Telephony
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.repository.SmsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,17 +41,27 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     private var searchJob: Job? = null
     private var loadJob: Job? = null
     private var defaultSmsCheckJob: Job? = null
+    private var observerDebounceJob: Job? = null
+    private var lastLoadFinishedAt = 0L
+    private var smsContentObserver: ContentObserver? = null
 
     private val _uiState = MutableStateFlow(ConversationsUiState())
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
 
     init {
+        registerSmsContentObserver()
         loadThreads()
     }
 
-    fun loadThreads(silent: Boolean = false) {
+    fun loadThreads(silent: Boolean = false, force: Boolean = false) {
+        if (!force && silent) {
+            val elapsed = System.currentTimeMillis() - lastLoadFinishedAt
+            if (lastLoadFinishedAt > 0L && elapsed < SILENT_LOAD_MIN_INTERVAL_MS) {
+                return
+            }
+        }
         if (loadJob?.isActive == true) {
-            if (silent) return
+            if (silent && !force) return
             loadJob?.cancel()
         }
         loadJob = viewModelScope.launch {
@@ -80,6 +97,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                     filteredThreads = filterThreads(threads, currentQuery),
                     error = null
                 )
+                lastLoadFinishedAt = System.currentTimeMillis()
                 if (currentQuery.isNotBlank()) {
                     val messages = repository.searchAllMessages(currentQuery)
                     _uiState.value = _uiState.value.copy(
@@ -87,6 +105,8 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                         isSearching = false
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -94,6 +114,53 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                 )
             }
         }
+    }
+
+    private fun scheduleSilentReload() {
+        observerDebounceJob?.cancel()
+        observerDebounceJob = viewModelScope.launch {
+            delay(SMS_OBSERVER_DEBOUNCE_MS)
+            loadThreads(silent = true)
+        }
+    }
+
+    private fun registerSmsContentObserver() {
+        val resolver = getApplication<Application>().contentResolver
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                scheduleSilentReload()
+            }
+
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                scheduleSilentReload()
+            }
+        }
+        try {
+            resolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+            smsContentObserver = observer
+        } catch (e: Exception) {
+            Log.e("ConversationsViewModel", "Failed to register SMS observer", e)
+            return
+        }
+        try {
+            resolver.registerContentObserver(Telephony.Threads.CONTENT_URI, true, observer)
+        } catch (e: Exception) {
+            Log.e("ConversationsViewModel", "Failed to register threads observer", e)
+        }
+    }
+
+    override fun onCleared() {
+        observerDebounceJob?.cancel()
+        val observer = smsContentObserver
+        if (observer != null) {
+            try {
+                getApplication<Application>().contentResolver.unregisterContentObserver(observer)
+            } catch (e: Exception) {
+                Log.e("ConversationsViewModel", "Failed to unregister SMS observer", e)
+            }
+            smsContentObserver = null
+        }
+        super.onCleared()
     }
 
     private fun filterThreads(threads: List<ConversationThread>, query: String): List<ConversationThread> {
@@ -254,7 +321,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     fun markConversationRead(threadId: Long) {
         viewModelScope.launch {
             repository.markThreadRead(threadId)
-            loadThreads(silent = true)
+            loadThreads(silent = true, force = true)
         }
     }
 
@@ -266,7 +333,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
             val count = targetIds.size
             repository.markThreadsRead(targetIds)
             clearSelection()
-            loadThreads(silent = true)
+            loadThreads(silent = true, force = true)
             onComplete(count)
         }
     }
@@ -274,8 +341,11 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     fun markAllConversationsRead(onComplete: () -> Unit = {}) {
         viewModelScope.launch {
             repository.markAllMessagesRead()
-            loadThreads(silent = true)
+            loadThreads(silent = true, force = true)
             onComplete()
         }
     }
 }
+
+private const val SMS_OBSERVER_DEBOUNCE_MS = 400L
+private const val SILENT_LOAD_MIN_INTERVAL_MS = 3_000L

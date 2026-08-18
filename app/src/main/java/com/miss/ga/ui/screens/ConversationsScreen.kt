@@ -77,7 +77,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -127,17 +126,12 @@ fun ConversationsScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
         viewModel.refreshDefaultSmsStatus()
-        viewModel.loadThreads()
+        viewModel.loadThreads(force = true)
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.checkDefaultSmsStatus()
         viewModel.loadThreads(silent = true)
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.loadThreads(silent = true)
-        viewModel.checkDefaultSmsStatus()
     }
 
     var showBatchDeleteDialog by remember { mutableStateOf(false) }

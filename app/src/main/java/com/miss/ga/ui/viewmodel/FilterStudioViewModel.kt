@@ -10,10 +10,14 @@ import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.RuleListType
 import com.miss.ga.engine.RegexTestResult
 import com.miss.ga.engine.SmsFilterEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -37,6 +41,7 @@ class FilterStudioViewModel(application: Application) : AndroidViewModel(applica
 
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private var playgroundTestJob: Job? = null
 
     private val _uiState = MutableStateFlow(FilterStudioUiState())
     val uiState: StateFlow<FilterStudioUiState> = _uiState.asStateFlow()
@@ -100,12 +105,22 @@ class FilterStudioViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private fun runPlaygroundTest() {
-        val pattern = _uiState.value.testPattern
-        val sample = _uiState.value.testSampleText
-        val isRegex = _uiState.value.isRegex
-
-        val result = SmsFilterEngine.testPattern(pattern, isRegex, sample)
-        _uiState.value = _uiState.value.copy(testResult = result)
+        playgroundTestJob?.cancel()
+        playgroundTestJob = viewModelScope.launch {
+            delay(200)
+            val pattern = _uiState.value.testPattern
+            val sample = _uiState.value.testSampleText
+            val isRegex = _uiState.value.isRegex
+            val result = withContext(Dispatchers.Default) {
+                SmsFilterEngine.testPattern(pattern, isRegex, sample)
+            }
+            if (pattern == _uiState.value.testPattern &&
+                sample == _uiState.value.testSampleText &&
+                isRegex == _uiState.value.isRegex
+            ) {
+                _uiState.value = _uiState.value.copy(testResult = result)
+            }
+        }
     }
 
     fun savePlaygroundRuleAsCustom(

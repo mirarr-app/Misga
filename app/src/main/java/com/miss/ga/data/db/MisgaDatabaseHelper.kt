@@ -29,6 +29,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
     private val _spamMetaChanged = MutableStateFlow(System.currentTimeMillis())
     val spamMetaChanged: Flow<Long> = _spamMetaChanged.asStateFlow()
 
+    @Volatile
+    private var predefinedRulesSeeded = false
+
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -97,71 +100,30 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         createCachedThreadsTable(db)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
 
-        // Prepopulate default predefined rule settings
-        PredefinedRules.getDefaultRules().forEach { rule ->
-            val cv = ContentValues().apply {
-                put("rule_id", rule.id)
-                put("name", rule.name)
-                put("pattern", rule.pattern)
-                put("is_regex", if (rule.isRegex) 1 else 0)
-                put("action", rule.action.name)
-                put("list_type", rule.listType.name)
-                put("is_enabled", if (rule.isEnabled) 1 else 0)
-                put("is_deleted", 0)
-                put("description", rule.description)
-            }
-            db.insertWithOnConflict("predefined_rule_settings", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
-        }
+        seedPredefinedRules(db)
     }
 
     override fun onOpen(db: SQLiteDatabase) {
         super.onOpen(db)
-        try { db.execSQL("ALTER TABLE filter_rules ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
-        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN name TEXT") } catch (e: Exception) {}
-        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN pattern TEXT") } catch (e: Exception) {}
-        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_regex INTEGER DEFAULT 1") } catch (e: Exception) {}
-        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
-        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_deleted INTEGER DEFAULT 0") } catch (e: Exception) {}
-        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN description TEXT") } catch (e: Exception) {}
-        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_customized INTEGER DEFAULT 0") } catch (e: Exception) {}
-        createCachedThreadsTable(db)
-        try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN last_message_action TEXT DEFAULT 'NORMAL'") } catch (e: Exception) {}
-        try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)") } catch (e: Exception) {}
-
-        // Insert any newly added predefined rules that might be missing, then
-        // refresh shipped name/pattern unless the user customized that preset.
-        PredefinedRules.getDefaultRules().forEach { rule ->
-            val cv = ContentValues().apply {
-                put("rule_id", rule.id)
-                put("name", rule.name)
-                put("pattern", rule.pattern)
-                put("is_regex", if (rule.isRegex) 1 else 0)
-                put("action", rule.action.name)
-                put("list_type", rule.listType.name)
-                put("is_enabled", if (rule.isEnabled) 1 else 0)
-                put("is_deleted", 0)
-                put("description", rule.description)
-                put("is_customized", 0)
-            }
-            db.insertWithOnConflict("predefined_rule_settings", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
-            val shipped = ContentValues().apply {
-                put("name", rule.name)
-                put("pattern", rule.pattern)
-                put("is_regex", if (rule.isRegex) 1 else 0)
-                put("list_type", rule.listType.name)
-                put("description", rule.description)
-            }
-            db.update(
-                "predefined_rule_settings",
-                shipped,
-                "rule_id = ? AND IFNULL(is_deleted, 0) = 0 AND IFNULL(is_customized, 0) = 0",
-                arrayOf(rule.id.toString())
-            )
-        }
+        if (predefinedRulesSeeded) return
+        seedPredefinedRules(db)
+        predefinedRulesSeeded = true
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future migration steps
+        if (oldVersion < 2) {
+            try { db.execSQL("ALTER TABLE filter_rules ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN name TEXT") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN pattern TEXT") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_regex INTEGER DEFAULT 1") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_deleted INTEGER DEFAULT 0") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN description TEXT") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_customized INTEGER DEFAULT 0") } catch (e: Exception) {}
+            createCachedThreadsTable(db)
+            try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN last_message_action TEXT DEFAULT 'NORMAL'") } catch (e: Exception) {}
+            try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)") } catch (e: Exception) {}
+        }
     }
 
     // --- Filter Rules Operations ---
@@ -624,6 +586,37 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
     }
 
+    private fun seedPredefinedRules(db: SQLiteDatabase) {
+        PredefinedRules.getDefaultRules().forEach { rule ->
+            val cv = ContentValues().apply {
+                put("rule_id", rule.id)
+                put("name", rule.name)
+                put("pattern", rule.pattern)
+                put("is_regex", if (rule.isRegex) 1 else 0)
+                put("action", rule.action.name)
+                put("list_type", rule.listType.name)
+                put("is_enabled", if (rule.isEnabled) 1 else 0)
+                put("is_deleted", 0)
+                put("description", rule.description)
+                put("is_customized", 0)
+            }
+            db.insertWithOnConflict("predefined_rule_settings", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+            val shipped = ContentValues().apply {
+                put("name", rule.name)
+                put("pattern", rule.pattern)
+                put("is_regex", if (rule.isRegex) 1 else 0)
+                put("list_type", rule.listType.name)
+                put("description", rule.description)
+            }
+            db.update(
+                "predefined_rule_settings",
+                shipped,
+                "rule_id = ? AND IFNULL(is_deleted, 0) = 0 AND IFNULL(is_customized, 0) = 0",
+                arrayOf(rule.id.toString())
+            )
+        }
+    }
+
     private fun createCachedThreadsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -716,7 +709,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
 
         @Volatile
         private var INSTANCE: MisgaDatabaseHelper? = null

@@ -23,11 +23,12 @@ data class RegexTestResult(
 
 class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
 
+    private val rulesCache = FilterRulesCache.getInstance(dbHelper)
+
     suspend fun evaluateMessage(sender: String, body: String): FilterResult {
-        val normalizedSender = dbHelper.normalizeAddress(sender)
-        val allRules = dbHelper.getAllRules()
-        val senderPref = dbHelper.getSenderPreference(normalizedSender)
-        return evaluateMessage(sender, body, allRules, senderPref)
+        val prepared = rulesCache.preparedRules()
+        val senderPref = rulesCache.senderPreference(sender)
+        return evaluateMessage(sender, body, prepared, senderPref)
     }
 
     companion object {
