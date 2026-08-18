@@ -136,11 +136,6 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(nav.threadId, nav.address) {
-        viewModel.loadMessages()
-        viewModel.loadSenderSettings()
-    }
-
     LaunchedEffect(state.messages.size, state.isLoading, nav.initialMessageId) {
         if (!state.isLoading && state.messages.isNotEmpty()) {
             if (!hasInitiallyScrolled) {

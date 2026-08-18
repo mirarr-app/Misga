@@ -31,6 +31,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
 
     private val repository = SmsRepository(application)
     private var searchJob: Job? = null
+    private var loadJob: Job? = null
 
     private val _uiState = MutableStateFlow(ConversationsUiState())
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -40,34 +41,42 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun loadThreads(silent: Boolean = false) {
-        viewModelScope.launch {
-            val showLoading = !silent && _uiState.value.threads.isEmpty()
-            if (showLoading) {
-                _uiState.value = _uiState.value.copy(isLoading = true)
-            }
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isDefaultSmsApp = repository.isDefaultSmsApp()
             )
+
+            val cached = try {
+                repository.getCachedThreads()
+            } catch (e: Exception) {
+                emptyList()
+            }
+            val query = _uiState.value.searchQuery.trim()
+            if (cached.isNotEmpty() && _uiState.value.threads.isEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    threads = cached,
+                    filteredThreads = filterThreads(cached, query)
+                )
+            } else {
+                val showLoading = !silent && _uiState.value.threads.isEmpty()
+                if (showLoading) {
+                    _uiState.value = _uiState.value.copy(isLoading = true)
+                }
+            }
+
             try {
                 val threads = repository.getThreads()
-                val query = _uiState.value.searchQuery.trim()
-                val filtered = if (query.isBlank()) {
-                    threads
-                } else {
-                    threads.filter {
-                        (it.contactName?.contains(query, ignoreCase = true) == true) ||
-                                it.address.contains(query, ignoreCase = true) ||
-                                it.snippet.contains(query, ignoreCase = true)
-                    }
-                }
+                val currentQuery = _uiState.value.searchQuery.trim()
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     threads = threads,
-                    filteredThreads = filtered,
+                    filteredThreads = filterThreads(threads, currentQuery),
                     error = null
                 )
-                if (query.isNotBlank()) {
-                    val messages = repository.searchAllMessages(query)
+                if (currentQuery.isNotBlank()) {
+                    val messages = repository.searchAllMessages(currentQuery)
                     _uiState.value = _uiState.value.copy(
                         matchingMessages = messages,
                         isSearching = false
@@ -79,6 +88,15 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                     error = e.message ?: "Failed to load messages"
                 )
             }
+        }
+    }
+
+    private fun filterThreads(threads: List<ConversationThread>, query: String): List<ConversationThread> {
+        if (query.isBlank()) return threads
+        return threads.filter {
+            (it.contactName?.contains(query, ignoreCase = true) == true) ||
+                    it.address.contains(query, ignoreCase = true) ||
+                    it.snippet.contains(query, ignoreCase = true)
         }
     }
 
@@ -189,6 +207,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                     selectedThreadIds = updatedSelected,
                     isSelectionMode = updatedSelected.isNotEmpty()
                 )
+                repository.saveCachedThreads(updatedThreads)
             }
         }
     }
@@ -208,6 +227,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                 selectedThreadIds = emptySet(),
                 isSelectionMode = false
             )
+            repository.saveCachedThreads(updatedThreads)
             onComplete(count)
         }
     }

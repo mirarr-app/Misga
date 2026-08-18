@@ -10,6 +10,7 @@ import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.repository.SmsRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +37,7 @@ class ChatViewModel(
 
     private val repository = SmsRepository(application)
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
+    private var messagesJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         ChatUiState(
@@ -52,8 +54,12 @@ class ChatViewModel(
     }
 
     fun loadMessages() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+        if (messagesJob?.isActive == true) return
+        messagesJob = viewModelScope.launch {
+            val hadMessages = _uiState.value.messages.isNotEmpty()
+            if (!hadMessages) {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+            }
             try {
                 val msgs = repository.getMessagesForThread(initialThreadId, initialAddress)
                 repository.markThreadRead(initialThreadId)

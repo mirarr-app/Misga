@@ -11,10 +11,13 @@ import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.util.Log
 import com.miss.ga.data.db.MisgaDatabaseHelper
+import com.miss.ga.data.db.SpamMetaWrite
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.model.SmsMessage
+import com.miss.ga.data.util.PhoneNumberKeys
+import com.miss.ga.engine.SmsFilterEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -30,8 +33,10 @@ class SmsRepository(private val context: Context) {
         return Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
     }
 
-    private val recipientAddressCache = java.util.concurrent.ConcurrentHashMap<String, String>()
-    private val contactNameCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    suspend fun getCachedThreads(): List<ConversationThread> = dbHelper.getCachedThreads()
+
+    suspend fun saveCachedThreads(threads: List<ConversationThread>) =
+        dbHelper.replaceCachedThreads(threads)
 
     suspend fun getThreads(): List<ConversationThread> = withContext(Dispatchers.IO) {
         val threads = mutableListOf<ConversationThread>()
@@ -51,6 +56,9 @@ class SmsRepository(private val context: Context) {
         )
 
         try {
+            val canonicalAddresses = loadCanonicalAddressMap()
+            val contactNames = loadContactNameMap()
+
             // Batch query all unread messages in a single fast query
             val unreadCounts = mutableMapOf<Long, Int>()
             val latestUnreadMessage = mutableMapOf<Long, Pair<Long, String>>() // threadId -> (msgId, body)
@@ -81,7 +89,9 @@ class SmsRepository(private val context: Context) {
             }
 
             val spamMetaMap = dbHelper.getAllSpamMetaMap()
-            val filterEngine = com.miss.ga.engine.SmsFilterEngine(dbHelper)
+            val allRules = dbHelper.getAllRules()
+            val senderPrefs = dbHelper.getAllSenderPreferences()
+            val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
 
             val cursor = contentResolver.query(
                 uri,
@@ -106,12 +116,8 @@ class SmsRepository(private val context: Context) {
                     val snippet = it.getString(snippetIdx) ?: ""
                     val read = it.getInt(readIdx) == 1
 
-                    val address = recipientAddressCache.getOrPut(recipientIds) {
-                        resolveRecipientAddress(recipientIds)
-                    }
-                    val contactName = contactNameCache.getOrPut(address) {
-                        resolveContactName(address) ?: ""
-                    }.ifBlank { null }
+                    val address = resolveRecipientAddress(recipientIds, canonicalAddresses)
+                    val contactName = PhoneNumberKeys.lookup(contactNames, address)
 
                     // Fast unread count from pre-fetched batch
                     val unreadCount = if (read) 0 else (unreadCounts[threadId] ?: 0)
@@ -125,10 +131,18 @@ class SmsRepository(private val context: Context) {
                             if (meta != null) {
                                 isUnreadSpam = meta.first
                             } else {
-                                val eval = filterEngine.evaluateMessage(address, body)
+                                val pref = senderPrefs[dbHelper.normalizeAddress(address)]
+                                val eval = SmsFilterEngine.evaluateMessage(address, body, allRules, pref)
                                 isUnreadSpam = eval.action == FilterAction.SPAM
                                 if (isUnreadSpam) {
-                                    dbHelper.markMessageSpam(msgId, address, eval.matchedRuleName, eval.action)
+                                    pendingSpamMarks.add(
+                                        SpamMetaWrite(
+                                            messageId = msgId,
+                                            address = address,
+                                            matchedRuleName = eval.matchedRuleName,
+                                            action = eval.action
+                                        )
+                                    )
                                 }
                             }
                         }
@@ -148,6 +162,13 @@ class SmsRepository(private val context: Context) {
                         )
                     )
                 }
+            }
+
+            if (pendingSpamMarks.isNotEmpty()) {
+                dbHelper.markMessagesSpam(pendingSpamMarks)
+            }
+            if (cursor != null) {
+                dbHelper.replaceCachedThreads(threads)
             }
         } catch (e: Exception) {
             Log.e("SmsRepository", "Error reading threads", e)
@@ -181,7 +202,9 @@ class SmsRepository(private val context: Context) {
             )
 
             val spamMeta = dbHelper.getSpamMetaMapForThread(address)
-            val filterEngine = com.miss.ga.engine.SmsFilterEngine(dbHelper)
+            val allRules = dbHelper.getAllRules()
+            val senderPref = dbHelper.getSenderPreference(address)
+            val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
 
             cursor?.use {
                 val idIdx = it.getColumnIndexOrThrow(Telephony.Sms._ID)
@@ -212,12 +235,19 @@ class SmsRepository(private val context: Context) {
                         isRevealed = meta.third
                     } else {
                         if (type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
-                            val eval = filterEngine.evaluateMessage(addr, body)
+                            val eval = SmsFilterEngine.evaluateMessage(addr, body, allRules, senderPref)
                             isSpam = eval.action == FilterAction.SPAM
                             matchedRule = eval.matchedRuleName
                             isRevealed = false
                             if (isSpam) {
-                                dbHelper.markMessageSpam(msgId, addr, matchedRule, eval.action)
+                                pendingSpamMarks.add(
+                                    SpamMetaWrite(
+                                        messageId = msgId,
+                                        address = addr,
+                                        matchedRuleName = matchedRule,
+                                        action = eval.action
+                                    )
+                                )
                             }
                         } else {
                             isSpam = false
@@ -241,6 +271,10 @@ class SmsRepository(private val context: Context) {
                         )
                     )
                 }
+            }
+
+            if (pendingSpamMarks.isNotEmpty()) {
+                dbHelper.markMessagesSpam(pendingSpamMarks)
             }
         } catch (e: Exception) {
             Log.e("SmsRepository", "Error reading messages for thread $threadId", e)
@@ -370,11 +404,81 @@ class SmsRepository(private val context: Context) {
         return count
     }
 
-    private fun resolveRecipientAddress(recipientIds: String): String {
+    private fun loadCanonicalAddressMap(): Map<String, String> {
+        val cached = canonicalCache
+        val now = System.currentTimeMillis()
+        if (cached != null && now - cached.loadedAt < LOOKUP_CACHE_TTL_MS) {
+            return cached.values
+        }
+        val map = HashMap<String, String>()
+        try {
+            val uri = Uri.parse("content://mms-sms/canonical-addresses")
+            val cursor = context.contentResolver.query(
+                uri,
+                arrayOf("_id", "address"),
+                null, null, null
+            )
+            cursor?.use {
+                val idIdx = it.getColumnIndex("_id")
+                val addrIdx = it.getColumnIndex("address")
+                if (idIdx < 0 || addrIdx < 0) return map
+                while (it.moveToNext()) {
+                    val id = it.getString(idIdx) ?: continue
+                    map[id] = it.getString(addrIdx) ?: ""
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("SmsRepository", "Batch canonical-address query failed, falling back", e)
+        }
+        canonicalCache = CachedLookupMap(now, map)
+        return map
+    }
+
+    private fun loadContactNameMap(): Map<String, String> {
+        val cached = contactCache
+        val now = System.currentTimeMillis()
+        if (cached != null && now - cached.loadedAt < LOOKUP_CACHE_TTL_MS) {
+            return cached.values
+        }
+        val map = HashMap<String, String>()
+        try {
+            val cursor = context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                null, null, null
+            )
+            cursor?.use {
+                val nameIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (it.moveToNext()) {
+                    val name = it.getString(nameIdx) ?: continue
+                    val number = it.getString(numIdx) ?: continue
+                    if (name.isBlank() || number.isBlank()) continue
+                    for (key in PhoneNumberKeys.keys(number)) {
+                        map.putIfAbsent(key, name)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("SmsRepository", "Batch contact query failed, falling back", e)
+        }
+        contactCache = CachedLookupMap(now, map)
+        return map
+    }
+
+    private fun resolveRecipientAddress(
+        recipientIds: String,
+        canonicalAddresses: Map<String, String> = emptyMap()
+    ): String {
         if (recipientIds.isBlank()) return ""
         val ids = recipientIds.split(" ")
         for (id in ids) {
             if (id.isBlank()) continue
+            val cached = canonicalAddresses[id]
+            if (!cached.isNullOrBlank()) return cached
             try {
                 val uri = Uri.parse("content://mms-sms/canonical-address/$id")
                 val cursor = context.contentResolver.query(uri, null, null, null, null)
@@ -440,6 +544,7 @@ class SmsRepository(private val context: Context) {
 
         try {
             val spamMetaMap = dbHelper.getAllSpamMetaMap()
+            val contactNames = loadContactNameMap()
             val cursor = contentResolver.query(
                 uri,
                 projection,
@@ -471,9 +576,7 @@ class SmsRepository(private val context: Context) {
                         threadId = Telephony.Threads.getOrCreateThreadId(context, address)
                     }
 
-                    val contactName = contactNameCache.getOrPut(address) {
-                        resolveContactName(address) ?: ""
-                    }.ifBlank { null }
+                    val contactName = PhoneNumberKeys.lookup(contactNames, address)
 
                     val isSpam = spamMetaMap[msgId]?.first ?: false
 
@@ -568,4 +671,17 @@ data class ContactItem(
     val name: String,
     val number: String
 )
+
+private data class CachedLookupMap(
+    val loadedAt: Long,
+    val values: Map<String, String>
+)
+
+private const val LOOKUP_CACHE_TTL_MS = 60_000L
+
+@Volatile
+private var canonicalCache: CachedLookupMap? = null
+
+@Volatile
+private var contactCache: CachedLookupMap? = null
 

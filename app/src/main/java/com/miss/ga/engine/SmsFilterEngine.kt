@@ -3,6 +3,7 @@ package com.miss.ga.engine
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
+import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
 data class FilterResult(
@@ -141,13 +142,23 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
             return FilterResult(action = FilterAction.NORMAL)
         }
 
+        private val compiledPatterns = ConcurrentHashMap<String, Pattern>()
+
+        private fun compiledPattern(patternStr: String, flags: Int): Pattern {
+            val cacheKey = "$flags\u0000$patternStr"
+            return compiledPatterns.getOrPut(cacheKey) {
+                Pattern.compile(patternStr, flags)
+            }
+        }
+
         private fun matchesRule(rule: FilterRule, sender: String, body: String): Boolean {
             return try {
                 if (rule.category == com.miss.ga.data.model.RuleCategory.PROMO_PREFIX) {
                     // Evaluated against sender number
                     if (rule.isRegex) {
-                        val pattern = Pattern.compile(rule.pattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
-                        pattern.matcher(sender).find()
+                        compiledPattern(rule.pattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+                            .matcher(sender)
+                            .find()
                     } else {
                         sender.contains(rule.pattern, ignoreCase = true)
                     }
@@ -155,8 +166,10 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                     // Evaluated against normalized message body
                     val normalizedPattern = normalizePersianText(rule.pattern)
                     if (rule.isRegex) {
-                        val pattern = Pattern.compile(normalizedPattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE or Pattern.DOTALL)
-                        pattern.matcher(body).find()
+                        compiledPattern(
+                            normalizedPattern,
+                            Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE or Pattern.DOTALL
+                        ).matcher(body).find()
                     } else {
                         body.contains(normalizedPattern, ignoreCase = true)
                     }

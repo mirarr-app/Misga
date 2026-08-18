@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.PredefinedRules
@@ -92,6 +93,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             """.trimIndent()
         )
 
+        createCachedThreadsTable(db)
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
+
         // Prepopulate default predefined rule settings
         PredefinedRules.getDefaultRules().forEach { rule ->
             val cv = ContentValues().apply {
@@ -118,6 +122,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_deleted INTEGER DEFAULT 0") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN description TEXT") } catch (e: Exception) {}
+        createCachedThreadsTable(db)
+        try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)") } catch (e: Exception) {}
 
         // Insert any newly added predefined rules that might be missing
         PredefinedRules.getDefaultRules().forEach { rule ->
@@ -352,22 +358,24 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             null, null, null
         )
         cursor.use {
-            if (it.moveToFirst()) {
-                SenderPreference(
-                    address = it.getString(it.getColumnIndexOrThrow("address")),
-                    displayName = it.getString(it.getColumnIndexOrThrow("display_name")),
-                    defaultAction = try {
-                        FilterAction.valueOf(it.getString(it.getColumnIndexOrThrow("default_action")))
-                    } catch (e: Exception) {
-                        FilterAction.NORMAL
-                    },
-                    customSoundUri = it.getString(it.getColumnIndexOrThrow("custom_sound_uri")),
-                    isBlocked = it.getInt(it.getColumnIndexOrThrow("is_blocked")) == 1,
-                    notes = it.getString(it.getColumnIndexOrThrow("notes")) ?: "",
-                    updatedAt = it.getLong(it.getColumnIndexOrThrow("updated_at"))
-                )
-            } else null
+            if (it.moveToFirst()) cursorToSenderPreference(it) else null
         }
+    }
+
+    suspend fun getAllSenderPreferences(): Map<String, SenderPreference> = withContext(Dispatchers.IO) {
+        val result = mutableMapOf<String, SenderPreference>()
+        val cursor = readableDatabase.query(
+            "sender_preferences",
+            null,
+            null, null, null, null, null
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                val pref = cursorToSenderPreference(it)
+                result[pref.address] = pref
+            }
+        }
+        result
     }
 
     suspend fun saveSenderPreference(pref: SenderPreference) = withContext(Dispatchers.IO) {
@@ -397,22 +405,46 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         matchedRuleName: String?,
         action: FilterAction
     ) = withContext(Dispatchers.IO) {
-        val cv = ContentValues().apply {
-            put("message_id", messageId)
-            put("address", normalizeAddress(address))
-            put("matched_rule_name", matchedRuleName)
-            put("is_revealed", 0)
-            put("is_spam", if (action == FilterAction.SPAM) 1 else 0)
-            put("action", action.name)
-            put("created_at", System.currentTimeMillis())
-        }
-        writableDatabase.insertWithOnConflict(
-            "spam_message_meta",
-            null,
-            cv,
-            SQLiteDatabase.CONFLICT_REPLACE
+        markMessagesSpam(
+            listOf(
+                SpamMetaWrite(
+                    messageId = messageId,
+                    address = address,
+                    matchedRuleName = matchedRuleName,
+                    action = action
+                )
+            )
         )
-        _spamMetaChanged.value = System.currentTimeMillis()
+    }
+
+    suspend fun markMessagesSpam(entries: List<SpamMetaWrite>) = withContext(Dispatchers.IO) {
+        if (entries.isEmpty()) return@withContext
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+        db.beginTransaction()
+        try {
+            for (entry in entries) {
+                val cv = ContentValues().apply {
+                    put("message_id", entry.messageId)
+                    put("address", normalizeAddress(entry.address))
+                    put("matched_rule_name", entry.matchedRuleName)
+                    put("is_revealed", 0)
+                    put("is_spam", if (entry.action == FilterAction.SPAM) 1 else 0)
+                    put("action", entry.action.name)
+                    put("created_at", now)
+                }
+                db.insertWithOnConflict(
+                    "spam_message_meta",
+                    null,
+                    cv,
+                    SQLiteDatabase.CONFLICT_REPLACE
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        _spamMetaChanged.value = now
     }
 
     suspend fun setMessageRevealed(messageId: Long, isRevealed: Boolean) = withContext(Dispatchers.IO) {
@@ -472,6 +504,105 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             }
         }
         result
+    }
+
+    // --- Cached conversation list ---
+
+    suspend fun getCachedThreads(): List<ConversationThread> = withContext(Dispatchers.IO) {
+        val threads = mutableListOf<ConversationThread>()
+        val cursor = readableDatabase.query(
+            "cached_threads",
+            null,
+            null, null, null, null,
+            "date DESC"
+        )
+        cursor.use {
+            val idIdx = it.getColumnIndexOrThrow("thread_id")
+            val addrIdx = it.getColumnIndexOrThrow("address")
+            val nameIdx = it.getColumnIndexOrThrow("contact_name")
+            val snippetIdx = it.getColumnIndexOrThrow("snippet")
+            val dateIdx = it.getColumnIndexOrThrow("date")
+            val countIdx = it.getColumnIndexOrThrow("message_count")
+            val unreadIdx = it.getColumnIndexOrThrow("unread_count")
+            val spamIdx = it.getColumnIndexOrThrow("is_unread_spam")
+            val hasSpamIdx = it.getColumnIndexOrThrow("has_spam")
+            while (it.moveToNext()) {
+                val contactName = if (it.isNull(nameIdx)) null else it.getString(nameIdx)
+                threads.add(
+                    ConversationThread(
+                        threadId = it.getLong(idIdx),
+                        address = it.getString(addrIdx) ?: "",
+                        contactName = contactName?.ifBlank { null },
+                        snippet = it.getString(snippetIdx) ?: "",
+                        date = it.getLong(dateIdx),
+                        messageCount = it.getInt(countIdx),
+                        unreadCount = it.getInt(unreadIdx),
+                        hasSpam = it.getInt(hasSpamIdx) == 1,
+                        isUnreadSpam = it.getInt(spamIdx) == 1
+                    )
+                )
+            }
+        }
+        threads
+    }
+
+    suspend fun replaceCachedThreads(threads: List<ConversationThread>) = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("cached_threads", null, null)
+            for (thread in threads) {
+                val cv = ContentValues().apply {
+                    put("thread_id", thread.threadId)
+                    put("address", thread.address)
+                    put("contact_name", thread.contactName)
+                    put("snippet", thread.snippet)
+                    put("date", thread.date)
+                    put("message_count", thread.messageCount)
+                    put("unread_count", thread.unreadCount)
+                    put("is_unread_spam", if (thread.isUnreadSpam) 1 else 0)
+                    put("has_spam", if (thread.hasSpam) 1 else 0)
+                }
+                db.insert("cached_threads", null, cv)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun createCachedThreadsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS cached_threads (
+                thread_id INTEGER PRIMARY KEY,
+                address TEXT NOT NULL,
+                contact_name TEXT,
+                snippet TEXT,
+                date INTEGER NOT NULL,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                unread_count INTEGER NOT NULL DEFAULT 0,
+                is_unread_spam INTEGER NOT NULL DEFAULT 0,
+                has_spam INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun cursorToSenderPreference(cursor: Cursor): SenderPreference {
+        return SenderPreference(
+            address = cursor.getString(cursor.getColumnIndexOrThrow("address")),
+            displayName = cursor.getString(cursor.getColumnIndexOrThrow("display_name")),
+            defaultAction = try {
+                FilterAction.valueOf(cursor.getString(cursor.getColumnIndexOrThrow("default_action")))
+            } catch (e: Exception) {
+                FilterAction.NORMAL
+            },
+            customSoundUri = cursor.getString(cursor.getColumnIndexOrThrow("custom_sound_uri")),
+            isBlocked = cursor.getInt(cursor.getColumnIndexOrThrow("is_blocked")) == 1,
+            notes = cursor.getString(cursor.getColumnIndexOrThrow("notes")) ?: "",
+            updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at"))
+        )
     }
 
     private fun cursorToFilterRule(cursor: Cursor): FilterRule {
@@ -543,6 +674,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
     }
 }
+
+data class SpamMetaWrite(
+    val messageId: Long,
+    val address: String,
+    val matchedRuleName: String?,
+    val action: FilterAction
+)
 
 data class FilterRuleOverride(
     val isEnabled: Boolean,
