@@ -1,6 +1,10 @@
 # Parsa Dev Notes
 project-notes/
 
+# Local agent and Cursor config (do not commit)
+.agents/
+.cursor/
+
 # Built application files
 *.apk
 *.aar
