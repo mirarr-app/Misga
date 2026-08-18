@@ -81,11 +81,7 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 val pref = dbHelper.getSenderPreference(initialAddress)
-                val allRules = dbHelper.getAllRules()
-                val senderRules = allRules.filter {
-                    !it.senderTarget.isNullOrBlank() &&
-                            dbHelper.normalizeAddress(it.senderTarget) == dbHelper.normalizeAddress(initialAddress)
-                }
+                val senderRules = dbHelper.getSenderRules(initialAddress)
                 _uiState.value = _uiState.value.copy(
                     senderPreference = pref,
                     senderRules = senderRules

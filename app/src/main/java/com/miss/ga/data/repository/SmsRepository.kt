@@ -3,12 +3,10 @@ package com.miss.ga.data.repository
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
-import android.database.Cursor
 import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.telephony.SmsManager
-import android.telephony.SubscriptionManager
 import android.util.Log
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.db.SpamMetaWrite
@@ -19,10 +17,6 @@ import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.util.PhoneNumberKeys
 import com.miss.ga.engine.SmsFilterEngine
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
 class SmsRepository(private val context: Context) {
@@ -90,6 +84,7 @@ class SmsRepository(private val context: Context) {
 
             val spamMetaMap = dbHelper.getAllSpamMetaMap()
             val allRules = dbHelper.getAllRules()
+            val preparedRules = SmsFilterEngine.prepareRules(allRules)
             val senderPrefs = dbHelper.getAllSenderPreferences()
             val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
 
@@ -132,7 +127,7 @@ class SmsRepository(private val context: Context) {
                                 isUnreadSpam = meta.first
                             } else {
                                 val pref = senderPrefs[dbHelper.normalizeAddress(address)]
-                                val eval = SmsFilterEngine.evaluateMessage(address, body, allRules, pref)
+                                val eval = SmsFilterEngine.evaluateMessage(address, body, preparedRules, pref)
                                 isUnreadSpam = eval.action == FilterAction.SPAM
                                 if (isUnreadSpam) {
                                     pendingSpamMarks.add(
@@ -203,6 +198,7 @@ class SmsRepository(private val context: Context) {
 
             val spamMeta = dbHelper.getSpamMetaMapForThread(address)
             val allRules = dbHelper.getAllRules()
+            val preparedRules = SmsFilterEngine.prepareRules(allRules)
             val senderPref = dbHelper.getSenderPreference(address)
             val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
 
@@ -235,7 +231,7 @@ class SmsRepository(private val context: Context) {
                         isRevealed = meta.third
                     } else {
                         if (type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
-                            val eval = SmsFilterEngine.evaluateMessage(addr, body, allRules, senderPref)
+                            val eval = SmsFilterEngine.evaluateMessage(addr, body, preparedRules, senderPref)
                             isSpam = eval.action == FilterAction.SPAM
                             matchedRule = eval.matchedRuleName
                             isRevealed = false
@@ -383,25 +379,6 @@ class SmsRepository(private val context: Context) {
 
     suspend fun markMessageNotSpam(messageId: Long) = withContext(Dispatchers.IO) {
         dbHelper.unmarkSpam(messageId)
-    }
-
-    private fun getUnreadCountForThread(threadId: Long): Int {
-        var count = 0
-        try {
-            val cursor = context.contentResolver.query(
-                Telephony.Sms.Inbox.CONTENT_URI,
-                arrayOf(Telephony.Sms._ID),
-                "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 0",
-                arrayOf(threadId.toString()),
-                null
-            )
-            cursor?.use {
-                count = it.count
-            }
-        } catch (e: Exception) {
-            // Ignore
-        }
-        return count
     }
 
     private fun loadCanonicalAddressMap(): Map<String, String> {

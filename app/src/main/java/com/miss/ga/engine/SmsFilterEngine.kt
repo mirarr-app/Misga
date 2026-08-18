@@ -45,43 +45,43 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
             rules: List<FilterRule>,
             senderPreference: com.miss.ga.data.model.SenderPreference? = null
         ): FilterResult {
+            return evaluateMessage(sender, body, prepareRules(rules), senderPreference)
+        }
+
+        fun prepareRules(rules: List<FilterRule>): PreparedFilterRules = PreparedFilterRules(rules)
+
+        fun evaluateMessage(
+            sender: String,
+            body: String,
+            prepared: PreparedFilterRules,
+            senderPreference: com.miss.ga.data.model.SenderPreference? = null
+        ): FilterResult {
             val normalizedSender = normalizeAddress(sender)
             val normalizedBody = normalizePersianText(body.trim())
 
-            // 1. Filter enabled rules
-            val enabledRules = rules.filter { it.isEnabled }
-            val allowlistRules = enabledRules.filter { it.listType == com.miss.ga.data.model.RuleListType.ALLOWLIST }
-            val blocklistRules = enabledRules.filter { it.listType != com.miss.ga.data.model.RuleListType.ALLOWLIST }
-
-            // 2. HIGHEST PRIORITY: Check Allowlist Rules (OTP, Passcodes, Verification & Custom Allowlist)
-            // If an allowlist rule matches, it immediately overrides all blocklists and sender blocks.
-            val senderAllowRules = allowlistRules.filter {
-                !it.senderTarget.isNullOrBlank() && normalizeAddress(it.senderTarget) == normalizedSender
-            }
-            for (rule in senderAllowRules) {
-                if (matchesRule(rule, normalizedSender, normalizedBody)) {
+            // 1. HIGHEST PRIORITY: Check Allowlist Rules (OTP, Passcodes, Verification & Custom Allowlist)
+            prepared.senderAllow[normalizedSender]?.forEach { compiled ->
+                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
                     return FilterResult(
                         action = FilterAction.NORMAL,
-                        matchedRuleName = "${rule.name} (Allowlist)",
-                        matchedPattern = rule.pattern,
+                        matchedRuleName = "${compiled.rule.name} (Allowlist)",
+                        matchedPattern = compiled.rule.pattern,
+                        isAllowlisted = true
+                    )
+                }
+            }
+            for (compiled in prepared.globalAllow) {
+                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
+                    return FilterResult(
+                        action = FilterAction.NORMAL,
+                        matchedRuleName = "${compiled.rule.name} (Allowlist)",
+                        matchedPattern = compiled.rule.pattern,
                         isAllowlisted = true
                     )
                 }
             }
 
-            val globalAllowRules = allowlistRules.filter { it.senderTarget.isNullOrBlank() }
-            for (rule in globalAllowRules) {
-                if (matchesRule(rule, normalizedSender, normalizedBody)) {
-                    return FilterResult(
-                        action = FilterAction.NORMAL,
-                        matchedRuleName = "${rule.name} (Allowlist)",
-                        matchedPattern = rule.pattern,
-                        isAllowlisted = true
-                    )
-                }
-            }
-
-            // 3. Check Sender Preference / Block status
+            // 2. Check Sender Preference / Block status
             if (senderPreference?.isBlocked == true) {
                 return FilterResult(
                     action = FilterAction.SPAM,
@@ -91,45 +91,40 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                 )
             }
 
-            // 4. Sender-specific custom blocklist rules
-            val senderSpecificBlockRules = blocklistRules.filter {
-                !it.senderTarget.isNullOrBlank() && normalizeAddress(it.senderTarget) == normalizedSender
-            }
-            for (rule in senderSpecificBlockRules) {
-                if (matchesRule(rule, normalizedSender, normalizedBody)) {
+            // 3. Sender-specific custom blocklist rules
+            prepared.senderBlock[normalizedSender]?.forEach { compiled ->
+                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
                     return FilterResult(
-                        action = rule.action,
-                        matchedRuleName = rule.name,
-                        matchedPattern = rule.pattern
+                        action = compiled.rule.action,
+                        matchedRuleName = compiled.rule.name,
+                        matchedPattern = compiled.rule.pattern
                     )
                 }
             }
 
-            // 5. Custom Global Blocklist Rules
-            val customGlobalBlockRules = blocklistRules.filter { !it.isPredefined && it.senderTarget.isNullOrBlank() }
-            for (rule in customGlobalBlockRules) {
-                if (matchesRule(rule, normalizedSender, normalizedBody)) {
+            // 4. Custom Global Blocklist Rules
+            for (compiled in prepared.customGlobalBlock) {
+                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
                     return FilterResult(
-                        action = rule.action,
-                        matchedRuleName = rule.name,
-                        matchedPattern = rule.pattern
+                        action = compiled.rule.action,
+                        matchedRuleName = compiled.rule.name,
+                        matchedPattern = compiled.rule.pattern
                     )
                 }
             }
 
-            // 6. Predefined Iranian Spam Blocklist Rules
-            val predefinedBlockRules = blocklistRules.filter { it.isPredefined }
-            for (rule in predefinedBlockRules) {
-                if (matchesRule(rule, normalizedSender, normalizedBody)) {
+            // 5. Predefined Iranian Spam Blocklist Rules
+            for (compiled in prepared.predefinedBlock) {
+                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
                     return FilterResult(
-                        action = rule.action,
-                        matchedRuleName = rule.name,
-                        matchedPattern = rule.pattern
+                        action = compiled.rule.action,
+                        matchedRuleName = compiled.rule.name,
+                        matchedPattern = compiled.rule.pattern
                     )
                 }
             }
 
-            // 7. Sender Default Action Override (e.g. if user marked contact as Silent)
+            // 6. Sender Default Action Override (e.g. if user marked contact as Silent)
             if (senderPreference != null && senderPreference.defaultAction != FilterAction.NORMAL) {
                 return FilterResult(
                     action = senderPreference.defaultAction,
@@ -138,7 +133,7 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                 )
             }
 
-            // 8. Normal fallback
+            // 7. Normal fallback
             return FilterResult(action = FilterAction.NORMAL)
         }
 
@@ -151,10 +146,10 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
             }
         }
 
-        private fun matchesRule(rule: FilterRule, sender: String, body: String): Boolean {
+        private fun matchesRule(compiled: CompiledFilterRule, sender: String, body: String): Boolean {
+            val rule = compiled.rule
             return try {
                 if (rule.category == com.miss.ga.data.model.RuleCategory.PROMO_PREFIX) {
-                    // Evaluated against sender number
                     if (rule.isRegex) {
                         compiledPattern(rule.pattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
                             .matcher(sender)
@@ -163,15 +158,13 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                         sender.contains(rule.pattern, ignoreCase = true)
                     }
                 } else {
-                    // Evaluated against normalized message body
-                    val normalizedPattern = normalizePersianText(rule.pattern)
                     if (rule.isRegex) {
                         compiledPattern(
-                            normalizedPattern,
+                            compiled.normalizedPattern,
                             Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE or Pattern.DOTALL
                         ).matcher(body).find()
                     } else {
-                        body.contains(normalizedPattern, ignoreCase = true)
+                        body.contains(compiled.normalizedPattern, ignoreCase = true)
                     }
                 }
             } catch (e: Exception) {
@@ -222,5 +215,57 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                 )
             }
         }
+    }
+}
+
+data class CompiledFilterRule(
+    val rule: FilterRule,
+    val normalizedPattern: String
+)
+
+class PreparedFilterRules(rules: List<FilterRule>) {
+    val senderAllow: Map<String, List<CompiledFilterRule>>
+    val globalAllow: List<CompiledFilterRule>
+    val senderBlock: Map<String, List<CompiledFilterRule>>
+    val customGlobalBlock: List<CompiledFilterRule>
+    val predefinedBlock: List<CompiledFilterRule>
+
+    init {
+        val senderAllowMut = LinkedHashMap<String, MutableList<CompiledFilterRule>>()
+        val globalAllowMut = mutableListOf<CompiledFilterRule>()
+        val senderBlockMut = LinkedHashMap<String, MutableList<CompiledFilterRule>>()
+        val customGlobalBlockMut = mutableListOf<CompiledFilterRule>()
+        val predefinedBlockMut = mutableListOf<CompiledFilterRule>()
+
+        for (rule in rules) {
+            if (!rule.isEnabled) continue
+            val compiled = CompiledFilterRule(
+                rule = rule,
+                normalizedPattern = SmsFilterEngine.normalizePersianText(rule.pattern)
+            )
+            val isAllow = rule.listType == com.miss.ga.data.model.RuleListType.ALLOWLIST
+            val senderTarget = rule.senderTarget
+            if (isAllow) {
+                if (!senderTarget.isNullOrBlank()) {
+                    val key = SmsFilterEngine.normalizeAddress(senderTarget)
+                    senderAllowMut.getOrPut(key) { mutableListOf() }.add(compiled)
+                } else {
+                    globalAllowMut.add(compiled)
+                }
+            } else if (!senderTarget.isNullOrBlank()) {
+                val key = SmsFilterEngine.normalizeAddress(senderTarget)
+                senderBlockMut.getOrPut(key) { mutableListOf() }.add(compiled)
+            } else if (!rule.isPredefined) {
+                customGlobalBlockMut.add(compiled)
+            } else {
+                predefinedBlockMut.add(compiled)
+            }
+        }
+
+        senderAllow = senderAllowMut
+        globalAllow = globalAllowMut
+        senderBlock = senderBlockMut
+        customGlobalBlock = customGlobalBlockMut
+        predefinedBlock = predefinedBlockMut
     }
 }

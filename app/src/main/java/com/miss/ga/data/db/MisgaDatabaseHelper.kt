@@ -239,6 +239,28 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         rules
     }
 
+    suspend fun getSenderRules(address: String): List<FilterRule> = withContext(Dispatchers.IO) {
+        val normalized = normalizeAddress(address)
+        val rules = mutableListOf<FilterRule>()
+        val cursor = readableDatabase.query(
+            "filter_rules",
+            null,
+            "sender_target IS NOT NULL AND sender_target != ''",
+            null, null, null,
+            "created_at DESC"
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                val rule = cursorToFilterRule(it)
+                val target = rule.senderTarget ?: continue
+                if (normalizeAddress(target) == normalized) {
+                    rules.add(rule)
+                }
+            }
+        }
+        rules
+    }
+
     suspend fun insertCustomRule(rule: FilterRule): Long = withContext(Dispatchers.IO) {
         val cv = ContentValues().apply {
             put("name", rule.name)
