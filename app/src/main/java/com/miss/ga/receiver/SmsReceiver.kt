@@ -25,6 +25,14 @@ class SmsReceiver : BroadcastReceiver() {
             return
         }
 
+        // Default SMS apps receive SMS_DELIVER. SMS_RECEIVED is only a fallback for
+        // when we are not default; handling both would duplicate notifications.
+        if (action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION &&
+            SmsRepository(context).isDefaultSmsApp()
+        ) {
+            return
+        }
+
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages.isNullOrEmpty()) return
 
@@ -73,6 +81,7 @@ class SmsReceiver : BroadcastReceiver() {
                     put(Telephony.Sms.DATE, timestamp)
                     put(Telephony.Sms.READ, if (filterResult.action == FilterAction.SPAM) 1 else 0)
                     put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
+                    smsRepository.putDefaultSmsSubscription(this)
                 }
 
                 try {

@@ -1,12 +1,15 @@
 package com.miss.ga.data.repository
 
+import android.app.role.RoleManager
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.telephony.SmsManager
+import android.telephony.SubscriptionManager
 import android.util.Log
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.db.SpamMetaWrite
@@ -24,7 +27,50 @@ class SmsRepository(private val context: Context) {
     private val dbHelper = MisgaDatabaseHelper.getInstance(context)
 
     fun isDefaultSmsApp(): Boolean {
-        return Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = context.getSystemService(RoleManager::class.java)
+            if (roleManager != null &&
+                roleManager.isRoleAvailable(RoleManager.ROLE_SMS) &&
+                roleManager.isRoleHeld(RoleManager.ROLE_SMS)
+            ) {
+                return true
+            }
+        }
+        return try {
+            Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun putDefaultSmsSubscription(values: ContentValues) {
+        val subId = defaultSmsSubscriptionId()
+        if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            values.put(Telephony.Sms.SUBSCRIPTION_ID, subId)
+        }
+    }
+
+    private fun defaultSmsSubscriptionId(): Int {
+        return try {
+            SmsManager.getDefaultSmsSubscriptionId()
+        } catch (_: Exception) {
+            SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        }
+    }
+
+    private fun smsManager(): SmsManager {
+        val defaultManager = context.getSystemService(SmsManager::class.java)
+            ?: SmsManager.getDefault()
+        val subId = defaultSmsSubscriptionId()
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            return defaultManager
+        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            defaultManager.createForSubscriptionId(subId)
+        } else {
+            @Suppress("DEPRECATION")
+            SmsManager.getSmsManagerForSubscriptionId(subId)
+        }
     }
 
     suspend fun getCachedThreads(): List<ConversationThread> = dbHelper.getCachedThreads()
@@ -319,8 +365,7 @@ class SmsRepository(private val context: Context) {
         if (address.isBlank() || body.isBlank()) return@withContext false
 
         try {
-            val smsManager: SmsManager = context.getSystemService(SmsManager::class.java)
-                ?: SmsManager.getDefault()
+            val smsManager = smsManager()
 
             val parts = smsManager.divideMessage(body)
             if (parts.size > 1) {
@@ -337,6 +382,7 @@ class SmsRepository(private val context: Context) {
                     put(Telephony.Sms.DATE, System.currentTimeMillis())
                     put(Telephony.Sms.READ, 1)
                     put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+                    putDefaultSmsSubscription(this)
                 }
                 context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, cv)
             }

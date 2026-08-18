@@ -119,6 +119,7 @@ object FakeSmsSimulator {
                 put(Telephony.Sms.DATE, now)
                 put(Telephony.Sms.READ, 0)
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
+                repository.putDefaultSmsSubscription(this)
             }
             val insertedUri: Uri? = context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)
             if (insertedUri != null) {

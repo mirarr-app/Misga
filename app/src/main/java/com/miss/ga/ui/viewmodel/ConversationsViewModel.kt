@@ -33,6 +33,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     private val repository = SmsRepository(application)
     private var searchJob: Job? = null
     private var loadJob: Job? = null
+    private var defaultSmsCheckJob: Job? = null
 
     private val _uiState = MutableStateFlow(ConversationsUiState())
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -42,7 +43,10 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun loadThreads(silent: Boolean = false) {
-        if (loadJob?.isActive == true) return
+        if (loadJob?.isActive == true) {
+            if (silent) return
+            loadJob?.cancel()
+        }
         loadJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isDefaultSmsApp = repository.isDefaultSmsApp()
@@ -145,6 +149,19 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
 
     fun checkDefaultSmsStatus() {
         _uiState.value = _uiState.value.copy(isDefaultSmsApp = repository.isDefaultSmsApp())
+    }
+
+    fun refreshDefaultSmsStatus() {
+        defaultSmsCheckJob?.cancel()
+        checkDefaultSmsStatus()
+        if (_uiState.value.isDefaultSmsApp) return
+        defaultSmsCheckJob = viewModelScope.launch {
+            repeat(10) {
+                delay(250)
+                checkDefaultSmsStatus()
+                if (_uiState.value.isDefaultSmsApp) return@launch
+            }
+        }
     }
 
     fun enterSelectionMode(threadId: Long) {

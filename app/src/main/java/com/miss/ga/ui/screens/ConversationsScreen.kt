@@ -82,6 +82,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -124,8 +126,13 @@ fun ConversationsScreen(
     val defaultSmsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        viewModel.checkDefaultSmsStatus()
+        viewModel.refreshDefaultSmsStatus()
         viewModel.loadThreads()
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.checkDefaultSmsStatus()
+        viewModel.loadThreads(silent = true)
     }
 
     LaunchedEffect(Unit) {
