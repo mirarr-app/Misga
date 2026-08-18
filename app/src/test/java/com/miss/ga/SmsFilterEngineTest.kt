@@ -142,4 +142,84 @@ class SmsFilterEngineTest {
         )
         assertTrue(result.isAllowlisted)
     }
+
+    @Test
+    fun testNewKeywordBlocklistPresets() {
+        val cases = listOf(
+            -9L to "پیام تبریک به مناسبت سالگرد امام شهید از همراه اول",
+            -10L to "تخفیف مکالمه ویژه برای شما فعال شد. جهت فعالسازی عدد ۱ را بفرستید.",
+            -11L to "۲ گیگ اینترنت هدیه برای سیم‌کارت شما منظور گردید.",
+            -12L to "مشترک گرامی سیم‌کارت اعتباری، بسته جدید برای شما آماده است.",
+            -13L to "همین حالا خط خود را به دائمی تبدیل کن و از مزایای ویژه بهره‌مند شو.",
+            -14L to "ثبت‌نام رایگان در باشگاه مشتریان همراه اول آغاز شد.",
+            -15L to "دوره‌های جدید آکادمی همراه‌اول را از دست ندهید.",
+            -16L to "حراج آنلاین محصولات دیجیتال با ۵۰ درصد تخفیف شروع شد.",
+            -17L to "برای شرکت در حراج عدد ۱ را ارسال کنید."
+        )
+
+        cases.forEach { (id, sample) ->
+            val rule = PredefinedRules.getDefaultRules().first { it.id == id }
+            val result = SmsFilterEngine.testPattern(rule.pattern, rule.isRegex, sample)
+            assertTrue("Expected sample for rule $id to match: $sample", result.isMatch)
+        }
+
+        val zwnjPrepaid = "سیم\u200Cکارت اعتباری شما نیاز به شارژ دارد."
+        val prepaidRule = PredefinedRules.getDefaultRules().first { it.id == -12L }
+        assertTrue(
+            "ZWNJ form of سیم‌کارت اعتباری should still match",
+            SmsFilterEngine.testPattern(prepaidRule.pattern, true, zwnjPrepaid).isMatch
+        )
+
+        val onlineSaleRule = PredefinedRules.getDefaultRules().first { it.id == -16L }
+        listOf(
+            "حراج انلاین ویژه همراه اول",
+            "حراج\u200Cانلاین ویژه همراه اول",
+            "حراج\u200Cآنلاین ویژه همراه اول",
+            "حراجآنلاین شروع شد"
+        ).forEach { sample ->
+            assertTrue(
+                "Online-sale variant should match: $sample",
+                SmsFilterEngine.testPattern(onlineSaleRule.pattern, true, sample).isMatch
+            )
+        }
+
+        val personal = "سلام مامان، فردا میام خونه. جلسه کاری هم تمام شد."
+        cases.forEach { (id, _) ->
+            val rule = PredefinedRules.getDefaultRules().first { it.id == id }
+            assertFalse(
+                "Personal SMS must not match keyword rule $id",
+                SmsFilterEngine.testPattern(rule.pattern, rule.isRegex, personal).isMatch
+            )
+        }
+    }
+
+    @Test
+    fun testUsageDeadlineAllowlistPreset() {
+        val rule = PredefinedRules.getDefaultRules().first { it.id == -104L }
+        val serviceSms = "بسته اینترنت شما فعال شد. مهلت استفاده تا پایان امشب است."
+        val zwnjSms = "مهلت\u200Cاستفاده از بسته باقی‌مانده تا فردا می‌باشد."
+
+        assertTrue(
+            "Expected مهلت استفاده service notice to match allowlist",
+            SmsFilterEngine.testPattern(rule.pattern, true, serviceSms).isMatch
+        )
+        assertTrue(
+            "ZWNJ form of مهلت استفاده should still match",
+            SmsFilterEngine.testPattern(rule.pattern, true, zwnjSms).isMatch
+        )
+
+        val mixedPromo = "تخفیف مکالمه برای شما فعال شد. مهلت استفاده تا ۲۴ ساعت آینده."
+        val result = SmsFilterEngine.evaluateMessage(
+            sender = "10001234",
+            body = mixedPromo,
+            rules = PredefinedRules.getDefaultRules(),
+            senderPreference = null
+        )
+        assertEquals(
+            "مهلت استفاده allowlist must override keyword and shortcode blocklists",
+            FilterAction.NORMAL,
+            result.action
+        )
+        assertTrue(result.isAllowlisted)
+    }
 }

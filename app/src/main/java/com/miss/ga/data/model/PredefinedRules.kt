@@ -141,6 +141,130 @@ object PredefinedRules {
                 isPredefined = true,
                 category = RuleCategory.SPAM_KEYWORD,
                 description = "Filters recurring promotional monthly discount offers (تخفیف ماهیانه / ماهانه)"
+            ),
+            FilterRule(
+                id = -9,
+                name = "Martyr Imam Promo (امام شهید)",
+                pattern = "امام\\s*شهید",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Operator bulk SMS that invoke religious/political 'امام شهید' phrasing"
+            ),
+            FilterRule(
+                id = -10,
+                name = "Call Discount Promo (تخفیف مکالمه)",
+                pattern = "تخفیف\\s*مکالمه",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Promotional call-credit / voice-minute discount offers"
+            ),
+            FilterRule(
+                id = -11,
+                name = "Gift Internet Promo (اینترنت هدیه)",
+                pattern = "اینترنت\\s*هدیه",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Gift/bonus mobile-data advertisements (اینترنت هدیه)"
+            ),
+            FilterRule(
+                id = -12,
+                name = "Prepaid SIM Promo (سیم‌کارت اعتباری)",
+                pattern = "سیم\\s*کارت\\s*اعتباری",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Prepaid SIM marketing (سیم‌کارت / سیم کارت / سیمکارت اعتباری)"
+            ),
+            FilterRule(
+                id = -13,
+                name = "Prepaid-to-Postpaid Conversion (به دائمی تبدیل کن)",
+                pattern = "به\\s*دا[ائ]?می\\s*تبدیل\\s*کن",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Operator campaigns pushing prepaid-to-postpaid conversion"
+            ),
+            FilterRule(
+                id = -14,
+                name = "Free Registration Promo (ثبت‌نام رایگان)",
+                pattern = "ثبت\\s*نام\\s*رایگان",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Free-signup / registration promotional SMS"
+            ),
+            FilterRule(
+                id = -15,
+                name = "MCI Academy Promo (آکادمی همراه‌اول)",
+                pattern = "آ?کادمی\\s*همراه\\s*اول",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Hamrah-e Avval (MCI) Academy marketing SMS"
+            ),
+            FilterRule(
+                id = -16,
+                name = "Online Sale Promo (حراج آنلاین)",
+                pattern = "حراج\\s*[آا]?ن\\s*لاین",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Online flash-sale ads: حراج آنلاین / حراج انلاین / حراج‌انلاین"
+            ),
+            FilterRule(
+                id = -17,
+                name = "Auction Entry Promo (شرکت در حراج)",
+                pattern = "شرکت\\s*در\\s*حراج",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Prompts to enter an auction or flash sale (شرکت در حراج)"
+            ),
+
+            // ==========================================
+            // --- SERVICE ALLOWLIST PRESETS ---
+            // ==========================================
+            FilterRule(
+                id = -104,
+                name = "Package Usage Deadline (مهلت استفاده)",
+                pattern = "مهلت\\s*استفاده",
+                isRegex = true,
+                action = FilterAction.NORMAL,
+                listType = RuleListType.ALLOWLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.CUSTOM_ALLOWLIST,
+                description = "Operator notices about remaining package validity / usage deadline — delivered with alert, overriding blocklists"
             )
         )
     }
