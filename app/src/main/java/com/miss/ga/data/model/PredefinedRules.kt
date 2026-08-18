@@ -298,6 +298,42 @@ object PredefinedRules {
                 category = RuleCategory.SPAM_KEYWORD,
                 description = "Operator/app ads that push in-app purchases (خرید از اپلیکیشن)"
             ),
+            FilterRule(
+                id = -22,
+                name = "b2n.ir Short Links",
+                pattern = "(?i)(https?://)?([a-z0-9-]+\\.)*b2n\\.ir",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Blocks b2n.ir shortened links in any casing (b2n.ir / B2N.IR / https://b2n.ir/...)"
+            ),
+            FilterRule(
+                id = -23,
+                name = "Discount Packages (بسته‌های تخفیفی)",
+                pattern = "بسته\\s*های\\s*تخفیفی",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Promotional discount-package ads: بسته‌های تخفیفی / بسته های تخفیفی"
+            ),
+            FilterRule(
+                id = -24,
+                name = "Activation Keyword (فعالسازی)",
+                pattern = "فعال\\s*سازی",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Blocks the word فعالسازی in every common spelling: فعالسازی, فعال سازی, فعال‌سازی"
+            ),
 
             // ==========================================
             // --- SERVICE ALLOWLIST PRESETS ---

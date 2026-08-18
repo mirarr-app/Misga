@@ -161,7 +161,10 @@ class SmsFilterEngineTest {
             -18L to "فعال‌سازی از طریق کد دستوری #۱۲۳* انجام شود.",
             -19L to "پیش‌بینی هوای فردا: بارانی. بسته اینترنت هدیه فعال کنید.",
             -20L to "عضو کانال شوید: https://rubika.ir/joinc/abc123",
-            -21L to "خرید از اپلیکیشن با تخفیف ویژه فقط تا امشب."
+            -21L to "خرید از اپلیکیشن با تخفیف ویژه فقط تا امشب.",
+            -22L to "برای دریافت جایزه روی لینک کلیک کنید: https://b2n.ir/abc123",
+            -23L to "بسته‌های تخفیفی اینترنت همراه اول برای شما فعال شد.",
+            -24L to "جهت فعالسازی بسته عدد ۱ را ارسال کنید."
         )
 
         cases.forEach { (id, sample) ->
@@ -233,6 +236,61 @@ class SmsFilterEngineTest {
                 SmsFilterEngine.testPattern(rule.pattern, rule.isRegex, personal).isMatch
             )
         }
+
+        val b2nRule = PredefinedRules.getDefaultRules().first { it.id == -22L }
+        listOf(
+            "https://B2N.IR/promo",
+            "http://www.b2n.ir/abc",
+            "B2n.Ir/xyz",
+            "b2n.ir"
+        ).forEach { sample ->
+            assertTrue(
+                "b2n.ir variant should match case-insensitively: $sample",
+                SmsFilterEngine.testPattern(b2nRule.pattern, true, sample).isMatch
+            )
+        }
+
+        val discountPackagesRule = PredefinedRules.getDefaultRules().first { it.id == -23L }
+        listOf(
+            "بسته‌های تخفیفی ویژه",
+            "بسته های تخفیفی ویژه",
+            "بسته\u200Cهای تخفیفی ویژه"
+        ).forEach { sample ->
+            assertTrue(
+                "Discount-package variant should match: $sample",
+                SmsFilterEngine.testPattern(discountPackagesRule.pattern, true, sample).isMatch
+            )
+        }
+
+        val activationRule = PredefinedRules.getDefaultRules().first { it.id == -24L }
+        listOf(
+            "فعالسازی بسته",
+            "فعال سازی بسته",
+            "فعال‌سازی بسته",
+            "فعال\u200Cسازی بسته"
+        ).forEach { sample ->
+            assertTrue(
+                "Activation-keyword variant should match: $sample",
+                SmsFilterEngine.testPattern(activationRule.pattern, true, sample).isMatch
+            )
+        }
+    }
+
+    @Test
+    fun testActivationOtpStillAllowlistedOverActivationKeywordBlocklist() {
+        val otpSms = "کد فعالسازی حساب کاربری: 554201"
+        val result = SmsFilterEngine.evaluateMessage(
+            sender = "10001234",
+            body = otpSms,
+            rules = PredefinedRules.getDefaultRules(),
+            senderPreference = null
+        )
+        assertEquals(
+            "OTP allowlist must override the فعالسازی keyword blocklist",
+            FilterAction.NORMAL,
+            result.action
+        )
+        assertTrue(result.isAllowlisted)
     }
 
     @Test
