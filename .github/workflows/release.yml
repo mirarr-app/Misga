@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read app version
+        id: version
+        run: |
+          VERSION=$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Could not read versionName from app/build.gradle.kts"
+            exit 1
+          fi
+          if [[ "$VERSION" == v* ]]; then
+            echo "::error::versionName must not include a 'v' prefix (got $VERSION)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version is $VERSION"
+
+      - name: Ensure git tag matches versionName
+        if: github.ref_type == 'tag'
+        run: |
+          if [[ "${{ github.ref_name }}" != "${{ steps.version.outputs.version }}" ]]; then
+            echo "::error::Git tag ${{ github.ref_name }} must equal versionName ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode signing keystore
+        env:
+          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+        run: |
+          if [[ -z "$SIGNING_KEYSTORE" ]]; then
+            echo "::error::SIGNING_KEYSTORE secret is missing"
+            exit 1
+          fi
+          echo "$SIGNING_KEYSTORE" | tr -d '\n\r ' | base64 --decode > "$RUNNER_TEMP/misga-release.jks"
+          test -s "$RUNNER_TEMP/misga-release.jks"
+
+      - name: Build signed release APK
+        env:
+          SIGNING_STORE_FILE: ${{ runner.temp }}/misga-release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Verify APKs are signed
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
+          for ABI in arm64-v8a armeabi-v7a universal; do
+            SIGNED="app/build/outputs/apk/release/app-${ABI}-release.apk"
+            UNSIGNED="app/build/outputs/apk/release/app-${ABI}-release-unsigned.apk"
+            if [[ -f "$UNSIGNED" && ! -f "$SIGNED" ]]; then
+              echo "::error::$ABI release APK was not signed. Check signing secrets."
+              exit 1
+            fi
+            test -f "$SIGNED"
+            "$APKSIGNER" verify --verbose "$SIGNED"
+          done
+
+      - name: Prepare release artifacts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk "dist/misga-${VERSION}-arm64.apk"
+          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk "dist/misga-${VERSION}-armv7a.apk"
+          cp app/build/outputs/apk/release/app-universal-release.apk "dist/misga-${VERSION}-universal.apk"
+          sha256sum dist/*.apk | tee dist/SHA256SUMS
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --generate-notes \
+            "dist/misga-${VERSION}-arm64.apk" \
+            "dist/misga-${VERSION}-armv7a.apk" \
+            "dist/misga-${VERSION}-universal.apk" \
+            dist/SHA256SUMS
