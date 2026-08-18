@@ -33,6 +33,7 @@ data class ConversationThread(
     val lastMessageAction: FilterAction = FilterAction.NORMAL
 ) {
     val isContact: Boolean get() = !contactName.isNullOrBlank()
+    val isLastReceivedSpam: Boolean get() = lastMessageAction == FilterAction.SPAM
 }
 
 @Immutable

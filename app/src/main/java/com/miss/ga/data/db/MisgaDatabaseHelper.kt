@@ -123,6 +123,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_deleted INTEGER DEFAULT 0") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN description TEXT") } catch (e: Exception) {}
         createCachedThreadsTable(db)
+        try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN last_message_action TEXT DEFAULT 'NORMAL'") } catch (e: Exception) {}
         try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)") } catch (e: Exception) {}
 
         // Insert any newly added predefined rules that might be missing
@@ -548,8 +549,18 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             val unreadIdx = it.getColumnIndexOrThrow("unread_count")
             val spamIdx = it.getColumnIndexOrThrow("is_unread_spam")
             val hasSpamIdx = it.getColumnIndexOrThrow("has_spam")
+            val actionIdx = it.getColumnIndex("last_message_action")
             while (it.moveToNext()) {
                 val contactName = if (it.isNull(nameIdx)) null else it.getString(nameIdx)
+                val lastMessageAction = if (actionIdx >= 0 && !it.isNull(actionIdx)) {
+                    try {
+                        FilterAction.valueOf(it.getString(actionIdx))
+                    } catch (e: Exception) {
+                        FilterAction.NORMAL
+                    }
+                } else {
+                    FilterAction.NORMAL
+                }
                 threads.add(
                     ConversationThread(
                         threadId = it.getLong(idIdx),
@@ -560,7 +571,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         messageCount = it.getInt(countIdx),
                         unreadCount = it.getInt(unreadIdx),
                         hasSpam = it.getInt(hasSpamIdx) == 1,
-                        isUnreadSpam = it.getInt(spamIdx) == 1
+                        isUnreadSpam = it.getInt(spamIdx) == 1,
+                        lastMessageAction = lastMessageAction
                     )
                 )
             }
@@ -584,6 +596,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                     put("unread_count", thread.unreadCount)
                     put("is_unread_spam", if (thread.isUnreadSpam) 1 else 0)
                     put("has_spam", if (thread.hasSpam) 1 else 0)
+                    put("last_message_action", thread.lastMessageAction.name)
                 }
                 db.insert("cached_threads", null, cv)
             }
@@ -605,7 +618,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 message_count INTEGER NOT NULL DEFAULT 0,
                 unread_count INTEGER NOT NULL DEFAULT 0,
                 is_unread_spam INTEGER NOT NULL DEFAULT 0,
-                has_spam INTEGER NOT NULL DEFAULT 0
+                has_spam INTEGER NOT NULL DEFAULT 0,
+                last_message_action TEXT NOT NULL DEFAULT 'NORMAL'
             )
             """.trimIndent()
         )

@@ -85,6 +85,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -721,10 +722,12 @@ private fun ConversationItem(
         Color.Transparent
     }
     val dateText = remember(thread.date) { SmsDateFormats.conversationList(thread.date) }
+    val isLastReceivedSpam = thread.isLastReceivedSpam
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (isLastReceivedSpam) 0.46f else 1f)
             .background(itemBgColor)
             .combinedClickable(
                 onClick = onClick,

@@ -82,11 +82,63 @@ class SmsRepository(private val context: Context) {
                 Log.e("SmsRepository", "Error querying unread batch", e)
             }
 
+            val latestInboxMessage = mutableMapOf<Long, Pair<Long, String>>() // threadId -> (msgId, body)
+            try {
+                val inboxCursor = contentResolver.query(
+                    Telephony.Sms.Inbox.CONTENT_URI,
+                    arrayOf(Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.BODY),
+                    null,
+                    null,
+                    "${Telephony.Sms.DATE} DESC"
+                )
+                inboxCursor?.use { iCursor ->
+                    val idIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms._ID)
+                    val tIdIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+                    val bodyIdx = iCursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                    while (iCursor.moveToNext()) {
+                        val tId = iCursor.getLong(tIdIdx)
+                        if (!latestInboxMessage.containsKey(tId)) {
+                            latestInboxMessage[tId] = Pair(
+                                iCursor.getLong(idIdx),
+                                iCursor.getString(bodyIdx) ?: ""
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SmsRepository", "Error querying latest inbox batch", e)
+            }
+
             val spamMetaMap = dbHelper.getAllSpamMetaMap()
             val allRules = dbHelper.getAllRules()
             val preparedRules = SmsFilterEngine.prepareRules(allRules)
             val senderPrefs = dbHelper.getAllSenderPreferences()
             val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
+            val evaluatedActions = mutableMapOf<Long, FilterAction>()
+
+            fun resolveInboxAction(msgId: Long, address: String, body: String): FilterAction {
+                evaluatedActions[msgId]?.let { return it }
+                val meta = spamMetaMap[msgId]
+                val action = if (meta != null) {
+                    if (meta.first) FilterAction.SPAM else FilterAction.NORMAL
+                } else {
+                    val pref = senderPrefs[dbHelper.normalizeAddress(address)]
+                    val eval = SmsFilterEngine.evaluateMessage(address, body, preparedRules, pref)
+                    if (eval.action == FilterAction.SPAM) {
+                        pendingSpamMarks.add(
+                            SpamMetaWrite(
+                                messageId = msgId,
+                                address = address,
+                                matchedRuleName = eval.matchedRuleName,
+                                action = eval.action
+                            )
+                        )
+                    }
+                    eval.action
+                }
+                evaluatedActions[msgId] = action
+                return action
+            }
 
             val cursor = contentResolver.query(
                 uri,
@@ -116,32 +168,15 @@ class SmsRepository(private val context: Context) {
 
                     // Fast unread count from pre-fetched batch
                     val unreadCount = if (read) 0 else (unreadCounts[threadId] ?: 0)
-                    var isUnreadSpam = false
-
-                    if (unreadCount > 0) {
-                        val latest = latestUnreadMessage[threadId]
-                        if (latest != null) {
-                            val (msgId, body) = latest
-                            val meta = spamMetaMap[msgId]
-                            if (meta != null) {
-                                isUnreadSpam = meta.first
-                            } else {
-                                val pref = senderPrefs[dbHelper.normalizeAddress(address)]
-                                val eval = SmsFilterEngine.evaluateMessage(address, body, preparedRules, pref)
-                                isUnreadSpam = eval.action == FilterAction.SPAM
-                                if (isUnreadSpam) {
-                                    pendingSpamMarks.add(
-                                        SpamMetaWrite(
-                                            messageId = msgId,
-                                            address = address,
-                                            matchedRuleName = eval.matchedRuleName,
-                                            action = eval.action
-                                        )
-                                    )
-                                }
-                            }
-                        }
+                    val lastInbox = latestInboxMessage[threadId]
+                    val lastMessageAction = if (lastInbox != null) {
+                        resolveInboxAction(lastInbox.first, address, lastInbox.second)
+                    } else {
+                        FilterAction.NORMAL
                     }
+                    val isUnreadSpam = unreadCount > 0 && latestUnreadMessage[threadId]?.let { latest ->
+                        resolveInboxAction(latest.first, address, latest.second) == FilterAction.SPAM
+                    } == true
 
                     threads.add(
                         ConversationThread(
@@ -153,7 +188,8 @@ class SmsRepository(private val context: Context) {
                             messageCount = count,
                             unreadCount = unreadCount,
                             hasSpam = false,
-                            isUnreadSpam = isUnreadSpam
+                            isUnreadSpam = isUnreadSpam,
+                            lastMessageAction = lastMessageAction
                         )
                     )
                 }
