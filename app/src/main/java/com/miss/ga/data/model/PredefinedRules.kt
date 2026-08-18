@@ -334,6 +334,18 @@ object PredefinedRules {
                 category = RuleCategory.SPAM_KEYWORD,
                 description = "Blocks the word فعالسازی in every common spelling: فعالسازی, فعال سازی, فعال‌سازی"
             ),
+            FilterRule(
+                id = -25,
+                name = "Vanity Number Promo (رُند)",
+                pattern = "(?<![\\u0600-\\u06FF])ر\\s*ن\\s*د(?![\\u0600-\\u06FF])",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Blocks the standalone word رُند in any shape: رند, رُند, ر ند, ر‌ند. Does not match برند."
+            ),
 
             // ==========================================
             // --- SERVICE ALLOWLIST PRESETS ---
