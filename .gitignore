@@ -67,3 +67,4 @@ Thumbs.db
 # Captures and profiling
 /captures/
 
+/.kotlin/errors
