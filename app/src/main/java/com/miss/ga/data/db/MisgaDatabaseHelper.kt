@@ -88,7 +88,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 list_type TEXT NOT NULL DEFAULT 'BLOCKLIST',
                 is_enabled INTEGER NOT NULL,
                 is_deleted INTEGER NOT NULL DEFAULT 0,
-                description TEXT
+                description TEXT,
+                is_customized INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
@@ -122,11 +123,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN list_type TEXT DEFAULT 'BLOCKLIST'") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_deleted INTEGER DEFAULT 0") } catch (e: Exception) {}
         try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN description TEXT") } catch (e: Exception) {}
+        try { db.execSQL("ALTER TABLE predefined_rule_settings ADD COLUMN is_customized INTEGER DEFAULT 0") } catch (e: Exception) {}
         createCachedThreadsTable(db)
         try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN last_message_action TEXT DEFAULT 'NORMAL'") } catch (e: Exception) {}
         try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)") } catch (e: Exception) {}
 
-        // Insert any newly added predefined rules that might be missing
+        // Insert any newly added predefined rules that might be missing, then
+        // refresh shipped name/pattern unless the user customized that preset.
         PredefinedRules.getDefaultRules().forEach { rule ->
             val cv = ContentValues().apply {
                 put("rule_id", rule.id)
@@ -138,8 +141,22 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 put("is_enabled", if (rule.isEnabled) 1 else 0)
                 put("is_deleted", 0)
                 put("description", rule.description)
+                put("is_customized", 0)
             }
             db.insertWithOnConflict("predefined_rule_settings", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+            val shipped = ContentValues().apply {
+                put("name", rule.name)
+                put("pattern", rule.pattern)
+                put("is_regex", if (rule.isRegex) 1 else 0)
+                put("list_type", rule.listType.name)
+                put("description", rule.description)
+            }
+            db.update(
+                "predefined_rule_settings",
+                shipped,
+                "rule_id = ? AND IFNULL(is_deleted, 0) = 0 AND IFNULL(is_customized, 0) = 0",
+                arrayOf(rule.id.toString())
+            )
         }
     }
 
@@ -293,6 +310,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 put("is_enabled", if (rule.isEnabled) 1 else 0)
                 put("is_deleted", 0)
                 put("description", rule.description)
+                put("is_customized", 1)
             }
             val rows = writableDatabase.insertWithOnConflict(
                 "predefined_rule_settings",

@@ -144,15 +144,15 @@ object PredefinedRules {
             ),
             FilterRule(
                 id = -9,
-                name = "Martyr Imam Promo (امام شهید)",
-                pattern = "امام\\s*شهید",
+                name = "Religious Honorific Promo (امام / حاج)",
+                pattern = "(?<![\\u0600-\\u06FF])(امام|حاجی?)(?![\\u0600-\\u06FF])",
                 isRegex = true,
                 action = FilterAction.SPAM,
                 listType = RuleListType.BLOCKLIST,
                 isEnabled = true,
                 isPredefined = true,
                 category = RuleCategory.SPAM_KEYWORD,
-                description = "Operator bulk SMS that invoke religious/political 'امام شهید' phrasing"
+                description = "Bulk SMS using the honorifics امام or حاج / حاجی as standalone words"
             ),
             FilterRule(
                 id = -10,
@@ -249,6 +249,54 @@ object PredefinedRules {
                 isPredefined = true,
                 category = RuleCategory.SPAM_KEYWORD,
                 description = "Prompts to enter an auction or flash sale (شرکت در حراج)"
+            ),
+            FilterRule(
+                id = -18,
+                name = "Activation Via Promo (فعال‌سازی از طریق)",
+                pattern = "فعال\\s*سازی\\s*از\\s*طریق",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Operator ads that push activation via USSD, link, or code (فعال‌سازی / فعال سازی / فعالسازی از طریق)"
+            ),
+            FilterRule(
+                id = -19,
+                name = "Forecast Promo (پیش‌بینی)",
+                pattern = "پیش[-\\s]*بینی",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Blocks پیش‌بینی in every common spelling: پیش‌بینی, پیش بینی, پیشبینی, پيشبيني"
+            ),
+            FilterRule(
+                id = -20,
+                name = "Iranian Social Media Links (روبیکا / ایتا / بله)",
+                pattern = "(?i)(https?://)?([a-z0-9-]+\\.)*(rubika\\.ir|eitaa\\.com|eitaa\\.ir|bale\\.ai|igap\\.net|gap\\.im|splus\\.ir|soroushplus\\.(ir|com)|aparat\\.com|virasty\\.com)",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Invite/install links to Iranian messengers and social apps: Rubika, Eitaa, Bale, iGap, Gap, Soroush Plus, Aparat, Virasty"
+            ),
+            FilterRule(
+                id = -21,
+                name = "In-App Purchase Promo (خرید از اپلیکیشن)",
+                pattern = "خرید\\s*از\\s*اپلیکیشن",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Operator/app ads that push in-app purchases (خرید از اپلیکیشن)"
             ),
 
             // ==========================================

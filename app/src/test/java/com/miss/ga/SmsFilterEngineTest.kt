@@ -146,7 +146,10 @@ class SmsFilterEngineTest {
     @Test
     fun testNewKeywordBlocklistPresets() {
         val cases = listOf(
-            -9L to "پیام تبریک به مناسبت سالگرد امام شهید از همراه اول",
+            -9L to """مراسم بزرگداشت چهلمین روز تشییع تاریخی و تدفین «آقای شهید ایران» از سوی رهبر معظّم انقلاب
+
+سه‌شنبه ۲۷ مرداد، ساعت ۱۷ تا ۱۹
+تهران - مصلی امام خمینی رحمت‌الله‌علیه""",
             -10L to "تخفیف مکالمه ویژه برای شما فعال شد. جهت فعالسازی عدد ۱ را بفرستید.",
             -11L to "۲ گیگ اینترنت هدیه برای سیم‌کارت شما منظور گردید.",
             -12L to "مشترک گرامی سیم‌کارت اعتباری، بسته جدید برای شما آماده است.",
@@ -154,7 +157,11 @@ class SmsFilterEngineTest {
             -14L to "ثبت‌نام رایگان در باشگاه مشتریان همراه اول آغاز شد.",
             -15L to "دوره‌های جدید آکادمی همراه‌اول را از دست ندهید.",
             -16L to "حراج آنلاین محصولات دیجیتال با ۵۰ درصد تخفیف شروع شد.",
-            -17L to "برای شرکت در حراج عدد ۱ را ارسال کنید."
+            -17L to "برای شرکت در حراج عدد ۱ را ارسال کنید.",
+            -18L to "فعال‌سازی از طریق کد دستوری #۱۲۳* انجام شود.",
+            -19L to "پیش‌بینی هوای فردا: بارانی. بسته اینترنت هدیه فعال کنید.",
+            -20L to "عضو کانال شوید: https://rubika.ir/joinc/abc123",
+            -21L to "خرید از اپلیکیشن با تخفیف ویژه فقط تا امشب."
         )
 
         cases.forEach { (id, sample) ->
@@ -180,6 +187,41 @@ class SmsFilterEngineTest {
             assertTrue(
                 "Online-sale variant should match: $sample",
                 SmsFilterEngine.testPattern(onlineSaleRule.pattern, true, sample).isMatch
+            )
+        }
+
+        val forecastRule = PredefinedRules.getDefaultRules().first { it.id == -19L }
+        listOf(
+            "پیش‌بینی بارش",
+            "پیش بینی بارش",
+            "پیشبینی بارش",
+            "پیش-بینی بارش",
+            "پيش\u200Cبيني بارش",
+            "پیش‌بینی‌ها اعلام شد"
+        ).forEach { sample ->
+            assertTrue(
+                "Forecast variant should match: $sample",
+                SmsFilterEngine.testPattern(forecastRule.pattern, true, sample).isMatch
+            )
+        }
+
+        val socialLinkRule = PredefinedRules.getDefaultRules().first { it.id == -20L }
+        listOf(
+            "https://www.rubika.ir/install-android",
+            "rubika.ir/join/xyz",
+            "http://eitaa.com/joinchat/xxx",
+            "https://eitaa.ir/channel",
+            "bale.ai/c/promo",
+            "igap.net/join",
+            "gap.im/dl",
+            "https://splus.ir/joingroup/aa",
+            "soroushplus.com/channel",
+            "aparat.com/v/abc",
+            "https://virasty.com/post/1"
+        ).forEach { sample ->
+            assertTrue(
+                "Iranian social link should match: $sample",
+                SmsFilterEngine.testPattern(socialLinkRule.pattern, true, sample).isMatch
             )
         }
 

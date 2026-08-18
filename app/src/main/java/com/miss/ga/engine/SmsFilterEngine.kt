@@ -138,6 +138,7 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
         }
 
         private val compiledPatterns = ConcurrentHashMap<String, Pattern>()
+        private val arabicDiacritics = Regex("[\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]")
 
         private fun compiledPattern(patternStr: String, flags: Int): Pattern {
             val cacheKey = "$flags\u0000$patternStr"
@@ -179,6 +180,8 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                 .replace('\u200C', ' ')       // ZWNJ -> space for flexible matching
                 .replace('\u0649', '\u06CC') // Alef Maksura -> Persian Yeh
                 .replace('\u06C0', '\u06C1') // Urdu Heh -> Standard Heh
+                .replace("\u0640", "")       // Tatweel / kashida
+                .replace(arabicDiacritics, "") // Shadda, fatha, etc. so معظّم == معظم
         }
 
         fun testPattern(patternStr: String, isRegex: Boolean, sampleText: String): RegexTestResult {
