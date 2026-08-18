@@ -46,7 +46,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.MarkChatRead
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Shield
@@ -68,6 +67,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,8 +94,7 @@ import com.miss.ga.R
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.theme.PillShape
-import com.miss.ga.theme.getAvatarGradient
-import com.miss.ga.theme.NonContactAvatarBrush
+import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.DefaultSmsBanner
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
@@ -104,6 +103,7 @@ import java.util.Locale
 
 private val ListBottomFabPadding = 88.dp
 private val AvatarDividerInset = 78.dp
+private val NoSelectionIds: Set<Long> = emptySet()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,6 +116,8 @@ fun ConversationsScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val selectedThreadIds = viewModel.selectedThreadIds
+    val isSelectionMode = viewModel.isSelectionMode
     val context = LocalContext.current
 
     val defaultSmsLauncher = rememberLauncherForActivityResult(
@@ -126,216 +128,65 @@ fun ConversationsScreen(
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        viewModel.checkDefaultSmsStatus()
-        viewModel.loadThreads(silent = true)
+        viewModel.onInboxResumed()
     }
 
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
 
-    // Intercept back press when in multi-selection mode
-    BackHandler(enabled = state.isSelectionMode) {
+    BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
     }
 
     val currentlyVisibleThreads = remember(state.filteredThreads, state.showContactsOnly) {
         if (state.showContactsOnly) state.filteredThreads.filter { it.isContact } else state.filteredThreads
     }
-    val allFilteredSelected = currentlyVisibleThreads.isNotEmpty() &&
-            state.selectedThreadIds.containsAll(currentlyVisibleThreads.map { it.threadId })
     val isDebuggable = remember(context) {
         (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
 
     Scaffold(
         topBar = {
-            if (state.isSelectionMode) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = "${state.selectedThreadIds.size} selected",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { viewModel.clearSelection() }) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Cancel selection",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+            ConversationsTopBar(
+                isSelectionMode = isSelectionMode,
+                selectedThreadIds = selectedThreadIds,
+                visibleThreads = currentlyVisibleThreads,
+                showContactsOnly = state.showContactsOnly,
+                threads = state.threads,
+                isDebuggable = isDebuggable,
+                onClearSelection = { viewModel.clearSelection() },
+                onSelectAll = { viewModel.selectAllThreads() },
+                onMarkSelectedRead = {
+                    viewModel.markSelectedConversationsRead { count ->
+                        Toast.makeText(
+                            context,
+                            "Marked $count conversation${if (count > 1) "s" else ""} as read",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                onDeleteSelected = { showBatchDeleteDialog = true },
+                onToggleContactsOnly = {
+                    viewModel.toggleContactsOnly()
+                    val msg = if (!state.showContactsOnly) "Showing contacts only" else "Showing all conversations"
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                },
+                onMarkAllRead = {
+                    val hasUnread = state.threads.any { it.unreadCount > 0 }
+                    if (hasUnread) {
+                        viewModel.markAllConversationsRead {
+                            Toast.makeText(context, "All conversations marked as read", Toast.LENGTH_SHORT).show()
                         }
-                    },
-                    actions = {
-                        // Select All / Deselect All
-                        IconButton(onClick = { viewModel.selectAllThreads() }) {
-                            Icon(
-                                imageVector = if (allFilteredSelected) Icons.Default.Deselect else Icons.Default.SelectAll,
-                                contentDescription = if (allFilteredSelected) "Deselect all" else "Select all",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        // Batch Mark Read
-                        IconButton(
-                            onClick = {
-                                viewModel.markSelectedConversationsRead { count ->
-                                    Toast.makeText(
-                                        context,
-                                        "Marked $count conversation${if (count > 1) "s" else ""} as read",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MarkChatRead,
-                                contentDescription = "Mark as read",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        // Batch Delete
-                        IconButton(
-                            onClick = { showBatchDeleteDialog = true }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Delete selected",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    },
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    )
-                )
-            } else {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                text = "Misga",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = (-0.5).sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Make Iran's SMS Great Again",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    },
-                    actions = {
-                        // Contacts Only Filter Toggle Button
-                        val isContactsOnly = state.showContactsOnly
-                        val contactsButtonBg by animateColorAsState(
-                            targetValue = if (isContactsOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            animationSpec = spring(),
-                            label = "contactsToggleBg"
-                        )
-                        val contactsIconTint by animateColorAsState(
-                            targetValue = if (isContactsOnly) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                            animationSpec = spring(),
-                            label = "contactsToggleTint"
-                        )
-
-                        Surface(
-                            shape = CircleShape,
-                            color = contactsButtonBg,
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    viewModel.toggleContactsOnly()
-                                    val msg = if (!isContactsOnly) "Showing contacts only" else "Showing all conversations"
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Contacts,
-                                    contentDescription = if (isContactsOnly) "Showing contacts only (Tap to show all)" else "Filter by contacts only",
-                                    tint = contactsIconTint
-                                )
-                            }
-                        }
-
-                        // Mark All as Read Button
-                        if (state.threads.isNotEmpty()) {
-                            val hasUnread = state.threads.any { it.unreadCount > 0 }
-                            Surface(
-                                shape = CircleShape,
-                                color = if (hasUnread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.padding(end = 6.dp)
-                            ) {
-                                IconButton(
-                                    onClick = {
-                                        if (hasUnread) {
-                                            viewModel.markAllConversationsRead {
-                                                Toast.makeText(context, "All conversations marked as read", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } else {
-                                            Toast.makeText(context, "All conversations are already read", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MarkChatRead,
-                                        contentDescription = "Mark all as read",
-                                        tint = if (hasUnread) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-
-                        // Test Lab & Simulator Button (debug builds only)
-                        if (isDebuggable) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.padding(end = 6.dp)
-                            ) {
-                                IconButton(onClick = onNavigateToTestLab) {
-                                    Icon(
-                                        imageVector = Icons.Default.BugReport,
-                                        contentDescription = "Test Lab & Simulator",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-
-                        // Filter Studio Button
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            IconButton(onClick = onNavigateToFilterStudio) {
-                                Icon(
-                                    imageVector = Icons.Default.FilterAlt,
-                                    contentDescription = "Filter Studio",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    },
-                    windowInsets = TopAppBarDefaults.windowInsets,
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                )
-            }
+                    } else {
+                        Toast.makeText(context, "All conversations are already read", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onNavigateToTestLab = onNavigateToTestLab,
+                onNavigateToFilterStudio = onNavigateToFilterStudio
+            )
         },
         floatingActionButton = {
             AnimatedVisibility(
-                visible = !state.isSelectionMode,
+                visible = !isSelectionMode,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -362,9 +213,8 @@ fun ConversationsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Search Bar is hidden in selection mode for focused contextual actions
             AnimatedVisibility(
-                visible = !state.isSelectionMode,
+                visible = !isSelectionMode,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -511,7 +361,6 @@ fun ConversationsScreen(
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else if (isSearchActive) {
-                // Search Results State
                 val hasResults = displayedThreads.isNotEmpty() || displayedMessages.isNotEmpty()
 
                 if (state.isSearching && !hasResults) {
@@ -537,7 +386,7 @@ fun ConversationsScreen(
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.Search,
-                                        contentDescription = null,
+                                        contentDescription = "No messages",
                                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
                                         modifier = Modifier.size(40.dp)
                                     )
@@ -577,7 +426,7 @@ fun ConversationsScreen(
                             ) { thread ->
                                 ConversationItem(
                                     thread = thread,
-                                    isSelected = false,
+                                    selectedIds = NoSelectionIds,
                                     isSelectionMode = false,
                                     onClick = {
                                         onNavigateToChat(
@@ -649,7 +498,7 @@ fun ConversationsScreen(
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (state.showContactsOnly) Icons.Default.Contacts else Icons.Default.Shield,
-                                    contentDescription = null,
+                                    contentDescription = "No messages",
                                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
                                     modifier = Modifier.size(40.dp)
                                 )
@@ -671,115 +520,311 @@ fun ConversationsScreen(
                     }
                 }
             } else {
-                val selected = state.selectedThreadIds
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = ListBottomFabPadding)
-                ) {
-                    items(
-                        items = displayedThreads,
-                        key = { it.threadId },
-                        contentType = { "thread" }
-                    ) { thread ->
-                        val isSelected = remember(selected, thread.threadId) { thread.threadId in selected }
-                        ConversationItem(
-                            thread = thread,
-                            isSelected = isSelected,
-                            isSelectionMode = state.isSelectionMode,
-                            onClick = {
-                                if (state.isSelectionMode) {
-                                    viewModel.toggleSelectThread(thread.threadId)
-                                } else {
-                                    onNavigateToChat(
-                                        ChatNav(
-                                            threadId = thread.threadId,
-                                            address = thread.address,
-                                            contactName = thread.contactName
-                                        )
-                                    )
-                                }
-                            },
-                            onLongClick = {
-                                if (state.isSelectionMode) {
-                                    viewModel.toggleSelectThread(thread.threadId)
-                                } else {
-                                    viewModel.enterSelectionMode(thread.threadId)
-                                }
-                            }
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = AvatarDividerInset, end = 16.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                        )
-                    }
-                }
+                ConversationsInboxList(
+                    threads = displayedThreads,
+                    selectedIds = selectedThreadIds,
+                    isSelectionMode = isSelectionMode,
+                    onOpenChat = onNavigateToChat,
+                    onToggleSelect = viewModel::toggleSelectThread,
+                    onEnterSelection = viewModel::enterSelectionMode
+                )
             }
         }
     }
 
-    // Batch Delete Confirmation Dialog
     if (showBatchDeleteDialog) {
-        val count = state.selectedThreadIds.size
-        AlertDialog(
-            onDismissRequest = { showBatchDeleteDialog = false },
-            title = {
-                Text(
-                    text = "Delete $count conversation${if (count > 1) "s" else ""}?",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
+        BatchDeleteConversationsDialog(
+            selectedThreadIds = selectedThreadIds,
+            onDismiss = { showBatchDeleteDialog = false },
+            onConfirm = { deletedCount ->
+                Toast.makeText(
+                    context,
+                    "Deleted $deletedCount conversation${if (deletedCount > 1) "s" else ""}",
+                    Toast.LENGTH_SHORT
+                ).show()
             },
-            text = {
-                Text(
-                    text = "Are you sure you want to delete $count selected conversation${if (count > 1) "s" else ""} and all associated messages? This action cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showBatchDeleteDialog = false
-                        viewModel.deleteSelectedConversations { deletedCount ->
-                            Toast.makeText(
-                                context,
-                                "Deleted $deletedCount conversation${if (deletedCount > 1) "s" else ""}",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBatchDeleteDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+            onDelete = { onComplete -> viewModel.deleteSelectedConversations(onComplete) }
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConversationsTopBar(
+    isSelectionMode: Boolean,
+    selectedThreadIds: Set<Long>,
+    visibleThreads: List<ConversationThread>,
+    showContactsOnly: Boolean,
+    threads: List<ConversationThread>,
+    isDebuggable: Boolean,
+    onClearSelection: () -> Unit,
+    onSelectAll: () -> Unit,
+    onMarkSelectedRead: () -> Unit,
+    onDeleteSelected: () -> Unit,
+    onToggleContactsOnly: () -> Unit,
+    onMarkAllRead: () -> Unit,
+    onNavigateToTestLab: () -> Unit,
+    onNavigateToFilterStudio: () -> Unit
+) {
+    if (isSelectionMode) {
+        val selectedCount = selectedThreadIds.size
+        val allFilteredSelected = visibleThreads.isNotEmpty() &&
+                selectedThreadIds.containsAll(visibleThreads.map { it.threadId })
+        TopAppBar(
+            title = {
+                Text(
+                    text = "$selectedCount selected",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onClearSelection) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cancel selection",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            },
+            actions = {
+                IconButton(onClick = onSelectAll) {
+                    Icon(
+                        imageVector = if (allFilteredSelected) Icons.Default.Deselect else Icons.Default.SelectAll,
+                        contentDescription = if (allFilteredSelected) "Deselect all" else "Select all",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                IconButton(onClick = onMarkSelectedRead) {
+                    Icon(
+                        imageVector = Icons.Default.MarkChatRead,
+                        contentDescription = "Mark as read",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                IconButton(onClick = onDeleteSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete selected",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            windowInsets = TopAppBarDefaults.windowInsets,
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+        )
+    } else {
+        TopAppBar(
+            title = {
+                Column {
+                    Text(
+                        text = "Misga",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-0.5).sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.sms_inbox),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            },
+            actions = {
+                val contactsButtonBg by animateColorAsState(
+                    targetValue = if (showContactsOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    animationSpec = spring(),
+                    label = "contactsToggleBg"
+                )
+                val contactsIconTint by animateColorAsState(
+                    targetValue = if (showContactsOnly) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                    animationSpec = spring(),
+                    label = "contactsToggleTint"
+                )
+
+                Surface(
+                    shape = CircleShape,
+                    color = contactsButtonBg,
+                    modifier = Modifier.padding(end = 6.dp)
+                ) {
+                    IconButton(onClick = onToggleContactsOnly) {
+                        Icon(
+                            imageVector = Icons.Default.Contacts,
+                            contentDescription = if (showContactsOnly) "Showing contacts only (Tap to show all)" else "Filter by contacts only",
+                            tint = contactsIconTint
+                        )
+                    }
+                }
+
+                if (threads.isNotEmpty()) {
+                    val hasUnread = threads.any { it.unreadCount > 0 }
+                    Surface(
+                        shape = CircleShape,
+                        color = if (hasUnread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        IconButton(onClick = onMarkAllRead) {
+                            Icon(
+                                imageVector = Icons.Default.MarkChatRead,
+                                contentDescription = "Mark all as read",
+                                tint = if (hasUnread) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
+                if (isDebuggable) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        IconButton(onClick = onNavigateToTestLab) {
+                            Icon(
+                                imageVector = Icons.Default.BugReport,
+                                contentDescription = "Test Lab & Simulator",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    IconButton(onClick = onNavigateToFilterStudio) {
+                        Icon(
+                            imageVector = Icons.Default.FilterAlt,
+                            contentDescription = "Filter Studio",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            windowInsets = TopAppBarDefaults.windowInsets,
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        )
+    }
+}
+
+@Composable
+private fun ConversationsInboxList(
+    threads: List<ConversationThread>,
+    selectedIds: Set<Long>,
+    isSelectionMode: Boolean,
+    onOpenChat: (ChatNav) -> Unit,
+    onToggleSelect: (Long) -> Unit,
+    onEnterSelection: (Long) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = ListBottomFabPadding)
+    ) {
+        items(
+            items = threads,
+            key = { it.threadId },
+            contentType = { "thread" }
+        ) { thread ->
+            ConversationItem(
+                thread = thread,
+                selectedIds = selectedIds,
+                isSelectionMode = isSelectionMode,
+                onClick = {
+                    if (isSelectionMode) {
+                        onToggleSelect(thread.threadId)
+                    } else {
+                        onOpenChat(
+                            ChatNav(
+                                threadId = thread.threadId,
+                                address = thread.address,
+                                contactName = thread.contactName
+                            )
+                        )
+                    }
+                },
+                onLongClick = {
+                    if (isSelectionMode) {
+                        onToggleSelect(thread.threadId)
+                    } else {
+                        onEnterSelection(thread.threadId)
+                    }
+                }
+            )
+            HorizontalDivider(
+                modifier = Modifier.padding(start = AvatarDividerInset, end = 16.dp),
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BatchDeleteConversationsDialog(
+    selectedThreadIds: Set<Long>,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+    onDelete: ((Int) -> Unit) -> Unit
+) {
+    val count = selectedThreadIds.size
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Delete $count conversation${if (count > 1) "s" else ""}?",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = "Are you sure you want to delete $count selected conversation${if (count > 1) "s" else ""} and all associated messages? This action cannot be undone.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismiss()
+                    onDelete { deletedCount -> onConfirm(deletedCount) }
+                }
+            ) {
+                Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationItem(
     thread: ConversationThread,
-    isSelected: Boolean,
+    selectedIds: Set<Long>,
     isSelectionMode: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val isContact = !thread.contactName.isNullOrBlank()
-    val displayName = thread.contactName ?: thread.address
-    val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "#"
-
-    // Contacts keep the colorful random theme; non-contacts get a grey profile placeholder
-    val avatarBrush = if (isContact) {
-        getAvatarGradient(thread.address)
-    } else {
-        NonContactAvatarBrush
+    val isSelected by remember(thread.threadId) {
+        derivedStateOf { thread.threadId in selectedIds }
     }
+    val displayName = thread.contactName ?: thread.address
 
     val itemBgColor = if (isSelected) {
         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
@@ -801,7 +846,6 @@ private fun ConversationItem(
             .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Selection State / Avatar with M3E animation
         Box(
             modifier = Modifier.size(50.dp),
             contentAlignment = Alignment.Center
@@ -825,61 +869,29 @@ private fun ConversationItem(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(CircleShape)
-                        .background(avatarBrush)
                         .border(
                             width = 2.dp,
                             color = MaterialTheme.colorScheme.outlineVariant,
                             shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
+                        )
                 ) {
-                    if (isContact || initial.any { it.isLetter() }) {
-                        Text(
-                            text = initial,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    ConversationAvatar(
+                        address = thread.address,
+                        contactName = thread.contactName,
+                        size = 48.dp
+                    )
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(avatarBrush),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isContact || initial.any { it.isLetter() }) {
-                        Text(
-                            text = initial,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
+                ConversationAvatar(
+                    address = thread.address,
+                    contactName = thread.contactName,
+                    size = 48.dp
+                )
             }
         }
 
         Spacer(modifier = Modifier.width(14.dp))
 
-        // Name, Snippet, Date, Badge
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -995,15 +1007,7 @@ private fun SearchMessageResultItem(
     searchQuery: String,
     onClick: () -> Unit
 ) {
-    val isContact = !item.contactName.isNullOrBlank()
     val displayName = item.contactName ?: item.address
-    val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "#"
-
-    val avatarBrush = if (isContact) {
-        getAvatarGradient(item.address)
-    } else {
-        NonContactAvatarBrush
-    }
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1019,29 +1023,11 @@ private fun SearchMessageResultItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(avatarBrush),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isContact || initial.any { it.isLetter() }) {
-                Text(
-                    text = initial,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.9f),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
+        ConversationAvatar(
+            address = item.address,
+            contactName = item.contactName,
+            size = 48.dp
+        )
 
         Spacer(modifier = Modifier.width(14.dp))
 
@@ -1142,6 +1128,3 @@ private fun buildAnnotatedSearchSnippet(
 
     return builder.toAnnotatedString()
 }
-
-
-

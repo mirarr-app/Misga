@@ -9,6 +9,10 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Telephony
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -35,9 +39,7 @@ data class ConversationsUiState(
     val showContactsOnly: Boolean = false,
     val isDefaultSmsApp: Boolean = false,
     val hasSmsPermission: Boolean = true,
-    val error: String? = null,
-    val selectedThreadIds: Set<Long> = emptySet(),
-    val isSelectionMode: Boolean = false
+    val error: String? = null
 )
 
 class ConversationsViewModel(application: Application) : AndroidViewModel(application) {
@@ -54,6 +56,10 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     private val _uiState = MutableStateFlow(ConversationsUiState())
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
 
+    val selectedThreadIds = mutableStateSetOf<Long>()
+    var isSelectionMode by mutableStateOf(false)
+        private set
+
     init {
         registerSmsContentObserver()
         loadThreads()
@@ -66,6 +72,12 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             dbHelper.spamMetaChanged.drop(1).collect { loadThreads(silent = true, force = true) }
         }
+    }
+
+    fun onInboxResumed() {
+        repository.invalidateLookupCaches()
+        checkDefaultSmsStatus()
+        loadThreads(silent = true)
     }
 
     fun loadThreads(silent: Boolean = false, force: Boolean = false) {
@@ -276,24 +288,18 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun enterSelectionMode(threadId: Long) {
-        _uiState.value = _uiState.value.copy(
-            isSelectionMode = true,
-            selectedThreadIds = setOf(threadId)
-        )
+        selectedThreadIds.clear()
+        selectedThreadIds.add(threadId)
+        isSelectionMode = true
     }
 
     fun toggleSelectThread(threadId: Long) {
-        val currentSelected = _uiState.value.selectedThreadIds.toMutableSet()
-        if (currentSelected.contains(threadId)) {
-            currentSelected.remove(threadId)
+        if (threadId in selectedThreadIds) {
+            selectedThreadIds.remove(threadId)
         } else {
-            currentSelected.add(threadId)
+            selectedThreadIds.add(threadId)
         }
-        val isStillSelecting = currentSelected.isNotEmpty()
-        _uiState.value = _uiState.value.copy(
-            selectedThreadIds = currentSelected,
-            isSelectionMode = isStillSelecting
-        )
+        isSelectionMode = selectedThreadIds.isNotEmpty()
     }
 
     fun selectAllThreads() {
@@ -302,48 +308,25 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         } else {
             _uiState.value.filteredThreads
         }
-        val allFilteredIds = visibleThreads.map { it.threadId }.toSet()
-        val allSelected = _uiState.value.selectedThreadIds.containsAll(allFilteredIds) && allFilteredIds.isNotEmpty()
+        val allFilteredIds = visibleThreads.map { it.threadId }
+        val allSelected = selectedThreadIds.containsAll(allFilteredIds) && allFilteredIds.isNotEmpty()
         if (allSelected) {
-            _uiState.value = _uiState.value.copy(
-                selectedThreadIds = emptySet(),
-                isSelectionMode = false
-            )
+            selectedThreadIds.clear()
+            isSelectionMode = false
         } else {
-            _uiState.value = _uiState.value.copy(
-                selectedThreadIds = allFilteredIds,
-                isSelectionMode = true
-            )
+            selectedThreadIds.clear()
+            selectedThreadIds.addAll(allFilteredIds)
+            isSelectionMode = true
         }
     }
 
     fun clearSelection() {
-        _uiState.value = _uiState.value.copy(
-            selectedThreadIds = emptySet(),
-            isSelectionMode = false
-        )
-    }
-
-    fun deleteConversation(threadId: Long) {
-        viewModelScope.launch {
-            val success = repository.deleteThread(threadId)
-            if (success) {
-                val updatedThreads = _uiState.value.threads.filter { it.threadId != threadId }
-                val updatedFiltered = _uiState.value.filteredThreads.filter { it.threadId != threadId }
-                val updatedSelected = _uiState.value.selectedThreadIds - threadId
-                _uiState.value = _uiState.value.copy(
-                    threads = updatedThreads,
-                    filteredThreads = updatedFiltered,
-                    selectedThreadIds = updatedSelected,
-                    isSelectionMode = updatedSelected.isNotEmpty()
-                )
-                repository.saveCachedThreads(updatedThreads)
-            }
-        }
+        selectedThreadIds.clear()
+        isSelectionMode = false
     }
 
     fun deleteSelectedConversations(onComplete: (Int) -> Unit = {}) {
-        val targetIds = _uiState.value.selectedThreadIds
+        val targetIds = selectedThreadIds.toSet()
         if (targetIds.isEmpty()) return
 
         viewModelScope.launch {
@@ -358,11 +341,11 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
             }
             val updatedThreads = _uiState.value.threads.filter { it.threadId !in targetIds }
             val updatedFiltered = _uiState.value.filteredThreads.filter { it.threadId !in targetIds }
+            selectedThreadIds.clear()
+            isSelectionMode = false
             _uiState.value = _uiState.value.copy(
                 threads = updatedThreads,
                 filteredThreads = updatedFiltered,
-                selectedThreadIds = emptySet(),
-                isSelectionMode = false,
                 error = null
             )
             repository.saveCachedThreads(updatedThreads)
@@ -370,15 +353,8 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun markConversationRead(threadId: Long) {
-        viewModelScope.launch {
-            repository.markThreadRead(threadId)
-            loadThreads(silent = true, force = true)
-        }
-    }
-
     fun markSelectedConversationsRead(onComplete: (Int) -> Unit = {}) {
-        val targetIds = _uiState.value.selectedThreadIds
+        val targetIds = selectedThreadIds.toSet()
         if (targetIds.isEmpty()) return
 
         viewModelScope.launch {

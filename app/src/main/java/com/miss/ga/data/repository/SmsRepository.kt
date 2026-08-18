@@ -25,6 +25,8 @@ import com.miss.ga.engine.SmsFilterEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val TAG = "SmsRepository"
+
 class SmsRepository(private val context: Context) {
 
     private val dbHelper = MisgaDatabaseHelper.getInstance(context)
@@ -163,7 +165,7 @@ class SmsRepository(private val context: Context) {
                     }
                 }
             } catch (e: Exception) {
-                Log.e("SmsRepository", "Error querying unread batch", e)
+                Log.e(TAG, "Error querying unread batch", e)
             }
 
             val latestInboxMessage = mutableMapOf<Long, Pair<Long, String>>() // threadId -> (msgId, body)
@@ -193,7 +195,7 @@ class SmsRepository(private val context: Context) {
                     }
                 }
             } catch (e: Exception) {
-                Log.e("SmsRepository", "Error querying latest inbox batch", e)
+                Log.e(TAG, "Error querying latest inbox batch", e)
             }
 
             val metaIds = LinkedHashSet<Long>()
@@ -277,13 +279,13 @@ class SmsRepository(private val context: Context) {
             }
 
             if (pendingSpamMarks.isNotEmpty()) {
-                dbHelper.markMessagesSpam(pendingSpamMarks)
+                dbHelper.saveMessagesFilterMeta(pendingSpamMarks)
             }
             if (threadsCursorOk) {
                 dbHelper.replaceCachedThreads(threads)
             }
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Error reading threads", e)
+            Log.e(TAG, "Error reading threads", e)
         }
 
         threads
@@ -402,10 +404,10 @@ class SmsRepository(private val context: Context) {
             }
 
             if (pendingSpamMarks.isNotEmpty()) {
-                dbHelper.markMessagesSpam(pendingSpamMarks)
+                dbHelper.saveMessagesFilterMeta(pendingSpamMarks)
             }
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Error reading messages for thread $threadId", e)
+            Log.e(TAG, "Error reading messages for thread $threadId", e)
         }
 
         messages.reverse()
@@ -426,7 +428,7 @@ class SmsRepository(private val context: Context) {
                 smsManager.sendTextMessage(address, null, body, null, null)
             }
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Failed to send SMS to $address", e)
+            Log.e(TAG, "Failed to send SMS to ${PhoneNumberKeys.redact(address)}", e)
             return@withContext SendSmsResult(sent = false, storedInProvider = false)
         }
 
@@ -441,7 +443,7 @@ class SmsRepository(private val context: Context) {
             }
             context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, cv) != null
         } catch (e: Exception) {
-            Log.w("SmsRepository", "Sent SMS but could not store in provider for $address", e)
+            Log.w(TAG, "Sent SMS but could not store in provider for ${PhoneNumberKeys.redact(address)}", e)
             false
         }
         SendSmsResult(sent = true, storedInProvider = storedInProvider)
@@ -459,7 +461,7 @@ class SmsRepository(private val context: Context) {
                 arrayOf(threadId.toString())
             )
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Failed to mark thread read $threadId", e)
+            Log.e(TAG, "Failed to mark thread read $threadId", e)
         }
     }
 
@@ -478,7 +480,7 @@ class SmsRepository(private val context: Context) {
                 args
             )
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Failed to mark threads read $threadIds", e)
+            Log.e(TAG, "Failed to mark threads read $threadIds", e)
         }
     }
 
@@ -494,7 +496,7 @@ class SmsRepository(private val context: Context) {
                 null
             )
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Failed to mark all messages read", e)
+            Log.e(TAG, "Failed to mark all messages read", e)
         }
     }
 
@@ -509,7 +511,7 @@ class SmsRepository(private val context: Context) {
                 false
             }
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Failed to delete message $messageId", e)
+            Log.e(TAG, "Failed to delete message $messageId", e)
             false
         }
     }
@@ -546,7 +548,7 @@ class SmsRepository(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.w("SmsRepository", "Batch canonical-address query failed, falling back", e)
+            Log.w(TAG, "Batch canonical-address query failed, falling back", e)
         }
         canonicalCache = CachedLookupMap(now, map)
         return map
@@ -581,7 +583,7 @@ class SmsRepository(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.w("SmsRepository", "Batch contact query failed, falling back", e)
+            Log.w(TAG, "Batch contact query failed, falling back", e)
         }
         contactCache = CachedLookupMap(now, map)
         return map
@@ -606,7 +608,7 @@ class SmsRepository(private val context: Context) {
                     }
                 }
             } catch (e: Exception) {
-                // Fallback
+                Log.w(TAG, "canonical-address lookup failed", e)
             }
         }
         return recipientIds
@@ -637,7 +639,7 @@ class SmsRepository(private val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Failed to delete SMS for threads $ids", e)
+            Log.e(TAG, "Failed to delete SMS for threads $ids", e)
             smsOk = false
         }
 
@@ -646,7 +648,7 @@ class SmsRepository(private val context: Context) {
                 val threadUri = ContentUris.withAppendedId(Telephony.Threads.CONTENT_URI, id)
                 context.contentResolver.delete(threadUri, null, null)
             } catch (e: Exception) {
-                Log.e("SmsRepository", "Failed to delete thread record $id", e)
+                Log.e(TAG, "Failed to delete thread record $id", e)
             }
         }
 
@@ -654,7 +656,7 @@ class SmsRepository(private val context: Context) {
             try {
                 dbHelper.deleteSpamMetaForAddress(address)
             } catch (e: Exception) {
-                Log.e("SmsRepository", "Failed to delete spam meta for $address", e)
+                Log.e(TAG, "Failed to delete spam meta for ${PhoneNumberKeys.redact(address)}", e)
             }
         }
 
@@ -679,7 +681,7 @@ class SmsRepository(private val context: Context) {
                 }
             } ?: ""
         } catch (e: Exception) {
-            Log.w("SmsRepository", "Could not look up address for thread $threadId", e)
+            Log.w(TAG, "Could not look up address for thread $threadId", e)
             ""
         }
     }
@@ -801,10 +803,10 @@ class SmsRepository(private val context: Context) {
             }
 
             if (pendingSpamMarks.isNotEmpty()) {
-                dbHelper.markMessagesSpam(pendingSpamMarks)
+                dbHelper.saveMessagesFilterMeta(pendingSpamMarks)
             }
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Error searching all messages for query: $query", e)
+            Log.e(TAG, "Error searching all messages for query: $query", e)
         }
 
         results
@@ -841,7 +843,7 @@ class SmsRepository(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e("SmsRepository", "Error searching contacts", e)
+            Log.e(TAG, "Error searching contacts", e)
         }
         contacts
     }
@@ -850,12 +852,19 @@ class SmsRepository(private val context: Context) {
         try {
             Telephony.Threads.getOrCreateThreadId(context, address)
         } catch (e: Exception) {
+            Log.w(TAG, "getOrCreateThreadId failed", e)
             0L
         }
     }
 
+    fun invalidateLookupCaches() {
+        canonicalCache = null
+        contactCache = null
+    }
+
     fun resolveContactName(phoneNumber: String): String? {
         if (phoneNumber.isBlank()) return null
+        PhoneNumberKeys.lookup(loadContactNameMap(), phoneNumber)?.let { return it }
         try {
             val uri = Uri.withAppendedPath(
                 ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
@@ -869,7 +878,7 @@ class SmsRepository(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            // Ignore permission or query errors
+            Log.w(TAG, "PhoneLookup query failed", e)
         }
         return null
     }

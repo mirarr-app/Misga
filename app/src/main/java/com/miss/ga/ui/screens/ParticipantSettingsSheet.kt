@@ -1,7 +1,9 @@
 package com.miss.ga.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,15 +44,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.displayLabel
+import com.miss.ga.theme.OnSuccessContainerDark
+import com.miss.ga.theme.OnSuccessContainerLight
 import com.miss.ga.theme.PillShape
+import com.miss.ga.theme.SilentDark
+import com.miss.ga.theme.SilentLight
+import com.miss.ga.theme.SilentOnDark
+import com.miss.ga.theme.SilentOnLight
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.SquircleMediumShape
+import com.miss.ga.theme.SuccessContainerDark
+import com.miss.ga.theme.SuccessContainerLight
+import com.miss.ga.theme.SuccessDark
+import com.miss.ga.theme.SuccessLight
 import com.miss.ga.ui.components.ConversationAvatar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,6 +132,7 @@ fun ParticipantSettingsSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             val currentAction = senderPreference?.defaultAction ?: FilterAction.NORMAL
+            val darkTheme = isSystemInDarkTheme()
 
             Card(
                 colors = CardDefaults.cardColors(
@@ -132,6 +147,9 @@ fun ParticipantSettingsSheet(
                         subtitle = "Play sound, vibrate, and show alert banners",
                         icon = Icons.Default.Notifications,
                         selected = currentAction == FilterAction.NORMAL,
+                        selectedContainerColor = if (darkTheme) SuccessContainerDark else SuccessContainerLight,
+                        selectedContentColor = if (darkTheme) OnSuccessContainerDark else OnSuccessContainerLight,
+                        selectedIconTint = if (darkTheme) SuccessDark else SuccessLight,
                         onClick = { onUpdateAction(FilterAction.NORMAL) }
                     )
                     HorizontalDivider(
@@ -144,6 +162,9 @@ fun ParticipantSettingsSheet(
                         subtitle = "Deliver quietly in conversation without alerts",
                         icon = Icons.Default.NotificationsOff,
                         selected = currentAction == FilterAction.SILENT,
+                        selectedContainerColor = if (darkTheme) SilentDark else SilentLight,
+                        selectedContentColor = if (darkTheme) SilentOnDark else SilentOnLight,
+                        selectedIconTint = if (darkTheme) SilentOnDark else SilentOnLight,
                         onClick = { onUpdateAction(FilterAction.SILENT) }
                     )
                     HorizontalDivider(
@@ -156,6 +177,9 @@ fun ParticipantSettingsSheet(
                         subtitle = "Suppress notifications and collapse behind reveal pill",
                         icon = Icons.Default.Shield,
                         selected = currentAction == FilterAction.SPAM,
+                        selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                        selectedContentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        selectedIconTint = MaterialTheme.colorScheme.error,
                         onClick = { onUpdateAction(FilterAction.SPAM) }
                     )
                 }
@@ -247,7 +271,7 @@ fun ParticipantSettingsSheet(
     }
 
     if (showAddRuleDialog) {
-        AddRuleDialog(
+        AddSenderRuleDialog(
             targetAddress = address,
             onDismiss = { showAddRuleDialog = false },
             onSave = { pattern, isRegex, action, name ->
@@ -262,14 +286,18 @@ fun ParticipantSettingsSheet(
 private fun ActionOptionRow(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     selected: Boolean,
+    selectedContainerColor: Color,
+    selectedContentColor: Color,
+    selectedIconTint: Color,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.small)
+            .background(if (selected) selectedContainerColor else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -277,7 +305,7 @@ private fun ActionOptionRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            tint = if (selected) selectedIconTint else MaterialTheme.colorScheme.outline,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(14.dp))
@@ -286,7 +314,7 @@ private fun ActionOptionRow(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (selected) selectedContentColor else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = subtitle,
@@ -299,7 +327,7 @@ private fun ActionOptionRow(
 }
 
 @Composable
-fun AddRuleDialog(
+fun AddSenderRuleDialog(
     targetAddress: String?,
     onDismiss: () -> Unit,
     onSave: (pattern: String, isRegex: Boolean, action: FilterAction, name: String) -> Unit

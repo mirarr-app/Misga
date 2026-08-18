@@ -161,14 +161,6 @@ class FilterStudioViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun updateRuleAction(rule: FilterRule, action: FilterAction) {
-        viewModelScope.launch {
-            val listType = if (action == FilterAction.NORMAL) RuleListType.ALLOWLIST else RuleListType.BLOCKLIST
-            dbHelper.updateRule(rule.copy(action = action, listType = listType))
-            loadRules()
-        }
-    }
-
     fun deleteRule(ruleId: Long) {
         viewModelScope.launch {
             dbHelper.deleteRule(ruleId)

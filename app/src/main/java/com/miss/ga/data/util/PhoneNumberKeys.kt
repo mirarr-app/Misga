@@ -61,4 +61,9 @@ object PhoneNumberKeys {
         }
         return null
     }
+
+    fun redact(address: String): String {
+        if (address.length <= 4) return "****"
+        return address.take(2) + "****" + address.takeLast(2)
+    }
 }

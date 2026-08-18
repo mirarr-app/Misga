@@ -93,7 +93,9 @@ class ChatViewModel(
                     limit = MESSAGE_PAGE_SIZE
                 )
                 if (!hadMessages) {
-                    repository.markThreadRead(initialThreadId)
+                    if (initialMessageId == null) {
+                        repository.markThreadRead(initialThreadId)
+                    }
                     _uiState.value = _uiState.value.copy(
                         messages = page,
                         hasMoreOlder = page.size == MESSAGE_PAGE_SIZE,

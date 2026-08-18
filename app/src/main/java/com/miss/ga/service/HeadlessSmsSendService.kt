@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import com.miss.ga.data.repository.SmsRepository
+import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -45,10 +46,10 @@ class HeadlessSmsSendService : Service() {
             try {
                 val result = repository.sendSms(address, body)
                 if (!result.sent) {
-                    Log.e(TAG, "Failed to send quick reply to $address")
+                    Log.e(TAG, "Failed to send quick reply to ${PhoneNumberKeys.redact(address)}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send quick reply to $address", e)
+                Log.e(TAG, "Failed to send quick reply to ${PhoneNumberKeys.redact(address)}", e)
             }
         }
     }

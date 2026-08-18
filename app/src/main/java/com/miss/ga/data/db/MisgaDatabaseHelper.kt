@@ -418,13 +418,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     // --- Spam Metadata Operations ---
 
-    suspend fun markMessageSpam(
+    suspend fun saveMessageFilterMeta(
         messageId: Long,
         address: String,
         matchedRuleName: String?,
         action: FilterAction
     ) = withContext(Dispatchers.IO) {
-        markMessagesSpam(
+        saveMessagesFilterMeta(
             listOf(
                 SpamMetaWrite(
                     messageId = messageId,
@@ -436,7 +436,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         )
     }
 
-    suspend fun markMessagesSpam(entries: List<SpamMetaWrite>) = withContext(Dispatchers.IO) {
+    suspend fun saveMessagesFilterMeta(entries: List<SpamMetaWrite>) = withContext(Dispatchers.IO) {
         if (entries.isEmpty()) return@withContext
         val db = writableDatabase
         val now = System.currentTimeMillis()
@@ -650,21 +650,54 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.delete("cached_threads", null, null)
-            for (thread in threads) {
-                val cv = ContentValues().apply {
-                    put("thread_id", thread.threadId)
-                    put("address", thread.address)
-                    put("contact_name", thread.contactName)
-                    put("snippet", thread.snippet)
-                    put("date", thread.date)
-                    put("message_count", thread.messageCount)
-                    put("unread_count", thread.unreadCount)
-                    put("is_unread_spam", if (thread.isUnreadSpam) 1 else 0)
-                    put("has_spam", if (thread.hasSpam) 1 else 0)
-                    put("last_message_action", thread.lastMessageAction.name)
+            if (threads.isEmpty()) {
+                db.delete("cached_threads", null, null)
+            } else {
+                val keepIds = threads.map { it.threadId }.distinct()
+                if (keepIds.size <= SQLITE_IN_CHUNK_SIZE) {
+                    val placeholders = keepIds.joinToString(",") { "?" }
+                    val args = keepIds.map { it.toString() }.toTypedArray()
+                    db.delete("cached_threads", "thread_id NOT IN ($placeholders)", args)
+                } else {
+                    val keepSet = keepIds.toHashSet()
+                    val toDelete = mutableListOf<Long>()
+                    db.query(
+                        "cached_threads",
+                        arrayOf("thread_id"),
+                        null, null, null, null, null
+                    ).use { cursor ->
+                        val idIdx = cursor.getColumnIndexOrThrow("thread_id")
+                        while (cursor.moveToNext()) {
+                            val id = cursor.getLong(idIdx)
+                            if (id !in keepSet) toDelete.add(id)
+                        }
+                    }
+                    for (chunk in toDelete.chunked(SQLITE_IN_CHUNK_SIZE)) {
+                        val placeholders = chunk.joinToString(",") { "?" }
+                        val args = chunk.map { it.toString() }.toTypedArray()
+                        db.delete("cached_threads", "thread_id IN ($placeholders)", args)
+                    }
                 }
-                db.insert("cached_threads", null, cv)
+                for (thread in threads) {
+                    val cv = ContentValues().apply {
+                        put("thread_id", thread.threadId)
+                        put("address", thread.address)
+                        put("contact_name", thread.contactName)
+                        put("snippet", thread.snippet)
+                        put("date", thread.date)
+                        put("message_count", thread.messageCount)
+                        put("unread_count", thread.unreadCount)
+                        put("is_unread_spam", if (thread.isUnreadSpam) 1 else 0)
+                        put("has_spam", if (thread.hasSpam) 1 else 0)
+                        put("last_message_action", thread.lastMessageAction.name)
+                    }
+                    db.insertWithOnConflict(
+                        "cached_threads",
+                        null,
+                        cv,
+                        SQLiteDatabase.CONFLICT_REPLACE
+                    )
+                }
             }
             db.setTransactionSuccessful()
         } finally {

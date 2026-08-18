@@ -14,6 +14,11 @@ import com.miss.ga.engine.SmsFilterEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val TAG = "FakeSmsSimulator"
+private const val TEST_LAB_PREFS = "misga_test_lab"
+private const val KEY_TRACKED_ADDRESSES = "tracked_addresses"
+private const val KEY_TRACKED_MESSAGE_IDS = "tracked_message_ids"
+
 data class FakeSmsScenario(
     val title: String,
     val sender: String,
@@ -124,15 +129,16 @@ object FakeSmsSimulator {
             val insertedUri: Uri? = context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)
             if (insertedUri != null) {
                 messageId = ContentUris.parseId(insertedUri)
+                trackSimulated(context, normalizedSender, messageId)
             }
             threadId = repository.getOrCreateThreadId(normalizedSender)
         } catch (e: Exception) {
-            Log.e("FakeSmsSimulator", "Could not write to Telephony provider (app might not be default SMS app yet)", e)
+            Log.e(TAG, "Could not write to Telephony provider (app might not be default SMS app yet)", e)
             threadId = (normalizedSender.hashCode().toLong() and 0x7FFFFFFF)
         }
 
         // 3. Save filter metadata in local SQLite for every action
-        dbHelper.markMessageSpam(
+        dbHelper.saveMessageFilterMeta(
             messageId = messageId,
             address = normalizedSender,
             matchedRuleName = filterResult.matchedRuleName,
@@ -168,18 +174,49 @@ object FakeSmsSimulator {
     suspend fun clearSimulatedTestData(context: Context): Int = withContext(Dispatchers.IO) {
         var count = 0
         try {
-            val scenarios = getPredefinedScenarios().map { it.sender }
-            for (sender in scenarios) {
-                val deleted = context.contentResolver.delete(
+            val prefs = testLabPrefs(context)
+            val trackedAddresses = prefs.getStringSet(KEY_TRACKED_ADDRESSES, emptySet()).orEmpty()
+            val trackedIds = prefs.getStringSet(KEY_TRACKED_MESSAGE_IDS, emptySet()).orEmpty()
+            val addresses = LinkedHashSet<String>().apply {
+                addAll(trackedAddresses)
+                addAll(getPredefinedScenarios().map { it.sender })
+            }
+            for (sender in addresses) {
+                count += context.contentResolver.delete(
                     Telephony.Sms.CONTENT_URI,
                     "${Telephony.Sms.ADDRESS} = ?",
                     arrayOf(sender)
                 )
-                count += deleted
             }
+            for (idStr in trackedIds) {
+                val id = idStr.toLongOrNull() ?: continue
+                val uri = ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, id)
+                count += context.contentResolver.delete(uri, null, null)
+            }
+            prefs.edit()
+                .remove(KEY_TRACKED_ADDRESSES)
+                .remove(KEY_TRACKED_MESSAGE_IDS)
+                .apply()
         } catch (e: Exception) {
-            Log.e("FakeSmsSimulator", "Error clearing test data", e)
+            Log.e(TAG, "Error clearing test data", e)
         }
         count
+    }
+
+    private fun testLabPrefs(context: Context) =
+        context.getSharedPreferences(TEST_LAB_PREFS, Context.MODE_PRIVATE)
+
+    private fun trackSimulated(context: Context, address: String, messageId: Long) {
+        val prefs = testLabPrefs(context)
+        val addresses = prefs.getStringSet(KEY_TRACKED_ADDRESSES, emptySet())?.toMutableSet()
+            ?: mutableSetOf()
+        addresses.add(address)
+        val ids = prefs.getStringSet(KEY_TRACKED_MESSAGE_IDS, emptySet())?.toMutableSet()
+            ?: mutableSetOf()
+        ids.add(messageId.toString())
+        prefs.edit()
+            .putStringSet(KEY_TRACKED_ADDRESSES, addresses)
+            .putStringSet(KEY_TRACKED_MESSAGE_IDS, ids)
+            .apply()
     }
 }

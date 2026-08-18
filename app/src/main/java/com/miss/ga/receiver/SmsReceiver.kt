@@ -8,6 +8,7 @@ import android.provider.Telephony
 import android.telephony.SmsMessage as AndroidSmsMessage
 import android.util.Log
 import com.miss.ga.data.db.MisgaDatabaseHelper
+import com.miss.ga.data.db.SpamMetaWrite
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.PhoneNumberKeys
@@ -16,8 +17,12 @@ import com.miss.ga.engine.SmsFilterEngine
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val TAG = "SmsReceiver"
 
 class SmsReceiver : BroadcastReceiver() {
 
@@ -32,7 +37,8 @@ class SmsReceiver : BroadcastReceiver() {
         if (messages.isNullOrEmpty()) return
 
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope.launch {
             try {
                 // Default SMS apps receive SMS_DELIVER. SMS_RECEIVED is only a fallback for
                 // when we are not default; handling both would duplicate notifications.
@@ -43,9 +49,10 @@ class SmsReceiver : BroadcastReceiver() {
                 }
                 processIncomingMessages(context, messages, action == Telephony.Sms.Intents.SMS_DELIVER_ACTION)
             } catch (e: Exception) {
-                Log.e("SmsReceiver", "Error processing SMS", e)
+                Log.e(TAG, "Error processing SMS", e)
             } finally {
                 pendingResult.finish()
+                scope.cancel()
             }
         }
     }
@@ -62,6 +69,7 @@ class SmsReceiver : BroadcastReceiver() {
 
         // Combine multipart messages by sender
         val messagesBySender = messages.groupBy { it.displayOriginatingAddress ?: "" }
+        val pendingMetaWrites = mutableListOf<SpamMetaWrite>()
 
         for ((sender, parts) in messagesBySender) {
             if (sender.isBlank()) continue
@@ -96,7 +104,7 @@ class SmsReceiver : BroadcastReceiver() {
                     // Query thread ID
                     threadId = Telephony.Threads.getOrCreateThreadId(context, sender)
                 } catch (e: Exception) {
-                    Log.e("SmsReceiver", "Error writing to Telephony provider", e)
+                    Log.e(TAG, "Error writing to Telephony provider", e)
                 }
                 shouldWriteMeta = true
             } else {
@@ -112,11 +120,13 @@ class SmsReceiver : BroadcastReceiver() {
             }
 
             if (shouldWriteMeta) {
-                dbHelper.markMessageSpam(
-                    messageId = messageId,
-                    address = sender,
-                    matchedRuleName = filterResult.matchedRuleName,
-                    action = filterResult.action
+                pendingMetaWrites.add(
+                    SpamMetaWrite(
+                        messageId = messageId,
+                        address = sender,
+                        matchedRuleName = filterResult.matchedRuleName,
+                        action = filterResult.action
+                    )
                 )
             }
 
@@ -133,6 +143,10 @@ class SmsReceiver : BroadcastReceiver() {
                     messageId = messageId
                 )
             }
+        }
+
+        if (pendingMetaWrites.isNotEmpty()) {
+            dbHelper.saveMessagesFilterMeta(pendingMetaWrites)
         }
     }
 
@@ -184,7 +198,7 @@ class SmsReceiver : BroadcastReceiver() {
                 bestId
             }
         } catch (e: Exception) {
-            Log.w("SmsReceiver", "Could not resolve inbox message id", e)
+            Log.w(TAG, "Could not resolve inbox message id", e)
             null
         }
     }

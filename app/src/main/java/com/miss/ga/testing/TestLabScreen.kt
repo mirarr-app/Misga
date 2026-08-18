@@ -114,14 +114,14 @@ fun TestLabScreen(
                         onClick = {
                             coroutineScope.launch {
                                 val count = FakeSmsSimulator.clearSimulatedTestData(context)
-                                Toast.makeText(context, "Cleared $count test messages", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Cleared $count simulated messages", Toast.LENGTH_SHORT).show()
                                 lastResult = null
                             }
                         }
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,
-                            contentDescription = "Clear Test Data",
+                            contentDescription = "Clear all simulated messages",
                             tint = MaterialTheme.colorScheme.error
                         )
                     }

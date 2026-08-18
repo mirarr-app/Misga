@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">Misga</string>
+    <string name="app_tagline">Make Iran\'s SMS Great Again</string>
+    <string name="sms_inbox">SMS inbox</string>
     <string name="sms_permission_needed">Inbox needs SMS permission</string>
     <string name="open_settings">Open settings</string>
     <string name="retry">Retry</string>

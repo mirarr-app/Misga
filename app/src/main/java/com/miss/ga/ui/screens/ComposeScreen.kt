@@ -1,7 +1,6 @@
 package com.miss.ga.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,22 +50,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.miss.ga.ChatNav
 import com.miss.ga.R
 import com.miss.ga.data.repository.ContactItem
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.theme.InputBarShape
-import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
-import com.miss.ga.theme.getAvatarGradient
+import com.miss.ga.ui.components.ConversationAvatar
+import com.miss.ga.ui.components.SmsSegmentCounter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -128,34 +124,7 @@ fun ComposeScreen(
                     .navigationBarsPadding()
             ) {
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-                    val isUnicode = messageBody.any { it.code > 127 }
-                    val maxPerSegment = if (isUnicode) 70 else 160
-                    val count = messageBody.length
-                    val segments = if (count == 0) 1 else (count + maxPerSegment - 1) / maxPerSegment
-
-                    if (messageBody.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            Surface(
-                                shape = PillShape,
-                                color = if (segments > 1) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            ) {
-                                Text(
-                                    text = "$count/$maxPerSegment • $segments SMS (${if (isUnicode) "Persian/Unicode" else "GSM-7"})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (segments > 1) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.outline,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
+                    SmsSegmentCounter(text = messageBody)
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -334,7 +303,7 @@ fun ComposeScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             imageVector = Icons.Default.Contacts,
-                            contentDescription = null,
+                            contentDescription = "No contacts",
                             tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
                             modifier = Modifier.size(40.dp)
                         )
@@ -379,11 +348,6 @@ private fun ContactSuggestionItem(
     contact: ContactItem,
     onClick: () -> Unit
 ) {
-    val avatarBrush = getAvatarGradient(contact.number.ifBlank { contact.name })
-    val initial = contact.name.firstOrNull()?.uppercaseChar()?.toString()
-        ?: contact.number.firstOrNull()?.toString()
-        ?: "#"
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -391,20 +355,11 @@ private fun ContactSuggestionItem(
             .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(avatarBrush),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initial,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White
-            )
-        }
+        ConversationAvatar(
+            address = contact.number.ifBlank { contact.name },
+            contactName = contact.name,
+            size = 44.dp
+        )
 
         Spacer(modifier = Modifier.width(14.dp))
 

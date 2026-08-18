@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -283,21 +284,18 @@ fun FilterStudioScreen(
                 FilterStudioTab.Allowlist -> AllowlistTab(
                     rules = state.allowlistRules,
                     onToggle = viewModel::toggleRule,
-                    onUpdateAction = viewModel::updateRuleAction,
                     onEdit = { editingRule = it },
                     onDelete = { ruleToDelete = it }
                 )
                 FilterStudioTab.Blocklist -> BlocklistTab(
                     rules = state.blocklistRules,
                     onToggle = viewModel::toggleRule,
-                    onUpdateAction = viewModel::updateRuleAction,
                     onEdit = { editingRule = it },
                     onDelete = { ruleToDelete = it }
                 )
                 FilterStudioTab.Presets -> PredefinedRulesTab(
                     rules = state.predefinedRules,
                     onToggle = viewModel::toggleRule,
-                    onUpdateAction = viewModel::updateRuleAction,
                     onEdit = { editingRule = it },
                     onDelete = { ruleToDelete = it }
                 )
@@ -470,7 +468,7 @@ fun FilterStudioScreen(
 
     // Add Custom Rule Dialog
     if (showAddDialog) {
-        AddRuleDialog(
+        AddGlobalRuleDialog(
             targetAddress = null,
             initialListType = initialAddListType,
             onDismiss = { showAddDialog = false },
@@ -571,58 +569,55 @@ private fun PlaygroundTab(
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(6.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item {
-                    AssistChip(
-                        onClick = {
-                            onPresetSelect(
-                                "کد تایید شما برای ورود به اسنپ: 481923",
-                                "(?i)(کد\\s*(ت[اأآ]یید|ورود|فعالسازی)|(verification|auth|login)\\s*code|passcode)",
-                                RuleListType.ALLOWLIST
-                            )
-                        },
-                        label = { Text("OTP Code (کد ورود / تایید)") },
-                        leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        shape = PillShape,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "کد تایید شما برای ورود به اسنپ: 481923",
+                            "(?i)(کد\\s*(ت[اأآ]یید|ورود|فعالسازی)|(verification|auth|login)\\s*code|passcode)",
+                            RuleListType.ALLOWLIST
                         )
+                    },
+                    label = { Text("OTP Code (کد ورود / تایید)") },
+                    leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
-                }
-                item {
-                    AssistChip(
-                        onClick = {
-                            onPresetSelect(
-                                "بانک سامان: رمز یکبار مصرف پویا برای کارت ۶۲۱۹ شما: 918234",
-                                "(رمز\\s*(پویا|دوم|یکبار\\s*مصرف)|(one[ -]?time\\s*password|otp\\s*code))",
-                                RuleListType.ALLOWLIST
-                            )
-                        },
-                        label = { Text("Bank OTP (رمز پویا / دوم)") },
-                        leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        shape = PillShape,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "بانک سامان: رمز یکبار مصرف پویا برای کارت ۶۲۱۹ شما: 918234",
+                            "(رمز\\s*(پویا|دوم|یکبار\\s*مصرف)|(one[ -]?time\\s*password|otp\\s*code))",
+                            RuleListType.ALLOWLIST
                         )
+                    },
+                    label = { Text("Bank OTP (رمز پویا / دوم)") },
+                    leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
-                }
-                item {
-                    AssistChip(
-                        onClick = {
-                            onPresetSelect(
-                                "دیجی کالا: کد: 582103 برای ورود استفاده شود.",
-                                "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8})",
-                                RuleListType.ALLOWLIST
-                            )
-                        },
-                        label = { Text("Direct Code (کد: / رمز:)") },
-                        leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        shape = PillShape,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "دیجی کالا: کد: 582103 برای ورود استفاده شود.",
+                            "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8})",
+                            RuleListType.ALLOWLIST
                         )
+                    },
+                    label = { Text("Direct Code (کد: / رمز:)") },
+                    leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
-                }
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -635,71 +630,66 @@ private fun PlaygroundTab(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(modifier = Modifier.height(6.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item {
-                    AssistChip(
-                        onClick = {
-                            onPresetSelect(
-                                "مشترک گرامی، ۵۰ درصد تخفیف ویژه خرید اینترنت برای شما فعال شد. جهت انصراف لغو ۱۱ را ارسال فرمایید.",
-                                "(لغو\\s*(11|۱۱)|تخفیف|اینترنت)",
-                                RuleListType.BLOCKLIST
-                            )
-                        },
-                        label = { Text("Promo Opt-out (لغو ۱۱)") },
-                        shape = PillShape,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "مشترک گرامی، ۵۰ درصد تخفیف ویژه خرید اینترنت برای شما فعال شد. جهت انصراف لغو ۱۱ را ارسال فرمایید.",
+                            "(لغو\\s*(11|۱۱)|تخفیف|اینترنت)",
+                            RuleListType.BLOCKLIST
                         )
+                    },
+                    label = { Text("Promo Opt-out (لغو ۱۱)") },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     )
-                }
-                item {
-                    AssistChip(
-                        onClick = {
-                            onPresetSelect(
-                                "وام فوری بدون ضامن تا سقف ۵۰ میلیون تومان، پرداخت ۲۴ ساعته. ثبت نام سریع:",
-                                "وام\\s*(فوری|بدون\\s*ضامن)|پرداخت\\s*۲۴\\s*ساعته",
-                                RuleListType.BLOCKLIST
-                            )
-                        },
-                        label = { Text("Loan Scam (وام فوری)") },
-                        shape = PillShape,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "وام فوری بدون ضامن تا سقف ۵۰ میلیون تومان، پرداخت ۲۴ ساعته. ثبت نام سریع:",
+                            "وام\\s*(فوری|بدون\\s*ضامن)|پرداخت\\s*۲۴\\s*ساعته",
+                            RuleListType.BLOCKLIST
                         )
+                    },
+                    label = { Text("Loan Scam (وام فوری)") },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     )
-                }
-                item {
-                    AssistChip(
-                        onClick = {
-                            onPresetSelect(
-                                "سامانه ثنا: ابلاغیه جدید علیه شما صادر گردید. مشاهده در: http://sana-adlieh.top/apk",
-                                "(ابلاغیه|سامانه\\s*ثنا).*http",
-                                RuleListType.BLOCKLIST
-                            )
-                        },
-                        label = { Text("Phishing Link (ثنا/عدالت)") },
-                        shape = PillShape,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "سامانه ثنا: ابلاغیه جدید علیه شما صادر گردید. مشاهده در: http://sana-adlieh.top/apk",
+                            "(ابلاغیه|سامانه\\s*ثنا).*http",
+                            RuleListType.BLOCKLIST
                         )
+                    },
+                    label = { Text("Phishing Link (ثنا/عدالت)") },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     )
-                }
-                item {
-                    AssistChip(
-                        onClick = {
-                            onPresetSelect(
-                                "بسته تخفیف ماهیانه اینترنت همراه ۵۰ گیگابایت با قیمت استثنایی فعال شد.",
-                                "(تخفیف\\s*(های\\s*)?ماه[ی]?انه|بسته\\s*(های\\s*)?تخفیف\\s*ماه[ی]?انه|پیشنهاد\\s*ماه[ی]?انه)",
-                                RuleListType.BLOCKLIST
-                            )
-                        },
-                        label = { Text("Monthly Discount (تخفیف ماهیانه)") },
-                        shape = PillShape,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "بسته تخفیف ماهیانه اینترنت همراه ۵۰ گیگابایت با قیمت استثنایی فعال شد.",
+                            "(تخفیف\\s*(های\\s*)?ماه[ی]?انه|بسته\\s*(های\\s*)?تخفیف\\s*ماه[ی]?انه|پیشنهاد\\s*ماه[ی]?انه)",
+                            RuleListType.BLOCKLIST
                         )
+                    },
+                    label = { Text("Monthly Discount (تخفیف ماهیانه)") },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     )
-                }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -925,7 +915,6 @@ private fun PlaygroundTab(
 private fun AllowlistTab(
     rules: List<FilterRule>,
     onToggle: (FilterRule, Boolean) -> Unit,
-    onUpdateAction: (FilterRule, FilterAction) -> Unit,
     onEdit: (FilterRule) -> Unit,
     onDelete: (FilterRule) -> Unit
 ) {
@@ -990,7 +979,6 @@ private fun AllowlistTab(
                 RuleCard(
                     rule = rule,
                     onToggle = { onToggle(rule, it) },
-                    onUpdateAction = { onUpdateAction(rule, it) },
                     onEdit = { onEdit(rule) },
                     onDelete = { onDelete(rule) }
                 )
@@ -1003,7 +991,6 @@ private fun AllowlistTab(
 private fun BlocklistTab(
     rules: List<FilterRule>,
     onToggle: (FilterRule, Boolean) -> Unit,
-    onUpdateAction: (FilterRule, FilterAction) -> Unit,
     onEdit: (FilterRule) -> Unit,
     onDelete: (FilterRule) -> Unit
 ) {
@@ -1032,7 +1019,6 @@ private fun BlocklistTab(
                 RuleCard(
                     rule = rule,
                     onToggle = { onToggle(rule, it) },
-                    onUpdateAction = { onUpdateAction(rule, it) },
                     onEdit = { onEdit(rule) },
                     onDelete = { onDelete(rule) }
                 )
@@ -1045,7 +1031,6 @@ private fun BlocklistTab(
 private fun PredefinedRulesTab(
     rules: List<FilterRule>,
     onToggle: (FilterRule, Boolean) -> Unit,
-    onUpdateAction: (FilterRule, FilterAction) -> Unit,
     onEdit: (FilterRule) -> Unit,
     onDelete: (FilterRule) -> Unit
 ) {
@@ -1085,7 +1070,6 @@ private fun PredefinedRulesTab(
             RuleCard(
                 rule = rule,
                 onToggle = { onToggle(rule, it) },
-                onUpdateAction = { onUpdateAction(rule, it) },
                 onEdit = { onEdit(rule) },
                 onDelete = { onDelete(rule) }
             )
@@ -1097,7 +1081,6 @@ private fun PredefinedRulesTab(
 private fun RuleCard(
     rule: FilterRule,
     onToggle: (Boolean) -> Unit,
-    onUpdateAction: (FilterAction) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -1400,7 +1383,7 @@ private fun EditRuleDialog(
 }
 
 @Composable
-fun AddRuleDialog(
+fun AddGlobalRuleDialog(
     targetAddress: String?,
     initialListType: RuleListType = RuleListType.ALLOWLIST,
     onDismiss: () -> Unit,
