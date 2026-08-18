@@ -90,14 +90,14 @@ val Typography = Typography(
         letterSpacing = 0.1.sp
     ),
     bodyLarge = TextStyle(
-        fontFamily = PlusJakartaSans,
+        fontFamily = Vazirmatn,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
         letterSpacing = 0.5.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = PlusJakartaSans,
+        fontFamily = Vazirmatn,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,

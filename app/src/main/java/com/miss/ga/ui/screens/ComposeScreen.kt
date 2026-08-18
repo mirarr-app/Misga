@@ -1,6 +1,5 @@
 package com.miss.ga.ui.screens
 
-import android.provider.Telephony
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,9 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -64,12 +60,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.miss.ga.ChatNav
+import com.miss.ga.R
 import com.miss.ga.data.repository.ContactItem
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.theme.InputBarShape
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.getAvatarGradient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,23 +75,26 @@ import kotlinx.coroutines.launch
 fun ComposeScreen(
     onBackClick: () -> Unit,
     onNavigateToChat: (ChatNav) -> Unit,
+    initialAddress: String = "",
+    initialBody: String = "",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val repository = remember { SmsRepository(context) }
     val coroutineScope = rememberCoroutineScope()
 
-    var recipient by remember { mutableStateOf("") }
+    var recipient by remember { mutableStateOf(initialAddress) }
     var selectedContactName by remember { mutableStateOf<String?>(null) }
-    var messageBody by remember { mutableStateOf("") }
+    var messageBody by remember { mutableStateOf(initialBody) }
     var isSending by remember { mutableStateOf(false) }
 
     var contactSuggestions by remember { mutableStateOf<List<ContactItem>>(emptyList()) }
     var isLoadingContacts by remember { mutableStateOf(false) }
 
-    // Search contacts on query update
+    // Search contacts on query update (debounced, including blank queries)
     LaunchedEffect(recipient) {
         isLoadingContacts = true
+        delay(200)
         contactSuggestions = repository.searchContacts(recipient)
         isLoadingContacts = false
     }
@@ -113,7 +114,8 @@ fun ComposeScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                windowInsets = TopAppBarDefaults.windowInsets
             )
         },
         bottomBar = {
@@ -190,7 +192,11 @@ fun ComposeScreen(
                                         val result = repository.sendSms(recipient, messageBody)
                                         isSending = false
                                         if (!result.sent) {
-                                            Toast.makeText(context, "Failed to send message", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.send_failed_check_signal),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
                                         } else if (result.storedInProvider) {
                                             val threadId = repository.getOrCreateThreadId(recipient)
                                             onNavigateToChat(

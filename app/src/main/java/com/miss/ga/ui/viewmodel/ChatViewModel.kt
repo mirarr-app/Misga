@@ -1,6 +1,7 @@
 package com.miss.ga.ui.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.miss.ga.data.db.MisgaDatabaseHelper
@@ -11,10 +12,12 @@ import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 data class ChatUiState(
@@ -56,10 +59,27 @@ class ChatViewModel(
     init {
         loadMessages()
         loadSenderSettings()
+        viewModelScope.launch {
+            dbHelper.rulesChanged.drop(1).collect {
+                loadSenderSettings()
+                loadMessages()
+            }
+        }
+        viewModelScope.launch {
+            dbHelper.prefsChanged.drop(1).collect {
+                loadSenderSettings()
+                loadMessages()
+            }
+        }
+        viewModelScope.launch {
+            dbHelper.spamMetaChanged.drop(1).collect {
+                loadMessages()
+            }
+        }
     }
 
     fun loadMessages() {
-        if (messagesJob?.isActive == true) return
+        messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
             val hadMessages = _uiState.value.messages.isNotEmpty()
             if (!hadMessages) {
@@ -90,6 +110,8 @@ class ChatViewModel(
                         error = null
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -185,7 +207,7 @@ class ChatViewModel(
                     senderRules = senderRules
                 )
             } catch (e: Exception) {
-                // Ignore
+                Log.w("ChatViewModel", "Failed to load sender settings", e)
             }
         }
     }
@@ -240,7 +262,10 @@ class ChatViewModel(
                 address = initialAddress,
                 displayName = initialContactName
             )
-            val updated = currentPref.copy(defaultAction = action)
+            val updated = currentPref.copy(
+                defaultAction = action,
+                isBlocked = action == FilterAction.SPAM
+            )
             dbHelper.saveSenderPreference(updated)
             _uiState.value = _uiState.value.copy(senderPreference = updated)
         }

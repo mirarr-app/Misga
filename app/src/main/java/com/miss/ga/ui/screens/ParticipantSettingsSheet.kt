@@ -1,29 +1,25 @@
 package com.miss.ga.ui.screens
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
@@ -47,18 +42,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.model.displayLabel
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.SquircleMediumShape
-import com.miss.ga.theme.TagShape
-import com.miss.ga.theme.getAvatarGradient
+import com.miss.ga.ui.components.ConversationAvatar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,7 +66,6 @@ fun ParticipantSettingsSheet(
     onAddSenderRule: (pattern: String, isRegex: Boolean, action: FilterAction, name: String) -> Unit
 ) {
     var showAddRuleDialog by remember { mutableStateOf(false) }
-    val avatarBrush = getAvatarGradient(address)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -90,21 +82,11 @@ fun ParticipantSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(avatarBrush),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val displayName = contactName ?: address
-                    Text(
-                        text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "#",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
-                    )
-                }
+                ConversationAvatar(
+                    address = address,
+                    contactName = contactName,
+                    size = 46.dp
+                )
 
                 Spacer(modifier = Modifier.width(14.dp))
 
@@ -221,7 +203,7 @@ fun ParticipantSettingsSheet(
                     )
                 }
             } else {
-                LazyColumn(modifier = Modifier.height(150.dp)) {
+                LazyColumn(modifier = Modifier.heightIn(max = 240.dp)) {
                     items(senderRules, key = { it.id }) { rule ->
                         Card(
                             modifier = Modifier
@@ -247,7 +229,7 @@ fun ParticipantSettingsSheet(
                                     color = if (rule.action == FilterAction.SPAM) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
                                 ) {
                                     Text(
-                                        text = rule.action.name,
+                                        text = rule.action.displayLabel,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = if (rule.action == FilterAction.SPAM) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
@@ -330,7 +312,12 @@ fun AddRuleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = SquircleCardShape,
-        title = { Text("New Filter Rule", fontWeight = FontWeight.Bold) },
+        title = {
+            Text(
+                text = if (!targetAddress.isNullOrBlank()) "Rule for $targetAddress" else "New Filter Rule",
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
             Column {
                 OutlinedTextField(
@@ -360,11 +347,11 @@ fun AddRuleDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    FilterAction.values().forEach { act ->
+                    FilterAction.entries.forEach { act ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = action == act, onClick = { action = act })
                             Text(
-                                text = act.name,
+                                text = act.displayLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (action == act) FontWeight.Bold else FontWeight.Normal
                             )

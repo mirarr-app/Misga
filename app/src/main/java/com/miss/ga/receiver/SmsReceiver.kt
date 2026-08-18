@@ -57,7 +57,7 @@ class SmsReceiver : BroadcastReceiver() {
     ) {
         val dbHelper = MisgaDatabaseHelper.getInstance(context)
         val filterEngine = SmsFilterEngine(dbHelper)
-        val notificationHelper = NotificationHelper(context)
+        val notificationHelper = NotificationHelper.getInstance(context)
         val smsRepository = SmsRepository(context)
 
         // Combine multipart messages by sender
@@ -120,18 +120,19 @@ class SmsReceiver : BroadcastReceiver() {
                 )
             }
 
-            // Resolve contact name for notification display
-            val contactName = smsRepository.resolveContactName(sender)
-
-            // Dispatch notification (or suppress if SPAM)
-            notificationHelper.showSmsNotification(
-                threadId = threadId,
-                sender = sender,
-                contactName = contactName,
-                body = fullBody,
-                action = filterResult.action,
-                messageId = messageId
-            )
+            // Only notify on SMS_DELIVER (we are default). SMS_RECEIVED is handled by the
+            // default SMS app's own notification; we still resolve id and write filter meta.
+            if (isDefaultAppDeliver) {
+                val contactName = smsRepository.resolveContactName(sender)
+                notificationHelper.showSmsNotification(
+                    threadId = threadId,
+                    sender = sender,
+                    contactName = contactName,
+                    body = fullBody,
+                    action = filterResult.action,
+                    messageId = messageId
+                )
+            }
         }
     }
 

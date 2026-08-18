@@ -5,16 +5,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.app.RemoteInput
 import com.miss.ga.MainActivity
-import com.miss.ga.R
 import com.miss.ga.data.model.FilterAction
 
-class NotificationHelper(private val context: Context) {
+class NotificationHelper private constructor(private val context: Context) {
 
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -67,17 +65,19 @@ class NotificationHelper(private val context: Context) {
 
         val channelId = if (action == FilterAction.NORMAL) CHANNEL_ALERT_ID else CHANNEL_SILENT_ID
         val displayName = contactName ?: sender
+        val notificationId = notificationIdFor(threadId)
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
             setAction(Intent.ACTION_VIEW)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("EXTRA_THREAD_ID", threadId)
-            putExtra("EXTRA_ADDRESS", sender)
-            putExtra("EXTRA_CONTACT_NAME", contactName)
+            putExtra(EXTRA_THREAD_ID, threadId)
+            putExtra(EXTRA_ADDRESS, sender)
+            putExtra(EXTRA_CONTACT_NAME, contactName)
+            putExtra(EXTRA_MESSAGE_ID, messageId)
         }
         val contentPendingIntent = PendingIntent.getActivity(
             context,
-            threadId.toInt(),
+            notificationId,
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -93,18 +93,35 @@ class NotificationHelper(private val context: Context) {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
 
         try {
-            NotificationManagerCompat.from(context).notify(threadId.toInt(), builder.build())
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
         } catch (e: SecurityException) {
-            // POST_NOTIFICATIONS permission not granted
+            Log.w(TAG, "POST_NOTIFICATIONS permission denied", e)
         }
     }
 
     fun cancelNotification(threadId: Long) {
-        notificationManager.cancel(threadId.toInt())
+        notificationManager.cancel(notificationIdFor(threadId))
     }
 
     companion object {
         const val CHANNEL_ALERT_ID = "misga_sms_alert_channel"
         const val CHANNEL_SILENT_ID = "misga_sms_silent_channel"
+        const val EXTRA_THREAD_ID = "EXTRA_THREAD_ID"
+        const val EXTRA_ADDRESS = "EXTRA_ADDRESS"
+        const val EXTRA_CONTACT_NAME = "EXTRA_CONTACT_NAME"
+        const val EXTRA_MESSAGE_ID = "EXTRA_MESSAGE_ID"
+
+        private const val TAG = "NotificationHelper"
+
+        @Volatile
+        private var INSTANCE: NotificationHelper? = null
+
+        fun getInstance(context: Context): NotificationHelper {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: NotificationHelper(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+
+        private fun notificationIdFor(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt()
     }
 }

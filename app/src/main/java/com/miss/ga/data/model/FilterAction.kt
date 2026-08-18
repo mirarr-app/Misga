@@ -9,6 +9,13 @@ enum class FilterAction {
     SPAM     // Zero notification, zero badge increment, collapsed inside chat
 }
 
+val FilterAction.displayLabel: String
+    get() = when (this) {
+        FilterAction.NORMAL -> "Normal"
+        FilterAction.SILENT -> "Silent"
+        FilterAction.SPAM -> "Spam"
+    }
+
 @Serializable
 enum class RuleListType {
     ALLOWLIST, // Highest priority: always delivered with alert/notification, overrides all blocklists
@@ -24,4 +31,3 @@ enum class RuleCategory {
     OTP_ALLOWLIST,
     CUSTOM_ALLOWLIST
 }
-

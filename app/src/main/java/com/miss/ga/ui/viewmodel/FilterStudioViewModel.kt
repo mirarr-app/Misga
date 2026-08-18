@@ -26,7 +26,6 @@ data class FilterStudioUiState(
     val allowlistRules: List<FilterRule> = emptyList(),
     val blocklistRules: List<FilterRule> = emptyList(),
     val predefinedRules: List<FilterRule> = emptyList(),
-    val customRules: List<FilterRule> = emptyList(),
     // Playground State
     val testPattern: String = "(لغو\\s*(11|۱۱)|تخفیف|وام\\s*فوری)",
     val isRegex: Boolean = true,
@@ -57,13 +56,11 @@ class FilterStudioViewModel(application: Application) : AndroidViewModel(applica
             val allowlist = all.filter { it.listType == RuleListType.ALLOWLIST }
             val blocklist = all.filter { it.listType == RuleListType.BLOCKLIST }
             val predefined = all.filter { it.isPredefined }
-            val custom = all.filter { !it.isPredefined }
             _uiState.value = _uiState.value.copy(
                 rules = all,
                 allowlistRules = allowlist,
                 blocklistRules = blocklist,
-                predefinedRules = predefined,
-                customRules = custom
+                predefinedRules = predefined
             )
         }
     }

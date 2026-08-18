@@ -2,23 +2,24 @@ package com.miss.ga
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.ui.screens.ChatScreen
 import com.miss.ga.ui.screens.ComposeScreen
 import com.miss.ga.ui.screens.ConversationsScreen
 import com.miss.ga.ui.screens.FilterStudioScreen
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
 
-import androidx.compose.runtime.LaunchedEffect
-
 @Composable
 fun MainNavigation(
     pendingChatNav: ChatNav? = null,
-    onChatNavHandled: () -> Unit = {}
+    onChatNavHandled: () -> Unit = {},
+    pendingComposeNav: ComposeNav? = null,
+    onComposeNavHandled: () -> Unit = {}
 ) {
     val backStack = rememberNavBackStack(ConversationsNav)
     val conversationsViewModel: ConversationsViewModel = viewModel()
@@ -33,6 +34,16 @@ fun MainNavigation(
         }
     }
 
+    LaunchedEffect(pendingComposeNav) {
+        if (pendingComposeNav != null) {
+            val current = backStack.lastOrNull()
+            if (current !is ComposeNav || current != pendingComposeNav) {
+                backStack.add(pendingComposeNav)
+            }
+            onComposeNavHandled()
+        }
+    }
+
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
@@ -41,7 +52,7 @@ fun MainNavigation(
                 ConversationsScreen(
                     onNavigateToChat = { chatNav -> backStack.add(chatNav) },
                     onNavigateToFilterStudio = { backStack.add(FilterStudioNav) },
-                    onNavigateToCompose = { backStack.add(ComposeNav) },
+                    onNavigateToCompose = { backStack.add(ComposeNav()) },
                     onNavigateToTestLab = { backStack.add(TestLabNav) },
                     viewModel = conversationsViewModel,
                     modifier = Modifier.fillMaxSize()
@@ -60,13 +71,15 @@ fun MainNavigation(
                     modifier = Modifier.fillMaxSize()
                 )
             }
-            entry<ComposeNav> {
+            entry<ComposeNav> { nav ->
                 ComposeScreen(
                     onBackClick = { backStack.removeLastOrNull() },
                     onNavigateToChat = { chatNav ->
                         backStack.removeLastOrNull()
                         backStack.add(chatNav)
                     },
+                    initialAddress = nav.address,
+                    initialBody = nav.body,
                     modifier = Modifier.fillMaxSize()
                 )
             }

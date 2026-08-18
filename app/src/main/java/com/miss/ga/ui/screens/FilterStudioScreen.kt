@@ -4,9 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,12 +20,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -48,8 +44,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,7 +65,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -82,14 +77,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
-import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.RuleListType
+import com.miss.ga.data.model.displayLabel
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.SquircleMediumShape
 import com.miss.ga.theme.TagShape
 import com.miss.ga.ui.viewmodel.FilterStudioUiState
 import com.miss.ga.ui.viewmodel.FilterStudioViewModel
+
+private enum class FilterStudioTab { Playground, Allowlist, Blocklist, Presets }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,7 +97,7 @@ fun FilterStudioScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableStateOf(FilterStudioTab.Playground) }
 
     var showSaveDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -177,19 +174,35 @@ fun FilterStudioScreen(
             )
         },
         floatingActionButton = {
-            if (selectedTab == 1 || selectedTab == 2) {
+            if (selectedTab == FilterStudioTab.Allowlist || selectedTab == FilterStudioTab.Blocklist) {
                 FloatingActionButton(
                     onClick = {
-                        initialAddListType = if (selectedTab == 1) RuleListType.ALLOWLIST else RuleListType.BLOCKLIST
+                        initialAddListType = if (selectedTab == FilterStudioTab.Allowlist) {
+                            RuleListType.ALLOWLIST
+                        } else {
+                            RuleListType.BLOCKLIST
+                        }
                         showAddDialog = true
                     },
-                    containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primary,
-                    contentColor = if (selectedTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimary,
+                    containerColor = if (selectedTab == FilterStudioTab.Allowlist) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    contentColor = if (selectedTab == FilterStudioTab.Allowlist) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onPrimary
+                    },
                     shape = PillShape
                 ) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = if (selectedTab == 1) "Add Allowlist Rule" else "Add Blocklist Rule"
+                        contentDescription = if (selectedTab == FilterStudioTab.Allowlist) {
+                            "Add Allowlist Rule"
+                        } else {
+                            "Add Blocklist Rule"
+                        }
                     )
                 }
             }
@@ -202,63 +215,63 @@ fun FilterStudioScreen(
                 .padding(innerPadding)
         ) {
             PrimaryScrollableTabRow(
-                selectedTabIndex = selectedTab,
+                selectedTabIndex = selectedTab.ordinal,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                 edgePadding = 12.dp
             ) {
                 Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    selected = selectedTab == FilterStudioTab.Playground,
+                    onClick = { selectedTab = FilterStudioTab.Playground },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Playground", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium)
+                            Text("Playground", fontWeight = if (selectedTab == FilterStudioTab.Playground) FontWeight.Bold else FontWeight.Medium)
                         }
                     }
                 )
                 Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    selected = selectedTab == FilterStudioTab.Allowlist,
+                    onClick = { selectedTab = FilterStudioTab.Allowlist },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.GppGood, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 "Allowlist (${state.allowlistRules.size})",
-                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = if (selectedTab == FilterStudioTab.Allowlist) FontWeight.Bold else FontWeight.Medium
                             )
                         }
                     }
                 )
                 Tab(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
+                    selected = selectedTab == FilterStudioTab.Blocklist,
+                    onClick = { selectedTab = FilterStudioTab.Blocklist },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 "Blocklist (${state.blocklistRules.size})",
-                                fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = if (selectedTab == FilterStudioTab.Blocklist) FontWeight.Bold else FontWeight.Medium
                             )
                         }
                     }
                 )
                 Tab(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
+                    selected = selectedTab == FilterStudioTab.Presets,
+                    onClick = { selectedTab = FilterStudioTab.Presets },
                     text = {
                         Text(
                             "All Presets (${state.predefinedRules.size})",
-                            fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Medium
+                            fontWeight = if (selectedTab == FilterStudioTab.Presets) FontWeight.Bold else FontWeight.Medium
                         )
                     }
                 )
             }
 
             when (selectedTab) {
-                0 -> PlaygroundTab(
+                FilterStudioTab.Playground -> PlaygroundTab(
                     state = state,
                     onPatternChange = viewModel::onPlaygroundPatternChanged,
                     onSampleChange = viewModel::onPlaygroundSampleTextChanged,
@@ -267,21 +280,21 @@ fun FilterStudioScreen(
                     onPresetSelect = viewModel::setSamplePreset,
                     onSaveClick = { showSaveDialog = true }
                 )
-                1 -> AllowlistTab(
+                FilterStudioTab.Allowlist -> AllowlistTab(
                     rules = state.allowlistRules,
                     onToggle = viewModel::toggleRule,
                     onUpdateAction = viewModel::updateRuleAction,
                     onEdit = { editingRule = it },
                     onDelete = { ruleToDelete = it }
                 )
-                2 -> BlocklistTab(
+                FilterStudioTab.Blocklist -> BlocklistTab(
                     rules = state.blocklistRules,
                     onToggle = viewModel::toggleRule,
                     onUpdateAction = viewModel::updateRuleAction,
                     onEdit = { editingRule = it },
                     onDelete = { ruleToDelete = it }
                 )
-                3 -> PredefinedRulesTab(
+                FilterStudioTab.Presets -> PredefinedRulesTab(
                     rules = state.predefinedRules,
                     onToggle = viewModel::toggleRule,
                     onUpdateAction = viewModel::updateRuleAction,
@@ -410,7 +423,7 @@ fun FilterStudioScreen(
                                         selected = selectedAction == act,
                                         onClick = { selectedAction = act }
                                     )
-                                    Text(act.name, style = MaterialTheme.typography.labelSmall)
+                                    Text(act.displayLabel, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -780,7 +793,7 @@ private fun PlaygroundTab(
                             }
                         ) {
                             Text(
-                                text = if (state.simulatedListType == RuleListType.ALLOWLIST) "ALLOWLIST (TOP PRIORITY)" else "BLOCKLIST: ${state.simulatedAction.name}",
+                                text = if (state.simulatedListType == RuleListType.ALLOWLIST) "ALLOWLIST (TOP PRIORITY)" else "BLOCKLIST: ${state.simulatedAction.displayLabel}",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -873,7 +886,7 @@ private fun PlaygroundTab(
                                             onClick = { onActionChange(act) }
                                         )
                                         Text(
-                                            text = act.name,
+                                            text = act.displayLabel,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = if (state.simulatedAction == act) FontWeight.Bold else FontWeight.Normal
                                         )
@@ -1095,7 +1108,7 @@ private fun RuleCard(
         shape = SquircleMediumShape,
         colors = CardDefaults.cardColors(
             containerColor = if (rule.isEnabled) {
-                if (isAllowlist) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerHigh
+                MaterialTheme.colorScheme.surfaceContainerHigh
             } else MaterialTheme.colorScheme.surfaceContainerLowest
         ),
         border = BorderStroke(
@@ -1191,7 +1204,7 @@ private fun RuleCard(
                             modifier = Modifier.padding(start = 4.dp)
                         ) {
                             Text(
-                                text = rule.action.name,
+                                text = rule.action.displayLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -1269,9 +1282,18 @@ private fun EditRuleDialog(
                 OutlinedTextField(
                     value = pattern,
                     onValueChange = { pattern = it },
-                    label = { Text("Regex Pattern") },
+                    label = { Text(if (isRegex) "Regex Pattern" else "Pattern") },
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                FilterChip(
+                    selected = isRegex,
+                    onClick = { isRegex = !isRegex },
+                    label = { Text("Regex") },
+                    shape = PillShape
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1340,7 +1362,7 @@ private fun EditRuleDialog(
                                     onClick = { selectedAction = act }
                                 )
                                 Text(
-                                    text = act.name,
+                                    text = act.displayLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = if (selectedAction == act) FontWeight.Bold else FontWeight.Normal
                                 )
@@ -1393,7 +1415,16 @@ fun AddRuleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = SquircleCardShape,
-        title = { Text(if (listType == RuleListType.ALLOWLIST) "New Allowlist Rule" else "New Blocklist Rule", fontWeight = FontWeight.Bold) },
+        title = {
+            Text(
+                text = when {
+                    !targetAddress.isNullOrBlank() -> "Rule for $targetAddress"
+                    listType == RuleListType.ALLOWLIST -> "New Allowlist Rule"
+                    else -> "New Blocklist Rule"
+                },
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
             Column {
                 OutlinedTextField(
@@ -1460,7 +1491,7 @@ fun AddRuleDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(selected = action == act, onClick = { action = act })
                                 Text(
-                                    text = act.name,
+                                    text = act.displayLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = if (action == act) FontWeight.Bold else FontWeight.Normal
                                 )

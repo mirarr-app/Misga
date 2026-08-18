@@ -18,7 +18,10 @@ data class ChatNav(
 data object FilterStudioNav : NavKey
 
 @Serializable
-data object ComposeNav : NavKey
+data class ComposeNav(
+    val address: String = "",
+    val body: String = ""
+) : NavKey
 
 @Serializable
 data object TestLabNav : NavKey

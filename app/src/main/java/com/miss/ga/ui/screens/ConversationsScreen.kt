@@ -1,12 +1,9 @@
 package com.miss.ga.ui.screens
 
-import android.app.role.RoleManager
-import android.content.Context
 import android.content.Intent
-import android.os.Build
-import android.provider.Telephony
-import android.content.ClipData
-import android.content.ClipboardManager
+import android.content.pm.ApplicationInfo
+import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -45,7 +42,6 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Contacts
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.FilterAlt
@@ -56,17 +52,13 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -75,7 +67,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -90,6 +81,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -98,7 +90,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import com.miss.ga.ChatNav
-import com.miss.ga.ComposeNav
+import com.miss.ga.R
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.theme.PillShape
@@ -107,7 +99,11 @@ import com.miss.ga.theme.NonContactAvatarBrush
 import com.miss.ga.ui.components.DefaultSmsBanner
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
+import com.miss.ga.util.DefaultSmsAppHelper
 import java.util.Locale
+
+private val ListBottomFabPadding = 88.dp
+private val AvatarDividerInset = 78.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,6 +142,9 @@ fun ConversationsScreen(
     }
     val allFilteredSelected = currentlyVisibleThreads.isNotEmpty() &&
             state.selectedThreadIds.containsAll(currentlyVisibleThreads.map { it.threadId })
+    val isDebuggable = remember(context) {
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
 
     Scaffold(
         topBar = {
@@ -208,6 +207,7 @@ fun ConversationsScreen(
                             )
                         }
                     },
+                    windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     )
@@ -294,18 +294,20 @@ fun ConversationsScreen(
                             }
                         }
 
-                        // Test Lab & Simulator Button
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
-                            IconButton(onClick = onNavigateToTestLab) {
-                                Icon(
-                                    imageVector = Icons.Default.BugReport,
-                                    contentDescription = "Test Lab & Simulator",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                        // Test Lab & Simulator Button (debug builds only)
+                        if (isDebuggable) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.padding(end = 6.dp)
+                            ) {
+                                IconButton(onClick = onNavigateToTestLab) {
+                                    Icon(
+                                        imageVector = Icons.Default.BugReport,
+                                        contentDescription = "Test Lab & Simulator",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
 
@@ -324,6 +326,7 @@ fun ConversationsScreen(
                             }
                         }
                     },
+                    windowInsets = TopAppBarDefaults.windowInsets,
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
@@ -419,10 +422,70 @@ fun ConversationsScreen(
                 }
             }
 
+            if (!state.hasSmsPermission) {
+                Surface(
+                    shape = PillShape,
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.sms_permission_needed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = {
+                                val settingsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                }
+                                context.startActivity(settingsIntent)
+                            }
+                        ) {
+                            Text(stringResource(R.string.open_settings))
+                        }
+                    }
+                }
+            }
+
+            val loadError = state.error
+            if (loadError != null && state.hasSmsPermission) {
+                Surface(
+                    shape = PillShape,
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = loadError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.loadThreads(force = true) }) {
+                            Text(stringResource(R.string.retry))
+                        }
+                    }
+                }
+            }
+
             if (!state.isDefaultSmsApp) {
                 DefaultSmsBanner(
                     onRequestDefault = {
-                        requestDefaultSmsApp(context) { intent ->
+                        DefaultSmsAppHelper.requestDefaultSmsApp(context) { intent ->
                             defaultSmsLauncher.launch(intent)
                         }
                     },
@@ -498,7 +561,7 @@ fun ConversationsScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 88.dp)
+                        contentPadding = PaddingValues(bottom = ListBottomFabPadding)
                     ) {
                         if (displayedThreads.isNotEmpty()) {
                             item(key = "header_conversations") {
@@ -528,7 +591,7 @@ fun ConversationsScreen(
                                     onLongClick = {}
                                 )
                                 HorizontalDivider(
-                                    modifier = Modifier.padding(start = 78.dp, end = 16.dp),
+                                    modifier = Modifier.padding(start = AvatarDividerInset, end = 16.dp),
                                     thickness = 0.5.dp,
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                                 )
@@ -562,7 +625,7 @@ fun ConversationsScreen(
                                     }
                                 )
                                 HorizontalDivider(
-                                    modifier = Modifier.padding(start = 78.dp, end = 16.dp),
+                                    modifier = Modifier.padding(start = AvatarDividerInset, end = 16.dp),
                                     thickness = 0.5.dp,
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                                 )
@@ -608,16 +671,17 @@ fun ConversationsScreen(
                     }
                 }
             } else {
+                val selected = state.selectedThreadIds
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 88.dp)
+                    contentPadding = PaddingValues(bottom = ListBottomFabPadding)
                 ) {
                     items(
                         items = displayedThreads,
                         key = { it.threadId },
                         contentType = { "thread" }
                     ) { thread ->
-                        val isSelected = state.selectedThreadIds.contains(thread.threadId)
+                        val isSelected = remember(selected, thread.threadId) { thread.threadId in selected }
                         ConversationItem(
                             thread = thread,
                             isSelected = isSelected,
@@ -644,7 +708,7 @@ fun ConversationsScreen(
                             }
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 78.dp, end = 16.dp),
+                            modifier = Modifier.padding(start = AvatarDividerInset, end = 16.dp),
                             thickness = 0.5.dp,
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                         )
@@ -889,21 +953,6 @@ private fun ConversationItem(
             }
         }
     }
-}
-
-private fun requestDefaultSmsApp(context: Context, launcher: (Intent) -> Unit) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        val roleManager = context.getSystemService(RoleManager::class.java)
-        if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_SMS)) {
-            val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_SMS)
-            launcher(intent)
-            return
-        }
-    }
-    val intent = Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT).apply {
-        putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, context.packageName)
-    }
-    launcher(intent)
 }
 
 @Composable

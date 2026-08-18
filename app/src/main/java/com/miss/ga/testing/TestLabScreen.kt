@@ -4,10 +4,7 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,31 +17,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VolumeMute
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -63,14 +53,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.miss.ga.data.model.FilterAction
+import com.miss.ga.data.model.displayLabel
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import kotlinx.coroutines.delay
@@ -204,7 +192,7 @@ fun TestLabScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Evaluated Action: ${result.action.name}",
+                                        text = "Evaluated Action: ${result.action.displayLabel}",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -218,7 +206,11 @@ fun TestLabScreen(
                                         text = if (result.notificationSent) "🔔 Notification Sent" else "🔇 Silenced (Zero Alert)",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White,
+                                        color = if (result.notificationSent) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onError
+                                        },
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                 }
@@ -256,7 +248,7 @@ fun TestLabScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Injects 8 real Iranian spam vs normal messages with a 1.2s delay so you can observe live system notifications and chat list categorization.",
+                                    text = "Injects ${scenarios.size} real Iranian spam vs normal messages with a 1.2s delay so you can observe live system notifications and chat list categorization.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline
                                 )
@@ -277,7 +269,7 @@ fun TestLabScreen(
                                                     delay(1200)
                                                 }
                                                 isBatchRunning = false
-                                                batchProgress = "All 8 scenarios injected successfully!"
+                                                batchProgress = "All ${scenarios.size} scenarios injected successfully!"
                                                 Toast.makeText(context, "Test Suite Complete!", Toast.LENGTH_SHORT).show()
                                             }
                                         }
@@ -297,7 +289,7 @@ fun TestLabScreen(
                                     } else {
                                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Fire All 8 Scenarios (Timed Batch)", fontWeight = FontWeight.Bold)
+                                        Text("Fire All ${scenarios.size} Scenarios (Timed Batch)", fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -440,7 +432,7 @@ private fun ScenarioCard(
                     }
                 ) {
                     Text(
-                        text = "Expected: ${scenario.expectedAction.name}",
+                        text = "Expected: ${scenario.expectedAction.displayLabel}",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = when (scenario.expectedAction) {

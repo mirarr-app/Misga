@@ -13,8 +13,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -30,7 +28,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -77,21 +74,18 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.ChatNav
-import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.theme.InputBarShape
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
-import com.miss.ga.theme.getAvatarGradient
+import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.MessageBubble
+import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.ui.components.SpamMessagePill
 import com.miss.ga.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
@@ -214,28 +208,16 @@ fun ChatScreen(
         { message: SmsMessage -> selectedMessageForDialog = message }
     }
 
-    val avatarBrush = getAvatarGradient(state.address)
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(avatarBrush),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val displayName = state.contactName ?: state.address
-                            Text(
-                                text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "#",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                        }
+                        ConversationAvatar(
+                            address = state.address,
+                            contactName = state.contactName,
+                            size = 42.dp
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
@@ -318,36 +300,7 @@ fun ChatScreen(
                 Column(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
-                    // Character & Segment Counter Pill
-                    val isUnicode = inputText.any { it.code > 127 }
-                    val maxPerSegment = if (isUnicode) 70 else 160
-                    val count = inputText.length
-                    val segments = if (count == 0) 1 else (count + maxPerSegment - 1) / maxPerSegment
-
-                    if (inputText.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = PillShape,
-                                color = if (segments > 1) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            ) {
-                                Text(
-                                    text = "$count/$maxPerSegment • $segments SMS (${if (isUnicode) "Persian/Unicode" else "GSM-7"})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (segments > 1) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.outline,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
+                    SmsSegmentCounter(text = inputText)
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -384,7 +337,7 @@ fun ChatScreen(
                                     viewModel.sendMessage(text) { result ->
                                         if (!result.sent) {
                                             inputText = text
-                                            Toast.makeText(context, "Failed to send SMS", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Couldn't send message. Check signal and default SMS app.", Toast.LENGTH_SHORT).show()
                                         } else if (!result.storedInProvider) {
                                             Toast.makeText(
                                                 context,
@@ -611,7 +564,6 @@ private fun ChatMessageList(
     onDelete: (Long) -> Unit,
     onLongClick: (SmsMessage) -> Unit
 ) {
-    val visibleMessages = remember(messages) { messages.asReversed() }
     LazyColumn(
         state = listState,
         reverseLayout = true,
@@ -619,16 +571,18 @@ private fun ChatMessageList(
         contentPadding = PaddingValues(vertical = 12.dp)
     ) {
         items(
-            items = visibleMessages,
-            key = { it.id },
-            contentType = { message ->
+            count = messages.size,
+            key = { index -> messages[messages.lastIndex - index].id },
+            contentType = { index ->
+                val message = messages[messages.lastIndex - index]
                 when {
                     message.isSpam -> "spam"
                     message.isSent -> "sent"
                     else -> "inbox"
                 }
             }
-        ) { message ->
+        ) { index ->
+            val message = messages[messages.lastIndex - index]
             val isHighlighted = message.id == highlightedMessageId
             if (message.isSpam) {
                 SpamMessagePill(

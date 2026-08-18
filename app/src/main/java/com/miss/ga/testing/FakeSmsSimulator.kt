@@ -100,7 +100,7 @@ object FakeSmsSimulator {
     ): SimulationResult = withContext(Dispatchers.IO) {
         val dbHelper = MisgaDatabaseHelper.getInstance(context)
         val filterEngine = SmsFilterEngine(dbHelper)
-        val notificationHelper = NotificationHelper(context)
+        val notificationHelper = NotificationHelper.getInstance(context)
         val repository = SmsRepository(context)
 
         val normalizedSender = sender.trim()
@@ -117,7 +117,7 @@ object FakeSmsSimulator {
                 put(Telephony.Sms.ADDRESS, normalizedSender)
                 put(Telephony.Sms.BODY, body)
                 put(Telephony.Sms.DATE, now)
-                put(Telephony.Sms.READ, 0)
+                put(Telephony.Sms.READ, if (filterResult.action == FilterAction.SPAM) 1 else 0)
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
                 repository.putDefaultSmsSubscription(this)
             }
@@ -131,15 +131,13 @@ object FakeSmsSimulator {
             threadId = (normalizedSender.hashCode().toLong() and 0x7FFFFFFF)
         }
 
-        // 3. Save Spam / Action Metadata in Local Database
-        if (filterResult.action == FilterAction.SPAM) {
-            dbHelper.markMessageSpam(
-                messageId = messageId,
-                address = normalizedSender,
-                matchedRuleName = filterResult.matchedRuleName,
-                action = filterResult.action
-            )
-        }
+        // 3. Save filter metadata in local SQLite for every action
+        dbHelper.markMessageSpam(
+            messageId = messageId,
+            address = normalizedSender,
+            matchedRuleName = filterResult.matchedRuleName,
+            action = filterResult.action
+        )
 
         // 4. Trigger Notification if Action is not SPAM
         val contactName = repository.resolveContactName(normalizedSender)

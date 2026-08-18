@@ -1,8 +1,7 @@
 package com.miss.ga.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,7 +31,6 @@ import com.miss.ga.theme.IncomingBubbleShape
 import com.miss.ga.theme.OutgoingBubbleShape
 import com.miss.ga.ui.util.SmsDateFormats
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
     message: SmsMessage,
@@ -74,10 +73,9 @@ fun MessageBubble(
             shadowElevation = 0.dp,
             modifier = Modifier
                 .widthIn(min = 80.dp, max = 320.dp)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = onLongClick
-                )
+                .pointerInput(onLongClick) {
+                    detectTapGestures(onLongPress = { onLongClick() })
+                }
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)

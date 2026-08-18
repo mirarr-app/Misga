@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Misga</string>
+    <string name="sms_permission_needed">Inbox needs SMS permission</string>
+    <string name="open_settings">Open settings</string>
+    <string name="retry">Retry</string>
+    <string name="send_failed_check_signal">Couldn\'t send message. Check signal and default SMS app.</string>
 </resources>

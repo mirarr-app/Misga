@@ -1,14 +1,18 @@
 package com.miss.ga.ui.viewmodel
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Telephony
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.repository.SmsRepository
@@ -18,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 data class ConversationsUiState(
@@ -38,6 +43,7 @@ data class ConversationsUiState(
 class ConversationsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = SmsRepository(application)
+    private val dbHelper = MisgaDatabaseHelper.getInstance(application)
     private var searchJob: Job? = null
     private var loadJob: Job? = null
     private var defaultSmsCheckJob: Job? = null
@@ -51,9 +57,38 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     init {
         registerSmsContentObserver()
         loadThreads()
+        viewModelScope.launch {
+            dbHelper.rulesChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+        }
+        viewModelScope.launch {
+            dbHelper.prefsChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+        }
+        viewModelScope.launch {
+            dbHelper.spamMetaChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+        }
     }
 
     fun loadThreads(silent: Boolean = false, force: Boolean = false) {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            getApplication<Application>(),
+            Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) {
+            _uiState.value = _uiState.value.copy(
+                hasSmsPermission = false,
+                isLoading = false,
+                error = SMS_PERMISSION_ERROR
+            )
+            return
+        }
+        val permissionError = _uiState.value.error == SMS_PERMISSION_ERROR
+        if (!_uiState.value.hasSmsPermission || permissionError) {
+            _uiState.value = _uiState.value.copy(
+                hasSmsPermission = true,
+                error = if (permissionError) null else _uiState.value.error
+            )
+        }
+
         if (!force && silent) {
             val elapsed = System.currentTimeMillis() - lastLoadFinishedAt
             if (lastLoadFinishedAt > 0L && elapsed < SILENT_LOAD_MIN_INTERVAL_MS) {
@@ -98,10 +133,15 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
                     error = null
                 )
                 lastLoadFinishedAt = System.currentTimeMillis()
-                if (currentQuery.isNotBlank()) {
+                if (currentQuery.length >= SEARCH_MIN_QUERY_LENGTH) {
                     val messages = repository.searchAllMessages(currentQuery)
                     _uiState.value = _uiState.value.copy(
                         matchingMessages = messages,
+                        isSearching = false
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        matchingMessages = emptyList(),
                         isSearching = false
                     )
                 }
@@ -185,11 +225,15 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
             return
         }
 
-        val threads = _uiState.value.threads
-        val filtered = threads.filter {
-            (it.contactName?.contains(trimmed, ignoreCase = true) == true) ||
-                    it.address.contains(trimmed, ignoreCase = true) ||
-                    it.snippet.contains(trimmed, ignoreCase = true)
+        val filtered = filterThreads(_uiState.value.threads, trimmed)
+        if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
+            _uiState.value = _uiState.value.copy(
+                searchQuery = query,
+                filteredThreads = filtered,
+                matchingMessages = emptyList(),
+                isSearching = false
+            )
+            return
         }
 
         _uiState.value = _uiState.value.copy(
@@ -304,14 +348,22 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
 
         viewModelScope.launch {
             val count = targetIds.size
-            repository.deleteThreads(targetIds)
+            val success = repository.deleteThreads(targetIds)
+            if (!success) {
+                _uiState.value = _uiState.value.copy(
+                    error = "Failed to delete conversations"
+                )
+                onComplete(0)
+                return@launch
+            }
             val updatedThreads = _uiState.value.threads.filter { it.threadId !in targetIds }
             val updatedFiltered = _uiState.value.filteredThreads.filter { it.threadId !in targetIds }
             _uiState.value = _uiState.value.copy(
                 threads = updatedThreads,
                 filteredThreads = updatedFiltered,
                 selectedThreadIds = emptySet(),
-                isSelectionMode = false
+                isSelectionMode = false,
+                error = null
             )
             repository.saveCachedThreads(updatedThreads)
             onComplete(count)
@@ -349,3 +401,5 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
 
 private const val SMS_OBSERVER_DEBOUNCE_MS = 400L
 private const val SILENT_LOAD_MIN_INTERVAL_MS = 3_000L
+private const val SEARCH_MIN_QUERY_LENGTH = 2
+private const val SMS_PERMISSION_ERROR = "SMS permission required"
