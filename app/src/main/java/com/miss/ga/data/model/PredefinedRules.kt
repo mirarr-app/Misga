@@ -361,6 +361,18 @@ object PredefinedRules {
                 isPredefined = true,
                 category = RuleCategory.CUSTOM_ALLOWLIST,
                 description = "Operator notices about remaining package validity / usage deadline — delivered with alert, overriding blocklists"
+            ),
+            FilterRule(
+                id = -105,
+                name = "Order Cancellation Refund (بابت لغو سفارش)",
+                pattern = "بابت\\s*لغو\\s*سفارش",
+                isRegex = true,
+                action = FilterAction.NORMAL,
+                listType = RuleListType.ALLOWLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.CUSTOM_ALLOWLIST,
+                description = "Payment-app refund notices for a cancelled order (بابت لغو سفارش) — delivered with alert, overriding promo keywords such as فعال‌سازی"
             )
         )
     }
