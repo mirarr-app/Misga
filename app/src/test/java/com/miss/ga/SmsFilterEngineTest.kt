@@ -348,4 +348,36 @@ class SmsFilterEngineTest {
         )
         assertTrue(result.isAllowlisted)
     }
+
+    @Test
+    fun testOrderCancellationRefundAllowlistPreset() {
+        val rule = PredefinedRules.getDefaultRules().first { it.id == -105L }
+        val snappPaySms = """کاربر عزیز اسنپ‌پی،
+مبلغ ۸,۸۷۶,۰۸۸ تومان، بابت لغو سفارش، به کیف پول‌تان عودت داده شد.
+با فعال‌سازی قابلیت جدید «دریافت سود» روی موجودی کیف‌ پولتان سود دریافت کنید.
+مشاهده موجودی و فعال‌سازی دریافت سود: https://l.snpy.ir/wqbxd"""
+        val zwnjSms = "مبلغ به کیف پول بابت\u200Cلغو سفارش عودت داده شد."
+
+        assertTrue(
+            "Expected بابت لغو سفارش refund notice to match allowlist",
+            SmsFilterEngine.testPattern(rule.pattern, true, snappPaySms).isMatch
+        )
+        assertTrue(
+            "ZWNJ form of بابت لغو سفارش should still match",
+            SmsFilterEngine.testPattern(rule.pattern, true, zwnjSms).isMatch
+        )
+
+        val result = SmsFilterEngine.evaluateMessage(
+            sender = "10008899",
+            body = snappPaySms,
+            rules = PredefinedRules.getDefaultRules(),
+            senderPreference = null
+        )
+        assertEquals(
+            "بابت لغو سفارش allowlist must override فعالسازی keyword blocklist",
+            FilterAction.NORMAL,
+            result.action
+        )
+        assertTrue(result.isAllowlisted)
+    }
 }
