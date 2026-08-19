@@ -165,7 +165,8 @@ class SmsFilterEngineTest {
             -22L to "برای دریافت جایزه روی لینک کلیک کنید: https://b2n.ir/abc123",
             -23L to "بسته‌های تخفیفی اینترنت همراه اول برای شما فعال شد.",
             -24L to "جهت فعالسازی بسته عدد ۱ را ارسال کنید.",
-            -25L to "شماره رُند ویژه با قیمت استثنایی."
+            -25L to "شماره رُند ویژه با قیمت استثنایی.",
+            -26L to "خرید:\nl.snpy.ir/iouvc"
         )
 
         cases.forEach { (id, sample) ->
@@ -300,6 +301,38 @@ class SmsFilterEngineTest {
                 SmsFilterEngine.testPattern(rondRule.pattern, true, sample).isMatch
             )
         }
+
+        val snpyRule = PredefinedRules.getDefaultRules().first { it.id == -26L }
+        listOf(
+            "l.snpy.ir/iouvc",
+            "https://l.snpy.ir/wqbxd",
+            "http://www.l.snpy.ir/abc",
+            "L.SNPY.IR",
+            "L.Snpy.Ir/xyz"
+        ).forEach { sample ->
+            assertTrue(
+                "l.snpy.ir variant should match case-insensitively: $sample",
+                SmsFilterEngine.testPattern(snpyRule.pattern, true, sample).isMatch
+            )
+        }
+        val snpyPromo = """با خرید قسطی، نگران آخر ماه نیستی!
+با اسنپ‌پی، کالاهای مورد نیازت رو آخر ماه، آنلاین و حضوری در ۴قسط بخر.
++ ۲۰۰هزار تومن تخفیف بیشتر با کد PAY2TMH
+کف خرید: ۱میلیون تومن
+خرید:
+l.snpy.ir/iouvc"""
+        val snpyResult = SmsFilterEngine.evaluateMessage(
+            sender = "+989121234567",
+            body = snpyPromo,
+            rules = PredefinedRules.getDefaultRules(),
+            senderPreference = null
+        )
+        assertEquals(
+            "Snapp Pay installment promo with l.snpy.ir must be blocked",
+            FilterAction.SPAM,
+            snpyResult.action
+        )
+        assertFalse(snpyResult.isAllowlisted)
     }
 
     @Test
@@ -374,7 +407,7 @@ class SmsFilterEngineTest {
             senderPreference = null
         )
         assertEquals(
-            "بابت لغو سفارش allowlist must override فعالسازی keyword blocklist",
+            "بابت لغو سفارش allowlist must override فعالسازی and l.snpy.ir blocklists",
             FilterAction.NORMAL,
             result.action
         )

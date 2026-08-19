@@ -346,6 +346,18 @@ object PredefinedRules {
                 category = RuleCategory.SPAM_KEYWORD,
                 description = "Blocks the standalone word رُند in any shape: رند, رُند, ر ند, ر‌ند. Does not match برند."
             ),
+            FilterRule(
+                id = -26,
+                name = "Snapp Pay Short Links (l.snpy.ir)",
+                pattern = "(?i)(https?://)?([a-z0-9-]+\\.)*l\\.snpy\\.ir",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Blocks l.snpy.ir shortened links in any casing (l.snpy.ir / L.SNPY.IR / https://l.snpy.ir/...)"
+            ),
 
             // ==========================================
             // --- SERVICE ALLOWLIST PRESETS ---
