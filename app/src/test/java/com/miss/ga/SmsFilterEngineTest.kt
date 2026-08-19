@@ -380,4 +380,36 @@ class SmsFilterEngineTest {
         )
         assertTrue(result.isAllowlisted)
     }
+
+    @Test
+    fun testShipmentNoticeAllowlistPreset() {
+        val rule = PredefinedRules.getDefaultRules().first { it.id == -106L }
+        val snappShopSms = """اسنپ شاپ
+مرسوله 1 از سفارش 673984966 کنسل شد. 
+اعتبار خرید تا ۲ساعت آینده اصلاح و مبلغ پرداختی شما تا ۲۴ساعت آینده به کیف پول اسنپ‌پی یا کارت پرداختی واریز میشود.
+لغو 11"""
+        val zwnjSms = "مرسوله\u200Cی سفارش شما ارسال شد."
+
+        assertTrue(
+            "Expected مرسوله shipment notice to match allowlist",
+            SmsFilterEngine.testPattern(rule.pattern, true, snappShopSms).isMatch
+        )
+        assertTrue(
+            "ZWNJ form of مرسوله should still match",
+            SmsFilterEngine.testPattern(rule.pattern, true, zwnjSms).isMatch
+        )
+
+        val result = SmsFilterEngine.evaluateMessage(
+            sender = "10001234",
+            body = snappShopSms,
+            rules = PredefinedRules.getDefaultRules(),
+            senderPreference = null
+        )
+        assertEquals(
+            "مرسوله allowlist must override لغو 11 opt-out blocklist",
+            FilterAction.NORMAL,
+            result.action
+        )
+        assertTrue(result.isAllowlisted)
+    }
 }

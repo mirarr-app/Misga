@@ -373,6 +373,18 @@ object PredefinedRules {
                 isPredefined = true,
                 category = RuleCategory.CUSTOM_ALLOWLIST,
                 description = "Payment-app refund notices for a cancelled order (بابت لغو سفارش) — delivered with alert, overriding promo keywords such as فعال‌سازی"
+            ),
+            FilterRule(
+                id = -106,
+                name = "Shipment Notice (مرسوله)",
+                pattern = "مرسوله",
+                isRegex = true,
+                action = FilterAction.NORMAL,
+                listType = RuleListType.ALLOWLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.CUSTOM_ALLOWLIST,
+                description = "Shop/courier shipment notices (مرسوله) — delivered with alert, overriding opt-out keywords such as لغو 11"
             )
         )
     }
