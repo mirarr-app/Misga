@@ -12,6 +12,7 @@ import com.miss.ga.data.db.SpamMetaWrite
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.PhoneNumberKeys
+import com.miss.ga.engine.IncomingSmsPolicy
 import com.miss.ga.engine.NotificationHelper
 import com.miss.ga.engine.SmsFilterEngine
 import kotlin.math.abs
@@ -33,7 +34,14 @@ class SmsReceiver : BroadcastReceiver() {
             return
         }
 
-        val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
+        val messages = try {
+            Telephony.Sms.Intents.getMessagesFromIntent(intent)
+                ?.filterNotNull()
+                ?.toTypedArray()
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not parse SMS PDUs", e)
+            return
+        }
         if (messages.isNullOrEmpty()) return
 
         val pendingResult = goAsync()
@@ -68,21 +76,33 @@ class SmsReceiver : BroadcastReceiver() {
         val smsRepository = SmsRepository(context)
 
         // Combine multipart messages by sender
-        val messagesBySender = messages.groupBy { it.displayOriginatingAddress ?: "" }
+        val messagesBySender = messages.groupBy { smsAddress(it) }
         val pendingMetaWrites = mutableListOf<SpamMetaWrite>()
 
-        for ((sender, parts) in messagesBySender) {
-            if (sender.isBlank()) continue
-
-            val fullBody = parts.joinToString(separator = "") { it.displayMessageBody ?: "" }
+        for ((rawSender, parts) in messagesBySender) {
+            val sender = IncomingSmsPolicy.storedAddress(rawSender)
+            val fullBody = parts.joinToString(separator = "") { smsBody(it) }
             val timestamp = parts.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
+
+            if (!IncomingSmsPolicy.shouldKeepInInbox(
+                    address = sender,
+                    body = fullBody,
+                    isClassZero = parts.any { it.isClassZero() },
+                    isTypeZero = parts.any { it.isTypeZero() },
+                    isStatusReport = parts.any { it.isStatusReport() },
+                    isMwiDontStore = parts.any { it.isMwiDontStoreMessage() }
+                )
+            ) {
+                Log.d(TAG, "Dropping non-inbox SMS from ${PhoneNumberKeys.redact(sender)}")
+                continue
+            }
 
             // Run through the MISGA hierarchical filter engine
             val filterResult = filterEngine.evaluateMessage(sender, fullBody)
 
-            var messageId: Long = System.currentTimeMillis()
+            var messageId: Long = -1L
             var threadId: Long = 0
-            var shouldWriteMeta = false
+            var storedInProvider = false
 
             // If we are the default SMS app and received SMS_DELIVER, we must insert into Telephony provider
             if (isDefaultAppDeliver) {
@@ -97,8 +117,11 @@ class SmsReceiver : BroadcastReceiver() {
 
                 try {
                     val uri = context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, cv)
-                    uri?.lastPathSegment?.toLongOrNull()?.let { insertedId ->
-                        messageId = insertedId
+                    if (uri != null) {
+                        storedInProvider = true
+                        uri.lastPathSegment?.toLongOrNull()?.let { insertedId ->
+                            messageId = insertedId
+                        }
                     }
 
                     // Query thread ID
@@ -106,12 +129,16 @@ class SmsReceiver : BroadcastReceiver() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error writing to Telephony provider", e)
                 }
-                shouldWriteMeta = true
             } else {
                 resolveInboxMessageId(context, sender, fullBody, timestamp)?.let { realId ->
                     messageId = realId
-                    shouldWriteMeta = true
+                    storedInProvider = true
                 }
+            }
+
+            if (!storedInProvider) {
+                Log.w(TAG, "Skipping notify/meta; SMS was not stored for ${PhoneNumberKeys.redact(sender)}")
+                continue
             }
 
             // Ensure threadId is resolved
@@ -119,16 +146,14 @@ class SmsReceiver : BroadcastReceiver() {
                 threadId = smsRepository.getOrCreateThreadId(sender)
             }
 
-            if (shouldWriteMeta) {
-                pendingMetaWrites.add(
-                    SpamMetaWrite(
-                        messageId = messageId,
-                        address = sender,
-                        matchedRuleName = filterResult.matchedRuleName,
-                        action = filterResult.action
-                    )
+            pendingMetaWrites.add(
+                SpamMetaWrite(
+                    messageId = messageId,
+                    address = sender,
+                    matchedRuleName = filterResult.matchedRuleName,
+                    action = filterResult.action
                 )
-            }
+            )
 
             // Only notify on SMS_DELIVER (we are default). SMS_RECEIVED is handled by the
             // default SMS app's own notification; we still resolve id and write filter meta.
@@ -214,6 +239,68 @@ class SmsReceiver : BroadcastReceiver() {
             SmsFilterEngine.normalizeAddress(b),
             ignoreCase = true
         )
+    }
+
+    private fun smsAddress(message: AndroidSmsMessage): String {
+        return try {
+            message.displayOriginatingAddress
+        } catch (_: Exception) {
+            null
+        }?.trim().orEmpty().ifBlank {
+            try {
+                message.originatingAddress
+            } catch (_: Exception) {
+                null
+            }?.trim().orEmpty()
+        }
+    }
+
+    private fun smsBody(message: AndroidSmsMessage): String {
+        val display = try {
+            message.displayMessageBody
+        } catch (e: Exception) {
+            Log.w(TAG, "displayMessageBody failed", e)
+            null
+        }
+        if (!display.isNullOrEmpty()) return display
+        return try {
+            message.messageBody
+        } catch (e: Exception) {
+            Log.w(TAG, "messageBody failed", e)
+            null
+        }.orEmpty()
+    }
+
+    private fun AndroidSmsMessage.isClassZero(): Boolean {
+        return try {
+            messageClass == AndroidSmsMessage.MessageClass.CLASS_0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun AndroidSmsMessage.isTypeZero(): Boolean {
+        return try {
+            (protocolIdentifier and 0xFF) == IncomingSmsPolicy.TYPE_ZERO_PROTOCOL_ID
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun AndroidSmsMessage.isStatusReport(): Boolean {
+        return try {
+            isStatusReportMessage
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun AndroidSmsMessage.isMwiDontStoreMessage(): Boolean {
+        return try {
+            isMwiDontStore || isCphsMwiMessage
+        } catch (_: Exception) {
+            false
+        }
     }
 
     companion object {

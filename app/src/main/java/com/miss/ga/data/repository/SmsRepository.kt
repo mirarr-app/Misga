@@ -20,6 +20,7 @@ import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.util.PhoneNumberKeys
 import com.miss.ga.engine.FilterRulesCache
+import com.miss.ga.engine.IncomingSmsPolicy
 import com.miss.ga.engine.PreparedFilterRules
 import com.miss.ga.engine.SmsFilterEngine
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,10 @@ class SmsRepository(private val context: Context) {
         }
     }
 
-    suspend fun getCachedThreads(): List<ConversationThread> = dbHelper.getCachedThreads()
+    suspend fun getCachedThreads(): List<ConversationThread> =
+        dbHelper.getCachedThreads().filterNot { thread ->
+            IncomingSmsPolicy.isGhostConversation(thread.address, thread.snippet)
+        }
 
     suspend fun saveCachedThreads(threads: List<ConversationThread>) =
         dbHelper.replaceCachedThreads(threads)
@@ -262,6 +266,10 @@ class SmsRepository(private val context: Context) {
                     resolveInboxAction(latest.first, address, latest.second) == FilterAction.SPAM
                 } == true
 
+                if (IncomingSmsPolicy.isGhostConversation(address, row.snippet)) {
+                    continue
+                }
+
                 threads.add(
                     ConversationThread(
                         threadId = threadId,
@@ -353,6 +361,10 @@ class SmsRepository(private val context: Context) {
                     val date = it.getLong(dateIdx)
                     val type = it.getInt(typeIdx)
                     val read = it.getInt(readIdx) == 1
+
+                    if (IncomingSmsPolicy.isGhostConversation(addr, body)) {
+                        continue
+                    }
 
                     val meta = spamMeta[msgId]
                     val isSpam: Boolean
@@ -729,6 +741,10 @@ class SmsRepository(private val context: Context) {
                 while (it.moveToNext() && hits.size < 250) {
                     var threadId = it.getLong(threadIdIdx)
                     val address = it.getString(addrIdx) ?: ""
+                    val body = it.getString(bodyIdx) ?: ""
+                    if (IncomingSmsPolicy.isGhostConversation(address, body)) {
+                        continue
+                    }
                     if (threadId <= 0 && address.isNotBlank()) {
                         threadId = Telephony.Threads.getOrCreateThreadId(context, address)
                     }
@@ -737,7 +753,7 @@ class SmsRepository(private val context: Context) {
                             messageId = it.getLong(idIdx),
                             threadId = threadId,
                             address = address,
-                            body = it.getString(bodyIdx) ?: "",
+                            body = body,
                             date = it.getLong(dateIdx),
                             read = it.getInt(readIdx) == 1,
                             type = it.getInt(typeIdx)

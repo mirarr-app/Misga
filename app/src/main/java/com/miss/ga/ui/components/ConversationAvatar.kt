@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.miss.ga.theme.NonContactAvatarBrush
 import com.miss.ga.theme.getAvatarGradient
+import com.miss.ga.ui.util.senderDisplayName
 
 @Composable
 fun ConversationAvatar(
@@ -28,7 +29,7 @@ fun ConversationAvatar(
     modifier: Modifier = Modifier,
     isContact: Boolean = !contactName.isNullOrBlank()
 ) {
-    val displayName = contactName?.takeIf { it.isNotBlank() } ?: address
+    val displayName = senderDisplayName(contactName, address)
     val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "#"
     val avatarBrush = if (isContact) getAvatarGradient(address) else NonContactAvatarBrush
     val showLetter = isContact || initial.any { it.isLetter() }

@@ -66,6 +66,7 @@ import com.miss.ga.theme.SuccessContainerLight
 import com.miss.ga.theme.SuccessDark
 import com.miss.ga.theme.SuccessLight
 import com.miss.ga.ui.components.ConversationAvatar
+import com.miss.ga.ui.util.senderDisplayName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,7 +107,7 @@ fun ParticipantSettingsSheet(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = contactName ?: address,
+                        text = senderDisplayName(contactName, address),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )

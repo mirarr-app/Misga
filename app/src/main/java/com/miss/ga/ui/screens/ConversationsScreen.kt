@@ -97,6 +97,7 @@ import com.miss.ga.theme.PillShape
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.DefaultSmsBanner
 import com.miss.ga.ui.util.SmsDateFormats
+import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
 import com.miss.ga.util.DefaultSmsAppHelper
 import java.util.Locale
@@ -824,7 +825,7 @@ private fun ConversationItem(
     val isSelected by remember(thread.threadId) {
         derivedStateOf { thread.threadId in selectedIds }
     }
-    val displayName = thread.contactName ?: thread.address
+    val displayName = senderDisplayName(thread.contactName, thread.address)
 
     val itemBgColor = if (isSelected) {
         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
@@ -1007,7 +1008,7 @@ private fun SearchMessageResultItem(
     searchQuery: String,
     onClick: () -> Unit
 ) {
-    val displayName = item.contactName ?: item.address
+    val displayName = senderDisplayName(item.contactName, item.address)
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant

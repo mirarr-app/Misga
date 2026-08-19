@@ -87,6 +87,7 @@ import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.MessageBubble
 import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.ui.components.SpamMessagePill
+import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 
@@ -221,7 +222,7 @@ fun ChatScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = state.contactName ?: state.address,
+                                text = senderDisplayName(state.contactName, state.address),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
