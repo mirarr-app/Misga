@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.miss.ga.MainActivity
+import com.miss.ga.R
 import com.miss.ga.data.model.FilterAction
 
 class NotificationHelper private constructor(private val context: Context) {
@@ -64,7 +65,8 @@ class NotificationHelper private constructor(private val context: Context) {
         }
 
         val channelId = if (action == FilterAction.NORMAL) CHANNEL_ALERT_ID else CHANNEL_SILENT_ID
-        val displayName = contactName ?: sender
+        val unknownLabel = context.getString(R.string.unknown_sender)
+        val displayName = IncomingSmsPolicy.displayName(contactName, sender, unknownLabel)
         val notificationId = notificationIdFor(threadId)
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
