@@ -21,6 +21,7 @@ import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.util.PhoneNumberKeys
 import com.miss.ga.engine.FilterRulesCache
 import com.miss.ga.engine.IncomingSmsPolicy
+import com.miss.ga.engine.NotificationHelper
 import com.miss.ga.engine.PreparedFilterRules
 import com.miss.ga.engine.SmsFilterEngine
 import kotlinx.coroutines.Dispatchers
@@ -255,7 +256,7 @@ class SmsRepository(private val context: Context) {
                 val address = resolveRecipientAddress(row.recipientIds, canonicalAddresses)
                 val contactName = PhoneNumberKeys.lookup(contactNames, address)
 
-                val unreadCount = if (row.read) 0 else (unreadCounts[threadId] ?: 0)
+                val unreadCount = unreadCounts[threadId] ?: 0
                 val lastInbox = latestInboxMessage[threadId]
                 val lastMessageAction = if (lastInbox != null) {
                     resolveInboxAction(lastInbox.first, address, lastInbox.second)
@@ -462,53 +463,57 @@ class SmsRepository(private val context: Context) {
     }
 
     suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
-        try {
-            val cv = ContentValues().apply {
-                put(Telephony.Sms.READ, 1)
-            }
-            context.contentResolver.update(
-                Telephony.Sms.CONTENT_URI,
-                cv,
-                "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 0",
-                arrayOf(threadId.toString())
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to mark thread read $threadId", e)
-        }
+        markThreadsRead(listOf(threadId))
     }
 
     suspend fun markThreadsRead(threadIds: Collection<Long>) = withContext(Dispatchers.IO) {
         if (threadIds.isEmpty()) return@withContext
-        try {
-            val cv = ContentValues().apply {
-                put(Telephony.Sms.READ, 1)
+        val ids = threadIds.distinct()
+        val values = readAndSeenValues()
+        for (threadId in ids) {
+            try {
+                val convUri = ContentUris.withAppendedId(
+                    Telephony.MmsSms.CONTENT_CONVERSATIONS_URI,
+                    threadId
+                )
+                context.contentResolver.update(convUri, values, "${Telephony.Sms.READ} = 0", null)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to mark conversation read $threadId", e)
             }
-            val placeholders = threadIds.joinToString(",") { "?" }
-            val args = threadIds.map { it.toString() }.toTypedArray()
+        }
+        try {
+            val placeholders = ids.joinToString(",") { "?" }
+            val args = ids.map { it.toString() }.toTypedArray()
             context.contentResolver.update(
                 Telephony.Sms.CONTENT_URI,
-                cv,
+                values,
                 "${Telephony.Sms.THREAD_ID} IN ($placeholders) AND ${Telephony.Sms.READ} = 0",
                 args
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to mark threads read $threadIds", e)
+            Log.e(TAG, "Failed to mark threads read $ids", e)
         }
+        val notificationHelper = NotificationHelper.getInstance(context)
+        ids.forEach { notificationHelper.cancelNotification(it) }
     }
 
     suspend fun markAllMessagesRead() = withContext(Dispatchers.IO) {
         try {
-            val cv = ContentValues().apply {
-                put(Telephony.Sms.READ, 1)
-            }
             context.contentResolver.update(
                 Telephony.Sms.CONTENT_URI,
-                cv,
+                readAndSeenValues(),
                 "${Telephony.Sms.READ} = 0",
                 null
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to mark all messages read", e)
+        }
+    }
+
+    private fun readAndSeenValues(): ContentValues {
+        return ContentValues().apply {
+            put(Telephony.Sms.READ, 1)
+            put(Telephony.Sms.SEEN, 1)
         }
     }
 

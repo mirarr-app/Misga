@@ -132,6 +132,11 @@ fun ConversationsScreen(
         viewModel.onInboxResumed()
     }
 
+    val openChat: (ChatNav) -> Unit = { nav ->
+        viewModel.clearUnreadForThread(nav.threadId)
+        onNavigateToChat(nav)
+    }
+
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) {
@@ -430,7 +435,7 @@ fun ConversationsScreen(
                                     selectedIds = NoSelectionIds,
                                     isSelectionMode = false,
                                     onClick = {
-                                        onNavigateToChat(
+                                        openChat(
                                             ChatNav(
                                                 threadId = thread.threadId,
                                                 address = thread.address,
@@ -464,7 +469,7 @@ fun ConversationsScreen(
                                     item = msg,
                                     searchQuery = state.searchQuery,
                                     onClick = {
-                                        onNavigateToChat(
+                                        openChat(
                                             ChatNav(
                                                 threadId = msg.threadId,
                                                 address = msg.address,
@@ -525,7 +530,7 @@ fun ConversationsScreen(
                     threads = displayedThreads,
                     selectedIds = selectedThreadIds,
                     isSelectionMode = isSelectionMode,
-                    onOpenChat = onNavigateToChat,
+                    onOpenChat = openChat,
                     onToggleSelect = viewModel::toggleSelectThread,
                     onEnterSelection = viewModel::enterSelectionMode
                 )

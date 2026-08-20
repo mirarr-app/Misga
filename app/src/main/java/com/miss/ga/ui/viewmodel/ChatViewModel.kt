@@ -1,6 +1,11 @@
 package com.miss.ga.ui.viewmodel
 
 import android.app.Application
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.Telephony
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,6 +19,7 @@ import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +52,8 @@ class ChatViewModel(
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
     private var messagesJob: Job? = null
     private var olderJob: Job? = null
+    private var observerDebounceJob: Job? = null
+    private var smsContentObserver: ContentObserver? = null
 
     private val _uiState = MutableStateFlow(
         ChatUiState(
@@ -57,6 +65,7 @@ class ChatViewModel(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     init {
+        registerSmsContentObserver()
         loadMessages()
         loadSenderSettings()
         viewModelScope.launch {
@@ -79,6 +88,11 @@ class ChatViewModel(
     }
 
     fun loadMessages() {
+        // Keep mark-as-read off the cancellable load job so a second loadMessages()
+        // (init + ON_RESUME) cannot abort writing READ/SEEN.
+        viewModelScope.launch {
+            repository.markThreadRead(initialThreadId)
+        }
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
             val hadMessages = _uiState.value.messages.isNotEmpty()
@@ -93,9 +107,6 @@ class ChatViewModel(
                     limit = MESSAGE_PAGE_SIZE
                 )
                 if (!hadMessages) {
-                    if (initialMessageId == null) {
-                        repository.markThreadRead(initialThreadId)
-                    }
                     _uiState.value = _uiState.value.copy(
                         messages = page,
                         hasMoreOlder = page.size == MESSAGE_PAGE_SIZE,
@@ -291,8 +302,50 @@ class ChatViewModel(
         }
     }
 
+    private fun registerSmsContentObserver() {
+        val resolver = getApplication<Application>().contentResolver
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                scheduleReload()
+            }
+
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                scheduleReload()
+            }
+        }
+        try {
+            resolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+            smsContentObserver = observer
+        } catch (e: Exception) {
+            Log.e("ChatViewModel", "Failed to register SMS observer", e)
+        }
+    }
+
+    private fun scheduleReload() {
+        observerDebounceJob?.cancel()
+        observerDebounceJob = viewModelScope.launch {
+            delay(SMS_OBSERVER_DEBOUNCE_MS)
+            loadMessages()
+        }
+    }
+
+    override fun onCleared() {
+        observerDebounceJob?.cancel()
+        val observer = smsContentObserver
+        if (observer != null) {
+            try {
+                getApplication<Application>().contentResolver.unregisterContentObserver(observer)
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Failed to unregister SMS observer", e)
+            }
+            smsContentObserver = null
+        }
+        super.onCleared()
+    }
+
     companion object {
         private const val MESSAGE_PAGE_SIZE = 100
         private const val MAX_TARGET_PAGES = 20
+        private const val SMS_OBSERVER_DEBOUNCE_MS = 400L
     }
 }

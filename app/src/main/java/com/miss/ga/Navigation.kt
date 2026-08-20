@@ -26,6 +26,7 @@ fun MainNavigation(
 
     LaunchedEffect(pendingChatNav) {
         if (pendingChatNav != null) {
+            conversationsViewModel.clearUnreadForThread(pendingChatNav.threadId)
             val current = backStack.lastOrNull()
             if (current !is ChatNav || current.threadId != pendingChatNav.threadId) {
                 backStack.add(pendingChatNav)

@@ -77,7 +77,36 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     fun onInboxResumed() {
         repository.invalidateLookupCaches()
         checkDefaultSmsStatus()
-        loadThreads(silent = true)
+        loadThreads(silent = true, force = true)
+    }
+
+    fun clearUnreadForThread(threadId: Long) {
+        val current = _uiState.value
+        val updatedThreads = current.threads.map { thread ->
+            if (thread.threadId == threadId && (thread.unreadCount > 0 || thread.isUnreadSpam)) {
+                thread.copy(unreadCount = 0, isUnreadSpam = false)
+            } else {
+                thread
+            }
+        }
+        if (updatedThreads != current.threads) {
+            _uiState.value = current.copy(
+                threads = updatedThreads,
+                filteredThreads = current.filteredThreads.map { thread ->
+                    if (thread.threadId == threadId && (thread.unreadCount > 0 || thread.isUnreadSpam)) {
+                        thread.copy(unreadCount = 0, isUnreadSpam = false)
+                    } else {
+                        thread
+                    }
+                }
+            )
+        }
+        viewModelScope.launch {
+            repository.markThreadRead(threadId)
+            if (updatedThreads != current.threads) {
+                repository.saveCachedThreads(updatedThreads)
+            }
+        }
     }
 
     fun loadThreads(silent: Boolean = false, force: Boolean = false) {
@@ -172,7 +201,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         observerDebounceJob?.cancel()
         observerDebounceJob = viewModelScope.launch {
             delay(SMS_OBSERVER_DEBOUNCE_MS)
-            loadThreads(silent = true)
+            loadThreads(silent = true, force = true)
         }
     }
 
