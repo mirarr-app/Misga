@@ -323,7 +323,8 @@ class SmsRepository(private val context: Context) {
             Telephony.Sms.BODY,
             Telephony.Sms.DATE,
             Telephony.Sms.TYPE,
-            Telephony.Sms.READ
+            Telephony.Sms.READ,
+            Telephony.Sms.STATUS
         )
 
         val selection: String
@@ -359,6 +360,7 @@ class SmsRepository(private val context: Context) {
                 val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
                 val typeIdx = it.getColumnIndexOrThrow(Telephony.Sms.TYPE)
                 val readIdx = it.getColumnIndexOrThrow(Telephony.Sms.READ)
+                val statusIdx = it.getColumnIndexOrThrow(Telephony.Sms.STATUS)
 
                 while (it.moveToNext() && messages.size < limit) {
                     val msgId = it.getLong(idIdx)
@@ -368,6 +370,7 @@ class SmsRepository(private val context: Context) {
                     val date = it.getLong(dateIdx)
                     val type = it.getInt(typeIdx)
                     val read = it.getInt(readIdx) == 1
+                    val status = it.getInt(statusIdx)
 
                     if (IncomingSmsPolicy.isGhostConversation(addr, body)) {
                         continue
@@ -416,7 +419,8 @@ class SmsRepository(private val context: Context) {
                             read = read,
                             isSpam = isSpam,
                             matchedRuleName = matchedRule,
-                            isRevealed = isRevealed
+                            isRevealed = isRevealed,
+                            status = status
                         )
                     )
                 }

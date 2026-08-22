@@ -1,5 +1,6 @@
 package com.miss.ga.data.model
 
+import android.provider.Telephony
 import androidx.compose.runtime.Immutable
 
 @Immutable
@@ -13,10 +14,15 @@ data class SmsMessage(
     val read: Boolean,
     val isSpam: Boolean = false,
     val matchedRuleName: String? = null,
-    val isRevealed: Boolean = false
+    val isRevealed: Boolean = false,
+    val status: Int = Telephony.Sms.STATUS_NONE
 ) {
     val isInbox: Boolean get() = type == 1
     val isSent: Boolean get() = type == 2
+    val isDelivered: Boolean
+        get() = isSent && status == Telephony.Sms.STATUS_COMPLETE
+    val isFailed: Boolean
+        get() = isSent && (status == Telephony.Sms.STATUS_FAILED || type == Telephony.Sms.MESSAGE_TYPE_FAILED)
 }
 
 @Immutable

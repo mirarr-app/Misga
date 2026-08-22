@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -102,10 +104,27 @@ fun MessageBubble(
                     )
                     if (isSent) {
                         Spacer(modifier = Modifier.width(4.dp))
+                        val (icon, desc, tint) = when {
+                            message.isFailed -> Triple(
+                                Icons.Default.ErrorOutline,
+                                "Failed",
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
+                            )
+                            message.isDelivered -> Triple(
+                                Icons.Default.DoneAll,
+                                "Delivered",
+                                contentColor.copy(alpha = 0.65f)
+                            )
+                            else -> Triple(
+                                Icons.Default.Done,
+                                "Sent",
+                                contentColor.copy(alpha = 0.65f)
+                            )
+                        }
                         Icon(
-                            imageVector = Icons.Default.Done,
-                            contentDescription = "Sent",
-                            tint = contentColor.copy(alpha = 0.65f),
+                            imageVector = icon,
+                            contentDescription = desc,
+                            tint = tint,
                             modifier = Modifier.size(13.dp)
                         )
                     }
