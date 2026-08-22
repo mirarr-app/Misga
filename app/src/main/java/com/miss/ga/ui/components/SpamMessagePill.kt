@@ -58,6 +58,7 @@ import com.miss.ga.theme.SpamWarningOnDark
 import com.miss.ga.theme.SpamWarningOnLight
 import com.miss.ga.theme.TagShape
 import com.miss.ga.ui.util.SmsDateFormats
+import com.miss.ga.ui.util.contentAware
 
 @Composable
 fun SpamMessagePill(
@@ -196,7 +197,7 @@ fun SpamMessagePill(
                     ) {
                         Text(
                             text = message.body,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.contentAware(),
                             color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 21.sp,
                             modifier = Modifier.padding(12.dp)

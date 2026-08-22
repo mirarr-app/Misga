@@ -50,8 +50,10 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import com.miss.ga.ui.util.contentAware
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -363,6 +365,7 @@ fun FilterStudioScreen(
                         onValueChange = { ruleName = it },
                         label = { Text("Rule Name") },
                         singleLine = true,
+                        textStyle = LocalTextStyle.current.contentAware(),
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -371,6 +374,7 @@ fun FilterStudioScreen(
                         value = ruleDesc,
                         onValueChange = { ruleDesc = it },
                         label = { Text("Description (Optional)") },
+                        textStyle = LocalTextStyle.current.contentAware(),
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -725,6 +729,7 @@ private fun PlaygroundTab(
                 label = { Text("Test Sample SMS Text") },
                 minLines = 3,
                 maxLines = 6,
+                textStyle = LocalTextStyle.current.contentAware(),
                 shape = MaterialTheme.shapes.medium,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -1109,14 +1114,14 @@ private fun RuleCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = rule.name,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.contentAware(),
                             fontWeight = FontWeight.Bold
                         )
                     }
                     if (rule.description.isNotBlank()) {
                         Text(
                             text = rule.description,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodySmall.contentAware(),
                             color = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -1133,7 +1138,7 @@ private fun RuleCard(
             ) {
                 Text(
                     text = rule.pattern,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.contentAware(),
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(8.dp)
                 )
@@ -1256,6 +1261,7 @@ private fun EditRuleDialog(
                     onValueChange = { name = it },
                     label = { Text("Rule Name") },
                     singleLine = true,
+                    textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1266,6 +1272,7 @@ private fun EditRuleDialog(
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = { Text(if (isRegex) "Regex Pattern" else "Pattern") },
+                    textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1415,6 +1422,7 @@ fun AddGlobalRuleDialog(
                     onValueChange = { name = it },
                     label = { Text(if (listType == RuleListType.ALLOWLIST) "Rule Name (e.g. Bank OTP)" else "Rule Name (e.g. Discount codes)") },
                     singleLine = true,
+                    textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1423,6 +1431,7 @@ fun AddGlobalRuleDialog(
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = { Text("Regex Pattern") },
+                    textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )

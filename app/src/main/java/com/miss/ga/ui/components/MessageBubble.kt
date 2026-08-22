@@ -32,6 +32,7 @@ import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.theme.IncomingBubbleShape
 import com.miss.ga.theme.OutgoingBubbleShape
 import com.miss.ga.ui.util.SmsDateFormats
+import com.miss.ga.ui.util.contentAware
 
 @Composable
 fun MessageBubble(
@@ -84,7 +85,7 @@ fun MessageBubble(
             ) {
                 Text(
                     text = message.body,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyLarge.contentAware(),
                     color = contentColor,
                     lineHeight = 23.sp,
                     letterSpacing = 0.2.sp

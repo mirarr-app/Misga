@@ -75,6 +75,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -88,6 +89,7 @@ import com.miss.ga.ui.components.MessageBubble
 import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.ui.components.SpamMessagePill
 import com.miss.ga.ui.util.senderDisplayName
+import com.miss.ga.ui.util.contentAware
 import com.miss.ga.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 
@@ -227,7 +229,7 @@ fun ChatScreen(
                         Column {
                             Text(
                                 text = senderDisplayName(state.contactName, state.address),
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleMedium.contentAware(),
                                 fontWeight = FontWeight.Bold
                             )
                             if (state.contactName != null) {
@@ -324,6 +326,7 @@ fun ChatScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(end = 8.dp),
+                            textStyle = LocalTextStyle.current.contentAware(),
                             shape = InputBarShape,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -520,7 +523,7 @@ fun ChatScreen(
                     ) {
                         Text(
                             text = msg.body,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.contentAware(),
                             maxLines = 4,
                             modifier = Modifier.padding(12.dp)
                         )

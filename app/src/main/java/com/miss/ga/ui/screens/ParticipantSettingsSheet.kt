@@ -29,6 +29,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -67,6 +68,7 @@ import com.miss.ga.theme.SuccessDark
 import com.miss.ga.theme.SuccessLight
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.util.senderDisplayName
+import com.miss.ga.ui.util.contentAware
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -246,8 +248,8 @@ fun ParticipantSettingsSheet(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = rule.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                                    Text(text = rule.pattern, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                    Text(text = rule.name, style = MaterialTheme.typography.labelLarge.contentAware(), fontWeight = FontWeight.Bold)
+                                    Text(text = rule.pattern, style = MaterialTheme.typography.bodySmall.contentAware(), color = MaterialTheme.colorScheme.outline)
                                 }
                                 Surface(
                                     shape = PillShape,
@@ -354,6 +356,7 @@ fun AddSenderRuleDialog(
                     onValueChange = { name = it },
                     label = { Text("Rule Name (e.g. Discount codes)") },
                     singleLine = true,
+                    textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -362,6 +365,7 @@ fun AddSenderRuleDialog(
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = { Text("Regex Pattern (e.g. تخفیف|حراج)") },
+                    textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )

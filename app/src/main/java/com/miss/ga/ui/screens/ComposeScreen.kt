@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +64,7 @@ import com.miss.ga.theme.InputBarShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.SmsSegmentCounter
+import com.miss.ga.ui.util.contentAware
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -143,6 +145,7 @@ fun ComposeScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(end = 8.dp),
+                            textStyle = LocalTextStyle.current.contentAware(),
                             shape = InputBarShape,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -259,6 +262,7 @@ fun ComposeScreen(
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 singleLine = true,
+                textStyle = LocalTextStyle.current.contentAware(),
                 shape = SquircleCardShape,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -366,7 +370,7 @@ private fun ContactSuggestionItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.name,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.contentAware(),
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

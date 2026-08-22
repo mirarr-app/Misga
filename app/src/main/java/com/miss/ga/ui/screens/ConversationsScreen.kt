@@ -57,6 +57,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -98,6 +99,7 @@ import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.DefaultSmsBanner
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.util.senderDisplayName
+import com.miss.ga.ui.util.contentAware
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
 import com.miss.ga.util.DefaultSmsAppHelper
 import java.util.Locale
@@ -266,6 +268,7 @@ fun ConversationsScreen(
                                 }
                             },
                             singleLine = true,
+                            textStyle = LocalTextStyle.current.contentAware(),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent,
@@ -906,7 +909,7 @@ private fun ConversationItem(
             ) {
                 Text(
                     text = displayName,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.contentAware(),
                     fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.ExtraBold else FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -929,7 +932,7 @@ private fun ConversationItem(
             ) {
                 Text(
                     text = thread.snippet,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.contentAware(),
                     color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1,
@@ -1045,7 +1048,7 @@ private fun SearchMessageResultItem(
             ) {
                 Text(
                     text = displayName,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.contentAware(),
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1066,7 +1069,7 @@ private fun SearchMessageResultItem(
             ) {
                 Text(
                     text = annotatedSnippet,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.contentAware(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
