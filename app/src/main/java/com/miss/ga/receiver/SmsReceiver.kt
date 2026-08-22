@@ -12,6 +12,8 @@ import com.miss.ga.data.db.SpamMetaWrite
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.PhoneNumberKeys
+import com.miss.ga.engine.IncomingMultipartAssembler
+import com.miss.ga.engine.IncomingSmsPart
 import com.miss.ga.engine.IncomingSmsPolicy
 import com.miss.ga.engine.NotificationHelper
 import com.miss.ga.engine.SmsFilterEngine
@@ -76,13 +78,40 @@ class SmsReceiver : BroadcastReceiver() {
         val smsRepository = SmsRepository(context)
 
         // Combine multipart messages by sender
-        val messagesBySender = messages.groupBy { smsAddress(it) }
+        val messagesBySender = IncomingMultipartAssembler.assemble(messages.toList()) { message ->
+            IncomingSmsPart(
+                displayOriginatingAddress = try {
+                    message.displayOriginatingAddress
+                } catch (_: Exception) {
+                    null
+                },
+                originatingAddress = try {
+                    message.originatingAddress
+                } catch (_: Exception) {
+                    null
+                },
+                displayMessageBody = try {
+                    message.displayMessageBody
+                } catch (e: Exception) {
+                    Log.w(TAG, "displayMessageBody failed", e)
+                    null
+                },
+                messageBody = try {
+                    message.messageBody
+                } catch (e: Exception) {
+                    Log.w(TAG, "messageBody failed", e)
+                    null
+                },
+                timestampMillis = message.timestampMillis
+            )
+        }
         val pendingMetaWrites = mutableListOf<SpamMetaWrite>()
 
-        for ((rawSender, parts) in messagesBySender) {
-            val sender = IncomingSmsPolicy.storedAddress(rawSender)
-            val fullBody = parts.joinToString(separator = "") { smsBody(it) }
-            val timestamp = parts.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
+        for (entry in messagesBySender) {
+            val parts = entry.parts
+            val sender = IncomingSmsPolicy.storedAddress(entry.rawSender)
+            val fullBody = entry.body
+            val timestamp = entry.timestampMillis
 
             if (!IncomingSmsPolicy.shouldKeepInInbox(
                     address = sender,
@@ -239,36 +268,6 @@ class SmsReceiver : BroadcastReceiver() {
             SmsFilterEngine.normalizeAddress(b),
             ignoreCase = true
         )
-    }
-
-    private fun smsAddress(message: AndroidSmsMessage): String {
-        return try {
-            message.displayOriginatingAddress
-        } catch (_: Exception) {
-            null
-        }?.trim().orEmpty().ifBlank {
-            try {
-                message.originatingAddress
-            } catch (_: Exception) {
-                null
-            }?.trim().orEmpty()
-        }
-    }
-
-    private fun smsBody(message: AndroidSmsMessage): String {
-        val display = try {
-            message.displayMessageBody
-        } catch (e: Exception) {
-            Log.w(TAG, "displayMessageBody failed", e)
-            null
-        }
-        if (!display.isNullOrEmpty()) return display
-        return try {
-            message.messageBody
-        } catch (e: Exception) {
-            Log.w(TAG, "messageBody failed", e)
-            null
-        }.orEmpty()
     }
 
     private fun AndroidSmsMessage.isClassZero(): Boolean {

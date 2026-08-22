@@ -77,6 +77,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Tracks sent/delivery report results for outgoing SMS -->
+        <receiver
+            android:name=".receiver.SmsSentReceiver"
+            android:exported="false" />
+
+        <!-- Handles direct-reply / mark-as-read actions on message notifications -->
+        <receiver
+            android:name=".receiver.NotificationActionReceiver"
+            android:exported="false" />
+
         <!-- Service for quick responses (Required for default SMS app compliance) -->
         <service
             android:name=".service.HeadlessSmsSendService"

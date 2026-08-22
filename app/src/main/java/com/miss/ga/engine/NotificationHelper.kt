@@ -9,9 +9,12 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.RemoteInput
 import com.miss.ga.MainActivity
 import com.miss.ga.R
 import com.miss.ga.data.model.FilterAction
+import com.miss.ga.receiver.NotificationActionReceiver
+import com.miss.ga.receiver.NotificationActions
 
 class NotificationHelper private constructor(private val context: Context) {
 
@@ -93,6 +96,7 @@ class NotificationHelper private constructor(private val context: Context) {
             .setAutoCancel(true)
             .setPriority(if (action == FilterAction.NORMAL) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+        buildActions(threadId, sender).forEach { builder.addAction(it) }
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
@@ -100,6 +104,51 @@ class NotificationHelper private constructor(private val context: Context) {
             Log.w(TAG, "POST_NOTIFICATIONS permission denied", e)
         }
     }
+
+    private fun buildActions(threadId: Long, sender: String): List<NotificationCompat.Action> {
+        fun actionIntent(action: String): Intent =
+            Intent(context, NotificationActionReceiver::class.java).apply {
+                this.action = action
+                putExtra(NotificationActions.EXTRA_THREAD_ID, threadId)
+                putExtra(NotificationActions.EXTRA_ADDRESS, sender)
+            }
+
+        // RemoteInput results are injected into the intent, so it must stay mutable.
+        val replyPendingIntent = PendingIntent.getBroadcast(
+            context,
+            replyRequestCode(threadId),
+            actionIntent(NotificationActions.ACTION_REPLY),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+        val remoteInput = RemoteInput.Builder(NotificationActions.KEY_REPLY_TEXT)
+            .setLabel(context.getString(R.string.notification_action_reply))
+            .build()
+        val replyAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_send,
+            context.getString(R.string.notification_action_reply),
+            replyPendingIntent
+        )
+            .addRemoteInput(remoteInput)
+            .setAllowGeneratedReplies(false)
+            .build()
+
+        val markReadPendingIntent = PendingIntent.getBroadcast(
+            context,
+            markReadRequestCode(threadId),
+            actionIntent(NotificationActions.ACTION_MARK_READ),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val markReadAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_agenda,
+            context.getString(R.string.notification_action_mark_read),
+            markReadPendingIntent
+        ).build()
+
+        return listOf(replyAction, markReadAction)
+    }
+
+    private fun replyRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt()
+    private fun markReadRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x4D524400.toInt()
 
     fun cancelNotification(threadId: Long) {
         notificationManager.cancel(notificationIdFor(threadId))

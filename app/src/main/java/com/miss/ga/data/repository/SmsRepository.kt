@@ -1,9 +1,11 @@
 package com.miss.ga.data.repository
 
+import android.app.PendingIntent
 import android.app.role.RoleManager
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.ContactsContract
@@ -24,8 +26,12 @@ import com.miss.ga.engine.IncomingSmsPolicy
 import com.miss.ga.engine.NotificationHelper
 import com.miss.ga.engine.PreparedFilterRules
 import com.miss.ga.engine.SmsFilterEngine
+import com.miss.ga.receiver.SmsSendTracker
+import com.miss.ga.receiver.SmsSentReceiver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "SmsRepository"
 
@@ -432,19 +438,16 @@ class SmsRepository(private val context: Context) {
             return@withContext SendSmsResult(sent = false, storedInProvider = false)
         }
 
-        try {
-            val smsManager = smsManager()
-            val parts = smsManager.divideMessage(body)
-            if (parts.size > 1) {
-                smsManager.sendMultipartTextMessage(address, null, parts, null, null)
-            } else {
-                smsManager.sendTextMessage(address, null, body, null, null)
-            }
+        val smsManager = smsManager()
+        val parts = try {
+            smsManager.divideMessage(body)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to send SMS to ${PhoneNumberKeys.redact(address)}", e)
+            Log.e(TAG, "Could not divide message for ${PhoneNumberKeys.redact(address)}", e)
             return@withContext SendSmsResult(sent = false, storedInProvider = false)
         }
 
+        // Insert the Sent row first so the receiver can track STATUS per message.
+        var messageId = -1L
         val storedInProvider = try {
             val cv = ContentValues().apply {
                 put(Telephony.Sms.ADDRESS, address)
@@ -452,14 +455,69 @@ class SmsRepository(private val context: Context) {
                 put(Telephony.Sms.DATE, System.currentTimeMillis())
                 put(Telephony.Sms.READ, 1)
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+                put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_PENDING)
                 putDefaultSmsSubscription(this)
             }
-            context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, cv) != null
+            val uri = context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, cv)
+            messageId = uri?.lastPathSegment?.toLongOrNull() ?: -1L
+            uri != null
         } catch (e: Exception) {
-            Log.w(TAG, "Sent SMS but could not store in provider for ${PhoneNumberKeys.redact(address)}", e)
+            Log.w(TAG, "Could not store outgoing SMS in provider for ${PhoneNumberKeys.redact(address)}", e)
             false
         }
-        SendSmsResult(sent = true, storedInProvider = storedInProvider)
+
+        val token = sendTokenCounter.incrementAndGet()
+        val sentAck = SmsSendTracker.register(token, parts.size)
+        val partCount = parts.size
+
+        fun newIntent(action: String): Intent =
+            Intent(context, com.miss.ga.receiver.SmsSentReceiver::class.java).apply {
+                this.action = action
+                putExtra(SmsSentReceiver.EXTRA_SEND_TOKEN, token)
+                putExtra(SmsSentReceiver.EXTRA_MESSAGE_ID, messageId)
+                putExtra(SmsSentReceiver.EXTRA_PART_COUNT, partCount)
+                putExtra(SmsSentReceiver.EXTRA_ADDRESS, address)
+            }
+
+        val sentIntents = parts.map {
+            PendingIntent.getBroadcast(
+                context,
+                uniqueRequestCode(),
+                newIntent(SmsSentReceiver.ACTION_SMS_SENT),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        val deliveryIntents = parts.map {
+            PendingIntent.getBroadcast(
+                context,
+                uniqueRequestCode(),
+                newIntent(SmsSentReceiver.ACTION_SMS_DELIVERED),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        try {
+            if (partCount > 1) {
+                smsManager.sendMultipartTextMessage(
+                    address,
+                    null,
+                    parts,
+                    ArrayList(sentIntents),
+                    ArrayList(deliveryIntents)
+                )
+            } else {
+                smsManager.sendTextMessage(address, null, body, sentIntents[0], deliveryIntents[0])
+            }
+        } catch (e: Exception) {
+            SmsSendTracker.cancel(token)
+            Log.e(TAG, "Failed to dispatch SMS to ${PhoneNumberKeys.redact(address)}", e)
+            return@withContext SendSmsResult(sent = false, storedInProvider = storedInProvider)
+        }
+
+        // Wait for radio-level acknowledgement; carriers normally ack within seconds.
+        val confirmed = runCatching { withTimeoutOrNull(SEND_ACK_TIMEOUT_MS) { sentAck.await() } }.getOrNull() == true
+
+        SendSmsResult(sent = confirmed, storedInProvider = storedInProvider)
     }
 
     suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
@@ -709,7 +767,11 @@ class SmsRepository(private val context: Context) {
         val results = mutableListOf<SearchMessageResult>()
         val contentResolver = context.contentResolver
 
-        val uri = Telephony.Sms.CONTENT_URI
+        val uri = Telephony.Sms.CONTENT_URI.buildUpon()
+            // Push the cap into the provider query instead of scanning the whole inbox.
+            // Headroom above SEARCH_RESULT_CAP absorbs ghost/sent rows filtered in Kotlin.
+            .appendQueryParameter("limit", (SEARCH_RESULT_LIMIT * 4).toString())
+            .build()
         val projection = arrayOf(
             Telephony.Sms._ID,
             Telephony.Sms.THREAD_ID,
@@ -743,7 +805,7 @@ class SmsRepository(private val context: Context) {
                 val readIdx = it.getColumnIndexOrThrow(Telephony.Sms.READ)
                 val typeIdx = it.getColumnIndexOrThrow(Telephony.Sms.TYPE)
 
-                while (it.moveToNext() && hits.size < 250) {
+                while (it.moveToNext() && hits.size < SEARCH_RESULT_LIMIT) {
                     var threadId = it.getLong(threadIdIdx)
                     val address = it.getString(addrIdx) ?: ""
                     val body = it.getString(bodyIdx) ?: ""
@@ -883,6 +945,19 @@ class SmsRepository(private val context: Context) {
         contactCache = null
     }
 
+    companion object {
+        /** How long to wait for the radio-level sent acknowledgement before reporting failure. */
+        private const val SEND_ACK_TIMEOUT_MS = 20_000L
+
+        /** Maximum number of matching rows processed from search. */
+        private const val SEARCH_RESULT_LIMIT = 250
+
+        private val sendTokenCounter = AtomicLong(System.nanoTime())
+
+        private fun uniqueRequestCode(): Int =
+            (sendTokenCounter.incrementAndGet() and 0x7FFFFFFFL).toInt()
+    }
+
     fun resolveContactName(phoneNumber: String): String? {
         if (phoneNumber.isBlank()) return null
         PhoneNumberKeys.lookup(loadContactNameMap(), phoneNumber)?.let { return it }
@@ -908,7 +983,11 @@ class SmsRepository(private val context: Context) {
 data class SendSmsResult(
     val sent: Boolean,
     val storedInProvider: Boolean
-)
+) {
+    companion object {
+        val NOT_SENT = SendSmsResult(sent = false, storedInProvider = false)
+    }
+}
 
 data class ContactItem(
     val name: String,

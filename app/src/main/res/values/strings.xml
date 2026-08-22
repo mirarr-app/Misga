@@ -7,4 +7,6 @@
     <string name="retry">Retry</string>
     <string name="send_failed_check_signal">Couldn\'t send message. Check signal and default SMS app.</string>
     <string name="unknown_sender">Unknown sender</string>
+    <string name="notification_action_reply">Reply</string>
+    <string name="notification_action_mark_read">Mark as read</string>
 </resources>
