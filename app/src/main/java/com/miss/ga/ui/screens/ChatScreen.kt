@@ -116,7 +116,11 @@ fun ChatScreen(
     val coroutineScope = rememberCoroutineScope()
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.setScreenResumed(true)
         viewModel.loadMessages()
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        viewModel.setScreenResumed(false)
     }
 
     var inputText by remember { mutableStateOf("") }

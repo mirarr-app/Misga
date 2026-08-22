@@ -54,6 +54,8 @@ class ChatViewModel(
     private var olderJob: Job? = null
     private var observerDebounceJob: Job? = null
     private var smsContentObserver: ContentObserver? = null
+    @Volatile
+    private var isScreenResumed = false
 
     private val _uiState = MutableStateFlow(
         ChatUiState(
@@ -87,11 +89,16 @@ class ChatViewModel(
         }
     }
 
-    fun loadMessages() {
+    fun loadMessages(markAsRead: Boolean = isScreenResumed) {
         // Keep mark-as-read off the cancellable load job so a second loadMessages()
         // (init + ON_RESUME) cannot abort writing READ/SEEN.
-        viewModelScope.launch {
-            repository.markThreadRead(initialThreadId)
+        // Only mark read while the chat screen is actually resumed; otherwise a
+        // backgrounded observer reload would cancel the notification just posted
+        // by SmsReceiver for the newly arrived message.
+        if (markAsRead) {
+            viewModelScope.launch {
+                repository.markThreadRead(initialThreadId)
+            }
         }
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
@@ -300,6 +307,10 @@ class ChatViewModel(
             dbHelper.insertCustomRule(rule)
             loadSenderSettings()
         }
+    }
+
+    fun setScreenResumed(resumed: Boolean) {
+        isScreenResumed = resumed
     }
 
     private fun registerSmsContentObserver() {
