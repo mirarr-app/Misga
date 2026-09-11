@@ -11,6 +11,7 @@ import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.PredefinedRules
 import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +30,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     private val _spamMetaChanged = MutableStateFlow(System.currentTimeMillis())
     val spamMetaChanged: Flow<Long> = _spamMetaChanged.asStateFlow()
+
+    private val _tabsChanged = MutableStateFlow(System.currentTimeMillis())
+    val tabsChanged: Flow<Long> = _tabsChanged.asStateFlow()
 
     @Volatile
     private var predefinedRulesSeeded = false
@@ -99,6 +103,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         )
 
         createCachedThreadsTable(db)
+        createSenderTabsTables(db)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_filter_rules_sender_target ON filter_rules(sender_target)"
@@ -138,6 +143,11 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS idx_filter_rules_sender_target ON filter_rules(sender_target)"
                 )
+            } catch (e: Exception) {}
+        }
+        if (oldVersion < 4) {
+            try {
+                createSenderTabsTables(db)
             } catch (e: Exception) {}
         }
     }
@@ -705,6 +715,231 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
     }
 
+    // --- Sender Tabs Operations ---
+
+    suspend fun getAllTabs(): List<SenderTab> = withContext(Dispatchers.IO) {
+        val db = readableDatabase
+        val membersMap = mutableMapOf<Long, MutableSet<String>>()
+        try {
+            db.query(
+                "sender_tab_members",
+                arrayOf("tab_id", "address"),
+                null, null, null, null, null
+            ).use { cursor ->
+                val tabIdIdx = cursor.getColumnIndexOrThrow("tab_id")
+                val addrIdx = cursor.getColumnIndexOrThrow("address")
+                while (cursor.moveToNext()) {
+                    val tabId = cursor.getLong(tabIdIdx)
+                    val addr = cursor.getString(addrIdx)
+                    membersMap.getOrPut(tabId) { mutableSetOf() }.add(addr)
+                }
+            }
+        } catch (e: Exception) {
+            // Table might not exist in early migration
+        }
+
+        val tabs = mutableListOf<SenderTab>()
+        try {
+            db.query(
+                "sender_tabs",
+                arrayOf("id", "name", "sort_order", "created_at"),
+                null, null, null, null,
+                "sort_order ASC, id ASC"
+            ).use { cursor ->
+                val idIdx = cursor.getColumnIndexOrThrow("id")
+                val nameIdx = cursor.getColumnIndexOrThrow("name")
+                val sortIdx = cursor.getColumnIndexOrThrow("sort_order")
+                val createdIdx = cursor.getColumnIndexOrThrow("created_at")
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idIdx)
+                    val name = cursor.getString(nameIdx)
+                    val sortOrder = cursor.getInt(sortIdx)
+                    val createdAt = cursor.getLong(createdIdx)
+                    tabs.add(
+                        SenderTab(
+                            id = id,
+                            name = name,
+                            sortOrder = sortOrder,
+                            createdAt = createdAt,
+                            senderAddresses = membersMap[id] ?: emptySet()
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // Table might not exist yet
+        }
+        tabs
+    }
+
+    suspend fun createTab(name: String, addresses: Collection<String> = emptyList()): Long =
+        withContext(Dispatchers.IO) {
+            val trimmed = name.trim()
+            if (trimmed.isBlank()) return@withContext -1L
+            val db = writableDatabase
+            val now = System.currentTimeMillis()
+            var tabId = -1L
+            db.beginTransaction()
+            try {
+                val cv = ContentValues().apply {
+                    put("name", trimmed)
+                    put("created_at", now)
+                    put("sort_order", 0)
+                }
+                tabId = db.insert("sender_tabs", null, cv)
+                if (tabId != -1L && addresses.isNotEmpty()) {
+                    val canonicals = addresses.map { normalizeAddress(it) }.filter { it.isNotBlank() }.distinct()
+                    for (addr in canonicals) {
+                        val mcv = ContentValues().apply {
+                            put("tab_id", tabId)
+                            put("address", addr)
+                        }
+                        db.insertWithOnConflict("sender_tab_members", null, mcv, SQLiteDatabase.CONFLICT_IGNORE)
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            if (tabId != -1L) {
+                _tabsChanged.value = System.currentTimeMillis()
+            }
+            tabId
+        }
+
+    suspend fun updateTabName(tabId: Long, newName: String): Boolean = withContext(Dispatchers.IO) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return@withContext false
+        val cv = ContentValues().apply {
+            put("name", trimmed)
+        }
+        val count = writableDatabase.update("sender_tabs", cv, "id = ?", arrayOf(tabId.toString()))
+        if (count > 0) {
+            _tabsChanged.value = System.currentTimeMillis()
+            true
+        } else false
+    }
+
+    suspend fun deleteTab(tabId: Long): Boolean = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        db.beginTransaction()
+        val count = try {
+            db.delete("sender_tab_members", "tab_id = ?", arrayOf(tabId.toString()))
+            val deleted = db.delete("sender_tabs", "id = ?", arrayOf(tabId.toString()))
+            db.setTransactionSuccessful()
+            deleted
+        } finally {
+            db.endTransaction()
+        }
+        if (count > 0) {
+            _tabsChanged.value = System.currentTimeMillis()
+            true
+        } else false
+    }
+
+    suspend fun addSendersToTab(tabId: Long, addresses: Collection<String>): Boolean =
+        withContext(Dispatchers.IO) {
+            if (addresses.isEmpty()) return@withContext false
+            val canonicals = addresses.map { normalizeAddress(it) }.filter { it.isNotBlank() }.distinct()
+            if (canonicals.isEmpty()) return@withContext false
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                for (addr in canonicals) {
+                    val cv = ContentValues().apply {
+                        put("tab_id", tabId)
+                        put("address", addr)
+                    }
+                    db.insertWithOnConflict("sender_tab_members", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            _tabsChanged.value = System.currentTimeMillis()
+            true
+        }
+
+    suspend fun removeSendersFromTab(tabId: Long, addresses: Collection<String>): Boolean =
+        withContext(Dispatchers.IO) {
+            if (addresses.isEmpty()) return@withContext false
+            val canonicals = addresses.map { normalizeAddress(it) }.filter { it.isNotBlank() }.distinct()
+            if (canonicals.isEmpty()) return@withContext false
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                for (addr in canonicals) {
+                    db.delete("sender_tab_members", "tab_id = ? AND address = ?", arrayOf(tabId.toString(), addr))
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            _tabsChanged.value = System.currentTimeMillis()
+            true
+        }
+
+    suspend fun setTabSenders(tabId: Long, addresses: Collection<String>): Boolean =
+        withContext(Dispatchers.IO) {
+            val canonicals = addresses.map { normalizeAddress(it) }.filter { it.isNotBlank() }.distinct()
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                db.delete("sender_tab_members", "tab_id = ?", arrayOf(tabId.toString()))
+                for (addr in canonicals) {
+                    val cv = ContentValues().apply {
+                        put("tab_id", tabId)
+                        put("address", addr)
+                    }
+                    db.insertWithOnConflict("sender_tab_members", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            _tabsChanged.value = System.currentTimeMillis()
+            true
+        }
+
+    suspend fun getTabsForSender(address: String): List<SenderTab> = withContext(Dispatchers.IO) {
+        val allTabs = getAllTabs()
+        val canonical = normalizeAddress(address)
+        val variants = addressLookupKeys(address).toSet()
+        allTabs.filter { tab ->
+            tab.senderAddresses.contains(canonical) || tab.senderAddresses.any { it in variants }
+        }
+    }
+
+    suspend fun setSenderTabs(address: String, tabIds: Collection<Long>) = withContext(Dispatchers.IO) {
+        val canonical = normalizeAddress(address)
+        if (canonical.isBlank()) return@withContext
+        val db = writableDatabase
+        val allTabs = getAllTabs()
+        val targetIds = tabIds.toSet()
+        db.beginTransaction()
+        try {
+            for (tab in allTabs) {
+                if (tab.id in targetIds) {
+                    val cv = ContentValues().apply {
+                        put("tab_id", tab.id)
+                        put("address", canonical)
+                    }
+                    db.insertWithOnConflict("sender_tab_members", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+                } else {
+                    db.delete(
+                        "sender_tab_members",
+                        "tab_id = ? AND address = ?",
+                        arrayOf(tab.id.toString(), canonical)
+                    )
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        _tabsChanged.value = System.currentTimeMillis()
+    }
+
     private fun seedPredefinedRules(db: SQLiteDatabase) {
         PredefinedRules.getDefaultRules().forEach { rule ->
             val cv = ContentValues().apply {
@@ -753,6 +988,30 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             )
             """.trimIndent()
         )
+    }
+
+    private fun createSenderTabsTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS sender_tabs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS sender_tab_members (
+                tab_id INTEGER NOT NULL,
+                address TEXT NOT NULL,
+                PRIMARY KEY (tab_id, address)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_sender_tab_members_address ON sender_tab_members(address)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_sender_tab_members_tab ON sender_tab_members(tab_id)")
     }
 
     private class SenderPreferenceIndices(cursor: Cursor) {
@@ -901,7 +1160,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = 4
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile

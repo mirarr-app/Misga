@@ -14,6 +14,7 @@ import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
@@ -37,7 +38,9 @@ data class ChatUiState(
     val isSending: Boolean = false,
     val error: String? = null,
     val hasMoreOlder: Boolean = true,
-    val isLoadingOlder: Boolean = false
+    val isLoadingOlder: Boolean = false,
+    val availableTabs: List<SenderTab> = emptyList(),
+    val senderTabIds: Set<Long> = emptySet()
 )
 
 class ChatViewModel(
@@ -70,6 +73,7 @@ class ChatViewModel(
         registerSmsContentObserver()
         loadMessages()
         loadSenderSettings()
+        loadTabs()
         viewModelScope.launch {
             dbHelper.rulesChanged.drop(1).collect {
                 loadSenderSettings()
@@ -85,6 +89,11 @@ class ChatViewModel(
         viewModelScope.launch {
             dbHelper.spamMetaChanged.drop(1).collect {
                 loadMessages()
+            }
+        }
+        viewModelScope.launch {
+            dbHelper.tabsChanged.collect {
+                loadTabs()
             }
         }
     }
@@ -311,6 +320,38 @@ class ChatViewModel(
 
     fun setScreenResumed(resumed: Boolean) {
         isScreenResumed = resumed
+    }
+
+    fun loadTabs() {
+        viewModelScope.launch {
+            val allTabs = repository.getAllTabs()
+            val senderTabs = repository.getTabsForSender(initialAddress)
+            _uiState.value = _uiState.value.copy(
+                availableTabs = allTabs,
+                senderTabIds = senderTabs.map { it.id }.toSet()
+            )
+        }
+    }
+
+    fun toggleSenderTab(tabId: Long, enable: Boolean) {
+        viewModelScope.launch {
+            if (enable) {
+                repository.addSendersToTab(tabId, listOf(initialAddress))
+            } else {
+                repository.removeSendersFromTab(tabId, listOf(initialAddress))
+            }
+            loadTabs()
+        }
+    }
+
+    fun createTabWithCurrentSender(name: String, onCreated: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val id = repository.createTab(name, listOf(initialAddress))
+            if (id != -1L) {
+                loadTabs()
+                onCreated(id)
+            }
+        }
     }
 
     private fun registerSmsContentObserver() {

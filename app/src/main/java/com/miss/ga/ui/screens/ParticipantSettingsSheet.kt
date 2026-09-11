@@ -18,12 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.displayLabel
 import com.miss.ga.theme.OnSuccessContainerDark
 import com.miss.ga.theme.OnSuccessContainerLight
@@ -67,6 +70,7 @@ import com.miss.ga.theme.SuccessContainerLight
 import com.miss.ga.theme.SuccessDark
 import com.miss.ga.theme.SuccessLight
 import com.miss.ga.ui.components.ConversationAvatar
+import com.miss.ga.ui.components.CreateTabDialog
 import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.util.contentAware
 
@@ -78,11 +82,16 @@ fun ParticipantSettingsSheet(
     senderPreference: SenderPreference?,
     senderRules: List<FilterRule>,
     sheetState: SheetState,
+    availableTabs: List<SenderTab> = emptyList(),
+    senderTabIds: Set<Long> = emptySet(),
     onDismiss: () -> Unit,
     onUpdateAction: (FilterAction) -> Unit,
-    onAddSenderRule: (pattern: String, isRegex: Boolean, action: FilterAction, name: String) -> Unit
+    onAddSenderRule: (pattern: String, isRegex: Boolean, action: FilterAction, name: String) -> Unit,
+    onToggleTab: (tabId: Long, enable: Boolean) -> Unit = { _, _ -> },
+    onCreateTab: (name: String) -> Unit = {}
 ) {
     var showAddRuleDialog by remember { mutableStateOf(false) }
+    var showCreateTabDialog by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -190,6 +199,95 @@ fun ParticipantSettingsSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            // Sender Tabs Section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Sender Tabs (${senderTabIds.size})",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                FilledTonalButton(
+                    onClick = { showCreateTabDialog = true },
+                    shape = PillShape,
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("New Tab", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (availableTabs.isEmpty()) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "No tabs created yet. Tap 'New Tab' to organize this sender into groups like Family or Friends.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            } else {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = SquircleMediumShape,
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                ) {
+                    Column(modifier = Modifier.padding(6.dp)) {
+                        availableTabs.forEachIndexed { index, tab ->
+                            val isMember = tab.id in senderTabIds
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable { onToggleTab(tab.id, !isMember) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Label,
+                                    contentDescription = null,
+                                    tint = if (isMember) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = tab.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isMember) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isMember) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Checkbox(
+                                    checked = isMember,
+                                    onCheckedChange = { onToggleTab(tab.id, it) }
+                                )
+                            }
+                            if (index < availableTabs.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
             // Sender-Specific Content Rules
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -280,6 +378,16 @@ fun ParticipantSettingsSheet(
             onSave = { pattern, isRegex, action, name ->
                 onAddSenderRule(pattern, isRegex, action, name)
                 showAddRuleDialog = false
+            }
+        )
+    }
+
+    if (showCreateTabDialog) {
+        CreateTabDialog(
+            onDismiss = { showCreateTabDialog = false },
+            onCreate = { name ->
+                onCreateTab(name)
+                showCreateTabDialog = false
             }
         )
     }

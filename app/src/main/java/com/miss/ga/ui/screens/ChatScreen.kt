@@ -492,12 +492,20 @@ fun ChatScreen(
             senderPreference = state.senderPreference,
             senderRules = state.senderRules,
             sheetState = sheetState,
+            availableTabs = state.availableTabs,
+            senderTabIds = state.senderTabIds,
             onDismiss = { showSettingsSheet = false },
             onUpdateAction = { action ->
                 viewModel.updateSenderDefaultAction(action)
             },
             onAddSenderRule = { pattern, isRegex, action, name ->
                 viewModel.addSenderRule(pattern, isRegex, action, name)
+            },
+            onToggleTab = { tabId, enable ->
+                viewModel.toggleSenderTab(tabId, enable)
+            },
+            onCreateTab = { name ->
+                viewModel.createTabWithCurrentSender(name)
             }
         )
     }

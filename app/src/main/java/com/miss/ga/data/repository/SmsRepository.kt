@@ -19,6 +19,7 @@ import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.util.PhoneNumberKeys
 import com.miss.ga.engine.FilterRulesCache
@@ -982,6 +983,32 @@ class SmsRepository(private val context: Context) {
         }
         return null
     }
+
+    suspend fun getAllTabs(): List<SenderTab> = dbHelper.getAllTabs()
+
+    suspend fun createTab(name: String, addresses: Collection<String> = emptyList()): Long =
+        dbHelper.createTab(name, addresses)
+
+    suspend fun updateTabName(tabId: Long, newName: String): Boolean =
+        dbHelper.updateTabName(tabId, newName)
+
+    suspend fun deleteTab(tabId: Long): Boolean =
+        dbHelper.deleteTab(tabId)
+
+    suspend fun addSendersToTab(tabId: Long, addresses: Collection<String>): Boolean =
+        dbHelper.addSendersToTab(tabId, addresses)
+
+    suspend fun removeSendersFromTab(tabId: Long, addresses: Collection<String>): Boolean =
+        dbHelper.removeSendersFromTab(tabId, addresses)
+
+    suspend fun setTabSenders(tabId: Long, addresses: Collection<String>): Boolean =
+        dbHelper.setTabSenders(tabId, addresses)
+
+    suspend fun getTabsForSender(address: String): List<SenderTab> =
+        dbHelper.getTabsForSender(address)
+
+    suspend fun setSenderTabs(address: String, tabIds: Collection<Long>) =
+        dbHelper.setSenderTabs(address, tabIds)
 }
 
 data class SendSmsResult(

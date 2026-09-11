@@ -44,7 +44,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
@@ -54,6 +56,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -94,9 +97,17 @@ import com.miss.ga.ChatNav
 import com.miss.ga.R
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
+import com.miss.ga.data.model.SenderTab
 import com.miss.ga.theme.PillShape
+import com.miss.ga.ui.components.AddToTabDialog
 import com.miss.ga.ui.components.ConversationAvatar
+import com.miss.ga.ui.components.CreateTabDialog
 import com.miss.ga.ui.components.DefaultSmsBanner
+import com.miss.ga.ui.components.DeleteTabDialog
+import com.miss.ga.ui.components.ManageTabSendersDialog
+import com.miss.ga.ui.components.RenameTabDialog
+import com.miss.ga.ui.components.SenderTabRow
+import com.miss.ga.ui.components.TabOptionsMenuSheet
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.util.contentAware
@@ -140,6 +151,12 @@ fun ConversationsScreen(
     }
 
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    var showCreateTabDialog by remember { mutableStateOf(false) }
+    var tabToRename by remember { mutableStateOf<SenderTab?>(null) }
+    var tabToDelete by remember { mutableStateOf<SenderTab?>(null) }
+    var tabToManageSenders by remember { mutableStateOf<SenderTab?>(null) }
+    var tabForOptionsMenu by remember { mutableStateOf<SenderTab?>(null) }
+    var showAddToTabDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
@@ -173,6 +190,7 @@ fun ConversationsScreen(
                     }
                 },
                 onDeleteSelected = { showBatchDeleteDialog = true },
+                onAddToTab = { showAddToTabDialog = true },
                 onToggleContactsOnly = {
                     viewModel.toggleContactsOnly()
                     val msg = if (!state.showContactsOnly) "Showing contacts only" else "Showing all conversations"
@@ -279,6 +297,22 @@ fun ConversationsScreen(
                         )
                     }
                 }
+            }
+
+            AnimatedVisibility(
+                visible = !isSelectionMode,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                SenderTabRow(
+                    tabs = state.tabs,
+                    selectedTabId = state.selectedTabId,
+                    threads = state.threads,
+                    onSelectTab = { viewModel.selectTab(it) },
+                    onCreateTabClick = { showCreateTabDialog = true },
+                    onTabOptionsClick = { tabForOptionsMenu = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             if (!state.hasSmsPermission) {
@@ -492,6 +526,7 @@ fun ConversationsScreen(
                     }
                 }
             } else if (displayedThreads.isEmpty()) {
+                val selectedTab = state.selectedTabId?.let { id -> state.tabs.find { it.id == id } }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -506,7 +541,9 @@ fun ConversationsScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = if (state.showContactsOnly) Icons.Default.Contacts else Icons.Default.Shield,
+                                    imageVector = if (selectedTab != null) Icons.Default.FolderOpen
+                                    else if (state.showContactsOnly) Icons.Default.Contacts
+                                    else Icons.Default.Shield,
                                     contentDescription = "No messages",
                                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
                                     modifier = Modifier.size(40.dp)
@@ -515,17 +552,38 @@ fun ConversationsScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (state.showContactsOnly) "No contacts found" else "No SMS messages found",
+                            text = if (selectedTab != null) "No conversations in \"${selectedTab.name}\""
+                            else if (state.showContactsOnly) "No contacts found"
+                            else "No SMS messages found",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (state.showContactsOnly) "Conversations with saved contacts will appear here" else "Incoming SMS messages will appear here",
+                            text = if (selectedTab != null) {
+                                if (selectedTab.senderAddresses.isEmpty()) {
+                                    "No senders have been added to this tab yet"
+                                } else {
+                                    "None of the senders in this tab have messages in your inbox"
+                                }
+                            }
+                            else if (state.showContactsOnly) "Conversations with saved contacts will appear here"
+                            else "Incoming SMS messages will appear here",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
+                        if (selectedTab != null) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            FilledTonalButton(
+                                onClick = { tabToManageSenders = selectedTab },
+                                shape = PillShape
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Manage Senders", fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             } else {
@@ -555,6 +613,100 @@ fun ConversationsScreen(
             onDelete = { onComplete -> viewModel.deleteSelectedConversations(onComplete) }
         )
     }
+
+    if (showCreateTabDialog) {
+        CreateTabDialog(
+            onDismiss = { showCreateTabDialog = false },
+            onCreate = { name ->
+                viewModel.createTab(name) {
+                    Toast.makeText(context, "Created tab \"$name\"", Toast.LENGTH_SHORT).show()
+                }
+                showCreateTabDialog = false
+            }
+        )
+    }
+
+    tabToRename?.let { tab ->
+        RenameTabDialog(
+            currentName = tab.name,
+            onDismiss = { tabToRename = null },
+            onRename = { newName ->
+                viewModel.renameTab(tab.id, newName)
+                Toast.makeText(context, "Renamed tab to \"$newName\"", Toast.LENGTH_SHORT).show()
+                tabToRename = null
+            }
+        )
+    }
+
+    tabToDelete?.let { tab ->
+        DeleteTabDialog(
+            tabName = tab.name,
+            onDismiss = { tabToDelete = null },
+            onConfirm = {
+                viewModel.deleteTab(tab.id)
+                Toast.makeText(context, "Deleted tab \"${tab.name}\"", Toast.LENGTH_SHORT).show()
+                tabToDelete = null
+            }
+        )
+    }
+
+    tabForOptionsMenu?.let { tab ->
+        TabOptionsMenuSheet(
+            tab = tab,
+            onDismiss = { tabForOptionsMenu = null },
+            onManageSenders = {
+                tabToManageSenders = tab
+                tabForOptionsMenu = null
+            },
+            onRename = {
+                tabToRename = tab
+                tabForOptionsMenu = null
+            },
+            onDelete = {
+                tabToDelete = tab
+                tabForOptionsMenu = null
+            }
+        )
+    }
+
+    tabToManageSenders?.let { tab ->
+        ManageTabSendersDialog(
+            tab = tab,
+            allThreads = state.threads,
+            onDismiss = { tabToManageSenders = null },
+            onSave = { addresses ->
+                viewModel.setTabSenders(tab.id, addresses)
+                Toast.makeText(
+                    context,
+                    "Updated senders in \"${tab.name}\"",
+                    Toast.LENGTH_SHORT
+                ).show()
+                tabToManageSenders = null
+            }
+        )
+    }
+
+    if (showAddToTabDialog) {
+        AddToTabDialog(
+            selectedCount = selectedThreadIds.size,
+            tabs = state.tabs,
+            onDismiss = { showAddToTabDialog = false },
+            onAssignToTabs = { tabIds ->
+                viewModel.addSelectedToTabs(tabIds) { count ->
+                    Toast.makeText(
+                        context,
+                        "Added $count conversation${if (count > 1) "s" else ""} to tab",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                showAddToTabDialog = false
+            },
+            onCreateNewTab = {
+                showAddToTabDialog = false
+                showCreateTabDialog = true
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -570,6 +722,7 @@ private fun ConversationsTopBar(
     onSelectAll: () -> Unit,
     onMarkSelectedRead: () -> Unit,
     onDeleteSelected: () -> Unit,
+    onAddToTab: () -> Unit = {},
     onToggleContactsOnly: () -> Unit,
     onMarkAllRead: () -> Unit,
     onNavigateToTestLab: () -> Unit,
@@ -602,6 +755,14 @@ private fun ConversationsTopBar(
                     Icon(
                         imageVector = if (allFilteredSelected) Icons.Default.Deselect else Icons.Default.SelectAll,
                         contentDescription = if (allFilteredSelected) "Deselect all" else "Select all",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                IconButton(onClick = onAddToTab) {
+                    Icon(
+                        imageVector = Icons.Default.DriveFileMove,
+                        contentDescription = "Add to Tab",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }

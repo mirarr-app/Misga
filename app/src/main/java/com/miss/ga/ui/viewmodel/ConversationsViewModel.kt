@@ -19,7 +19,9 @@ import androidx.lifecycle.viewModelScope
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
+import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.repository.SmsRepository
+import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -39,7 +41,9 @@ data class ConversationsUiState(
     val showContactsOnly: Boolean = false,
     val isDefaultSmsApp: Boolean = false,
     val hasSmsPermission: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val tabs: List<SenderTab> = emptyList(),
+    val selectedTabId: Long? = null
 )
 
 class ConversationsViewModel(application: Application) : AndroidViewModel(application) {
@@ -62,6 +66,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
 
     init {
         registerSmsContentObserver()
+        loadTabs()
         loadThreads()
         viewModelScope.launch {
             dbHelper.rulesChanged.drop(1).collect { loadThreads(silent = true, force = true) }
@@ -72,11 +77,15 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             dbHelper.spamMetaChanged.drop(1).collect { loadThreads(silent = true, force = true) }
         }
+        viewModelScope.launch {
+            dbHelper.tabsChanged.collect { loadTabs() }
+        }
     }
 
     fun onInboxResumed() {
         repository.invalidateLookupCaches()
         checkDefaultSmsStatus()
+        loadTabs()
         loadThreads(silent = true, force = true)
     }
 
@@ -244,9 +253,28 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         super.onCleared()
     }
 
-    private fun filterThreads(threads: List<ConversationThread>, query: String): List<ConversationThread> {
-        if (query.isBlank()) return threads
-        return threads.filter {
+    private fun threadMatchesTab(thread: ConversationThread, tab: SenderTab): Boolean {
+        if (tab.senderAddresses.isEmpty()) return false
+        val canonical = PhoneNumberKeys.canonical(thread.address)
+        if (canonical in tab.senderAddresses) return true
+        val keys = PhoneNumberKeys.keys(thread.address)
+        return keys.any { it in tab.senderAddresses }
+    }
+
+    private fun filterThreads(
+        threads: List<ConversationThread>,
+        query: String,
+        selectedTabId: Long? = _uiState.value.selectedTabId,
+        tabs: List<SenderTab> = _uiState.value.tabs
+    ): List<ConversationThread> {
+        val tab = if (selectedTabId != null) tabs.find { it.id == selectedTabId } else null
+        val tabFiltered = if (tab != null) {
+            threads.filter { threadMatchesTab(it, tab) }
+        } else {
+            threads
+        }
+        if (query.isBlank()) return tabFiltered
+        return tabFiltered.filter {
             (it.contactName?.contains(query, ignoreCase = true) == true) ||
                     it.address.contains(query, ignoreCase = true) ||
                     it.snippet.contains(query, ignoreCase = true)
@@ -259,7 +287,7 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         if (trimmed.isBlank()) {
             _uiState.value = _uiState.value.copy(
                 searchQuery = query,
-                filteredThreads = _uiState.value.threads,
+                filteredThreads = filterThreads(_uiState.value.threads, ""),
                 matchingMessages = emptyList(),
                 isSearching = false
             )
@@ -400,6 +428,106 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
             repository.markAllMessagesRead()
             loadThreads(silent = true, force = true)
             onComplete()
+        }
+    }
+
+    fun loadTabs() {
+        viewModelScope.launch {
+            val tabs = repository.getAllTabs()
+            val current = _uiState.value
+            val validSelectedTabId = if (current.selectedTabId != null && tabs.any { it.id == current.selectedTabId }) {
+                current.selectedTabId
+            } else {
+                null
+            }
+            _uiState.value = current.copy(
+                tabs = tabs,
+                selectedTabId = validSelectedTabId,
+                filteredThreads = filterThreads(current.threads, current.searchQuery.trim(), validSelectedTabId, tabs)
+            )
+        }
+    }
+
+    fun selectTab(tabId: Long?) {
+        val current = _uiState.value
+        if (current.selectedTabId == tabId) return
+        _uiState.value = current.copy(
+            selectedTabId = tabId,
+            filteredThreads = filterThreads(current.threads, current.searchQuery.trim(), tabId, current.tabs)
+        )
+    }
+
+    fun createTab(name: String, addresses: Collection<String> = emptyList(), onCreated: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val id = repository.createTab(name, addresses)
+            if (id != -1L) {
+                selectTab(id)
+                onCreated(id)
+            }
+        }
+    }
+
+    fun renameTab(tabId: Long, newName: String) {
+        viewModelScope.launch {
+            repository.updateTabName(tabId, newName)
+        }
+    }
+
+    fun deleteTab(tabId: Long) {
+        viewModelScope.launch {
+            if (_uiState.value.selectedTabId == tabId) {
+                selectTab(null)
+            }
+            repository.deleteTab(tabId)
+        }
+    }
+
+    fun addSelectedToTab(tabId: Long, onComplete: (Int) -> Unit = {}) {
+        val targetIds = selectedThreadIds.toSet()
+        if (targetIds.isEmpty()) return
+        val addresses = _uiState.value.threads
+            .filter { it.threadId in targetIds }
+            .map { it.address }
+        viewModelScope.launch {
+            repository.addSendersToTab(tabId, addresses)
+            clearSelection()
+            onComplete(addresses.size)
+        }
+    }
+
+    fun addSelectedToTabs(tabIds: Collection<Long>, onComplete: (Int) -> Unit = {}) {
+        val targetIds = selectedThreadIds.toSet()
+        if (targetIds.isEmpty()) return
+        val addresses = _uiState.value.threads
+            .filter { it.threadId in targetIds }
+            .map { it.address }
+        viewModelScope.launch {
+            for (tabId in tabIds) {
+                repository.addSendersToTab(tabId, addresses)
+            }
+            clearSelection()
+            onComplete(addresses.size)
+        }
+    }
+
+    fun createTabWithSelected(name: String, onCreated: (Long) -> Unit = {}) {
+        val targetIds = selectedThreadIds.toSet()
+        val addresses = _uiState.value.threads
+            .filter { it.threadId in targetIds }
+            .map { it.address }
+        viewModelScope.launch {
+            val id = repository.createTab(name, addresses)
+            clearSelection()
+            if (id != -1L) {
+                selectTab(id)
+                onCreated(id)
+            }
+        }
+    }
+
+    fun setTabSenders(tabId: Long, addresses: Collection<String>) {
+        viewModelScope.launch {
+            repository.setTabSenders(tabId, addresses)
         }
     }
 }
