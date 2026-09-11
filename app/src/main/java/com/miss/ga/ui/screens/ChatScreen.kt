@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -529,12 +530,14 @@ fun ChatScreen(
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = msg.body,
-                            style = MaterialTheme.typography.bodyMedium.contentAware(),
-                            maxLines = 4,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                        SelectionContainer {
+                            Text(
+                                text = msg.body,
+                                style = MaterialTheme.typography.bodyMedium.contentAware(),
+                                maxLines = 4,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
                 }
             },

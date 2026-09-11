@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Shield
@@ -195,13 +196,15 @@ fun SpamMessagePill(
                         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = message.body,
-                            style = MaterialTheme.typography.bodyMedium.contentAware(),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            lineHeight = 21.sp,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                        SelectionContainer {
+                            Text(
+                                text = message.body,
+                                style = MaterialTheme.typography.bodyMedium.contentAware(),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 21.sp,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

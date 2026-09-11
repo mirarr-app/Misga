@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
@@ -74,25 +75,29 @@ fun MessageBubble(
             color = containerColor,
             border = border,
             shadowElevation = 0.dp,
-            modifier = Modifier
-                .widthIn(min = 80.dp, max = 320.dp)
-                .pointerInput(onLongClick) {
-                    detectTapGestures(onLongPress = { onLongClick() })
-                }
+            modifier = Modifier.widthIn(min = 80.dp, max = 320.dp)
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
             ) {
-                Text(
-                    text = message.body,
-                    style = MaterialTheme.typography.bodyLarge.contentAware(),
-                    color = contentColor,
-                    lineHeight = 23.sp,
-                    letterSpacing = 0.2.sp
-                )
+                SelectionContainer {
+                    Text(
+                        text = message.body,
+                        style = MaterialTheme.typography.bodyLarge.contentAware(),
+                        color = contentColor,
+                        lineHeight = 23.sp,
+                        letterSpacing = 0.2.sp
+                    )
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
-                    modifier = Modifier.align(Alignment.End),
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .pointerInput(onLongClick) {
+                            detectTapGestures(
+                                onLongPress = { onLongClick() }
+                            )
+                        },
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
