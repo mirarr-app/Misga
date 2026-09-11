@@ -7,14 +7,17 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Telephony
 import android.util.Log
+import android.telephony.SubscriptionManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
+import com.miss.ga.data.model.PreferredSimMode
 import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
+import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
@@ -40,7 +43,9 @@ data class ChatUiState(
     val hasMoreOlder: Boolean = true,
     val isLoadingOlder: Boolean = false,
     val availableTabs: List<SenderTab> = emptyList(),
-    val senderTabIds: Set<Long> = emptySet()
+    val senderTabIds: Set<Long> = emptySet(),
+    val availableSims: List<SimInfo> = emptyList(),
+    val selectedSim: SimInfo? = null
 )
 
 class ChatViewModel(
@@ -94,6 +99,21 @@ class ChatViewModel(
         viewModelScope.launch {
             dbHelper.tabsChanged.collect {
                 loadTabs()
+            }
+        }
+        viewModelScope.launch {
+            repository.simRepository.observeActiveSims().collect { sims ->
+                val current = _uiState.value
+                val resolved = resolveSelectedSim(
+                    activeSims = sims,
+                    prefSetting = current.senderPreference?.preferredSubId ?: PreferredSimMode.AUTO,
+                    messages = current.messages,
+                    currentSelectedSim = current.selectedSim
+                )
+                _uiState.value = current.copy(
+                    availableSims = sims,
+                    selectedSim = resolved
+                )
             }
         }
     }
@@ -235,17 +255,94 @@ class ChatViewModel(
                     senderPreference = pref,
                     senderRules = senderRules
                 )
+                val resolvedSim = resolveSelectedSim(
+                    activeSims = _uiState.value.availableSims,
+                    prefSetting = pref?.preferredSubId ?: PreferredSimMode.AUTO,
+                    messages = _uiState.value.messages,
+                    currentSelectedSim = _uiState.value.selectedSim
+                )
+                _uiState.value = _uiState.value.copy(selectedSim = resolvedSim)
             } catch (e: Exception) {
                 Log.w("ChatViewModel", "Failed to load sender settings", e)
             }
         }
     }
 
+    fun toggleSim() {
+        val current = _uiState.value
+        val sims = current.availableSims
+        if (sims.size <= 1) return
+        val currentIndex = sims.indexOfFirst { it.subscriptionId == current.selectedSim?.subscriptionId }
+        val nextIndex = if (currentIndex in sims.indices) (currentIndex + 1) % sims.size else 0
+        _uiState.value = current.copy(selectedSim = sims[nextIndex])
+    }
+
+    fun selectSim(sim: SimInfo) {
+        _uiState.value = _uiState.value.copy(selectedSim = sim)
+    }
+
+    fun setPreferredSim(mode: Int) {
+        viewModelScope.launch {
+            repository.updateSenderPreferredSubId(initialAddress, mode)
+            val pref = repository.getSenderPreference(initialAddress)
+            val resolved = resolveSelectedSim(
+                activeSims = _uiState.value.availableSims,
+                prefSetting = mode,
+                messages = _uiState.value.messages,
+                currentSelectedSim = null
+            )
+            _uiState.value = _uiState.value.copy(
+                senderPreference = pref,
+                selectedSim = resolved
+            )
+        }
+    }
+
+    private fun resolveSelectedSim(
+        activeSims: List<SimInfo>,
+        prefSetting: Int,
+        messages: List<SmsMessage>,
+        currentSelectedSim: SimInfo?
+    ): SimInfo? {
+        if (activeSims.isEmpty()) return null
+        if (activeSims.size == 1) return activeSims.first()
+
+        // If user already manually toggled a SIM in this conversation session, retain it
+        if (currentSelectedSim != null && activeSims.any { it.subscriptionId == currentSelectedSim.subscriptionId }) {
+            return currentSelectedSim
+        }
+
+        // 1. Explicit SIM preference
+        if (prefSetting >= 0) {
+            val matched = activeSims.find { it.subscriptionId == prefSetting }
+            if (matched != null) return matched
+        }
+
+        // 2. System default SIM preference
+        val defaultSubId = repository.simRepository.getDefaultSmsSubscriptionId()
+        if (prefSetting == PreferredSimMode.SYSTEM_DEFAULT) {
+            val matched = activeSims.find { it.subscriptionId == defaultSubId }
+            if (matched != null) return matched
+        }
+
+        // 3. AUTO: check latest message with valid SIM in thread
+        val latestMessageWithSim = messages.lastOrNull {
+            it.subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        }
+        if (latestMessageWithSim != null) {
+            val matched = activeSims.find { it.subscriptionId == latestMessageWithSim.subId }
+            if (matched != null) return matched
+        }
+
+        return activeSims.find { it.subscriptionId == defaultSubId } ?: activeSims.first()
+    }
+
     fun sendMessage(text: String, onComplete: (SendSmsResult) -> Unit = {}) {
         if (text.isBlank()) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true)
-            val result = repository.sendSms(initialAddress, text)
+            val subIdToSend = _uiState.value.selectedSim?.subscriptionId
+            val result = repository.sendSms(initialAddress, text, subIdToSend)
             _uiState.value = _uiState.value.copy(isSending = false)
             if (result.sent) {
                 loadMessages()

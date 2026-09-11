@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,8 +54,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
+import com.miss.ga.data.model.PreferredSimMode
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
+import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.displayLabel
 import com.miss.ga.theme.OnSuccessContainerDark
 import com.miss.ga.theme.OnSuccessContainerLight
@@ -84,8 +87,10 @@ fun ParticipantSettingsSheet(
     sheetState: SheetState,
     availableTabs: List<SenderTab> = emptyList(),
     senderTabIds: Set<Long> = emptySet(),
+    availableSims: List<SimInfo> = emptyList(),
     onDismiss: () -> Unit,
     onUpdateAction: (FilterAction) -> Unit,
+    onUpdatePreferredSim: (Int) -> Unit = {},
     onAddSenderRule: (pattern: String, isRegex: Boolean, action: FilterAction, name: String) -> Unit,
     onToggleTab: (tabId: Long, enable: Boolean) -> Unit = { _, _ -> },
     onCreateTab: (name: String) -> Unit = {}
@@ -194,6 +199,65 @@ fun ParticipantSettingsSheet(
                         selectedIconTint = MaterialTheme.colorScheme.error,
                         onClick = { onUpdateAction(FilterAction.SPAM) }
                     )
+                }
+            }
+
+            // Preferred SIM Card Section (Dual SIM)
+            if (availableSims.size > 1) {
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = "Preferred SIM Card",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val preferredSubId = senderPreference?.preferredSubId ?: PreferredSimMode.AUTO
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    shape = SquircleMediumShape,
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                ) {
+                    Column(modifier = Modifier.padding(6.dp)) {
+                        SimOptionRow(
+                            title = "Auto (Recommended)",
+                            subtitle = "Follows latest message SIM or device default",
+                            icon = Icons.Default.SimCard,
+                            selected = preferredSubId == PreferredSimMode.AUTO,
+                            onClick = { onUpdatePreferredSim(PreferredSimMode.AUTO) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                        SimOptionRow(
+                            title = "System Default",
+                            subtitle = "Uses Android phone settings default SMS SIM",
+                            icon = Icons.Default.SimCard,
+                            selected = preferredSubId == PreferredSimMode.SYSTEM_DEFAULT,
+                            onClick = { onUpdatePreferredSim(PreferredSimMode.SYSTEM_DEFAULT) }
+                        )
+                        availableSims.forEach { sim ->
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
+                            SimOptionRow(
+                                title = "SIM ${sim.slotNumber} (${sim.displayName})",
+                                subtitle = if (sim.carrierName.isNotBlank() && sim.carrierName != sim.displayName) sim.carrierName else "Always send using SIM ${sim.slotNumber}",
+                                icon = Icons.Default.SimCard,
+                                selected = preferredSubId == sim.subscriptionId,
+                                onClick = { onUpdatePreferredSim(sim.subscriptionId) }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -426,6 +490,47 @@ private fun ActionOptionRow(
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 color = if (selected) selectedContentColor else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+        RadioButton(selected = selected, onClick = onClick)
+    }
+}
+
+@Composable
+private fun SimOptionRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = subtitle,

@@ -56,13 +56,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.miss.ga.ChatNav
 import com.miss.ga.R
+import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.repository.ContactItem
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.theme.InputBarShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.ui.components.ConversationAvatar
+import com.miss.ga.ui.components.SimToggleButton
 import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.ui.util.contentAware
 import kotlinx.coroutines.delay
@@ -80,6 +83,16 @@ fun ComposeScreen(
     val context = LocalContext.current
     val repository = remember { SmsRepository(context) }
     val coroutineScope = rememberCoroutineScope()
+
+    val availableSims by repository.simRepository.observeActiveSims().collectAsStateWithLifecycle(initialValue = emptyList())
+    var selectedSim by remember { mutableStateOf<SimInfo?>(null) }
+
+    LaunchedEffect(availableSims) {
+        if (selectedSim == null || availableSims.none { it.subscriptionId == selectedSim?.subscriptionId }) {
+            val defaultSubId = repository.simRepository.getDefaultSmsSubscriptionId()
+            selectedSim = availableSims.firstOrNull { it.subscriptionId == defaultSubId } ?: availableSims.firstOrNull()
+        }
+    }
 
     var recipient by remember { mutableStateOf(initialAddress) }
     var selectedContactName by remember { mutableStateOf<String?>(null) }
@@ -156,12 +169,32 @@ fun ComposeScreen(
                             maxLines = 5
                         )
 
+                        if (availableSims.size > 1) {
+                            SimToggleButton(
+                                availableSims = availableSims,
+                                selectedSim = selectedSim,
+                                onToggleSim = {
+                                    val currentIndex = availableSims.indexOfFirst { it.subscriptionId == selectedSim?.subscriptionId }
+                                    val nextIndex = if (currentIndex >= 0) (currentIndex + 1) % availableSims.size else 0
+                                    selectedSim = availableSims.getOrNull(nextIndex)
+                                },
+                                onSelectSim = { sim ->
+                                    selectedSim = sim
+                                },
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                        }
+
                         FilledIconButton(
                             onClick = {
                                 if (recipient.isNotBlank() && messageBody.isNotBlank() && !isSending) {
                                     isSending = true
                                     coroutineScope.launch {
-                                        val result = repository.sendSms(recipient, messageBody)
+                                        val result = repository.sendSms(
+                                            address = recipient,
+                                            body = messageBody,
+                                            subscriptionId = selectedSim?.subscriptionId
+                                        )
                                         isSending = false
                                         if (!result.sent) {
                                             Toast.makeText(

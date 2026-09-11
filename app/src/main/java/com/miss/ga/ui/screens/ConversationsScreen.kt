@@ -107,6 +107,8 @@ import com.miss.ga.ui.components.DeleteTabDialog
 import com.miss.ga.ui.components.ManageTabSendersDialog
 import com.miss.ga.ui.components.RenameTabDialog
 import com.miss.ga.ui.components.SenderTabRow
+import com.miss.ga.ui.components.SimBadge
+import com.miss.ga.ui.components.SimFilterRow
 import com.miss.ga.ui.components.TabOptionsMenuSheet
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.util.senderDisplayName
@@ -149,6 +151,11 @@ fun ConversationsScreen(
         viewModel.clearUnreadForThread(nav.threadId)
         onNavigateToChat(nav)
     }
+
+    val simSlotMap = remember(state.availableSims) {
+        state.availableSims.associate { it.subscriptionId to it.slotNumber }
+    }
+    val hasMultipleSims = state.availableSims.size > 1
 
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var showCreateTabDialog by remember { mutableStateOf(false) }
@@ -315,6 +322,20 @@ fun ConversationsScreen(
                 )
             }
 
+            AnimatedVisibility(
+                visible = !isSelectionMode && hasMultipleSims,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                SimFilterRow(
+                    availableSims = state.availableSims,
+                    selectedSubId = state.selectedSimFilterSubId,
+                    threads = state.threads,
+                    onSelectSubId = { viewModel.selectSimFilter(it) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             if (!state.hasSmsPermission) {
                 Surface(
                     shape = PillShape,
@@ -471,6 +492,7 @@ fun ConversationsScreen(
                                     thread = thread,
                                     selectedIds = NoSelectionIds,
                                     isSelectionMode = false,
+                                    simSlotNumber = if (hasMultipleSims) simSlotMap[thread.subId] else null,
                                     onClick = {
                                         openChat(
                                             ChatNav(
@@ -505,6 +527,7 @@ fun ConversationsScreen(
                                 SearchMessageResultItem(
                                     item = msg,
                                     searchQuery = state.searchQuery,
+                                    simSlotNumber = if (hasMultipleSims) simSlotMap[msg.subId] else null,
                                     onClick = {
                                         openChat(
                                             ChatNav(
@@ -591,6 +614,8 @@ fun ConversationsScreen(
                     threads = displayedThreads,
                     selectedIds = selectedThreadIds,
                     isSelectionMode = isSelectionMode,
+                    simSlotMap = simSlotMap,
+                    hasMultipleSims = hasMultipleSims,
                     onOpenChat = openChat,
                     onToggleSelect = viewModel::toggleSelectThread,
                     onEnterSelection = viewModel::enterSelectionMode
@@ -894,6 +919,8 @@ private fun ConversationsInboxList(
     threads: List<ConversationThread>,
     selectedIds: Set<Long>,
     isSelectionMode: Boolean,
+    simSlotMap: Map<Int, Int> = emptyMap(),
+    hasMultipleSims: Boolean = false,
     onOpenChat: (ChatNav) -> Unit,
     onToggleSelect: (Long) -> Unit,
     onEnterSelection: (Long) -> Unit
@@ -911,6 +938,7 @@ private fun ConversationsInboxList(
                 thread = thread,
                 selectedIds = selectedIds,
                 isSelectionMode = isSelectionMode,
+                simSlotNumber = if (hasMultipleSims) simSlotMap[thread.subId] else null,
                 onClick = {
                     if (isSelectionMode) {
                         onToggleSelect(thread.threadId)
@@ -989,7 +1017,8 @@ private fun ConversationItem(
     selectedIds: Set<Long>,
     isSelectionMode: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    simSlotNumber: Int? = null
 ) {
     val isSelected by remember(thread.threadId) {
         derivedStateOf { thread.threadId in selectedIds }
@@ -1076,12 +1105,18 @@ private fun ConversationItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    text = dateText,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.Bold else FontWeight.Normal,
-                    color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (simSlotNumber != null) {
+                        SimBadge(slotNumber = simSlotNumber)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = dateText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.Bold else FontWeight.Normal,
+                        color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(3.dp))
@@ -1175,7 +1210,8 @@ private fun SearchSectionHeader(
 private fun SearchMessageResultItem(
     item: SearchMessageResult,
     searchQuery: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    simSlotNumber: Int? = null
 ) {
     val displayName = senderDisplayName(item.contactName, item.address)
 
@@ -1215,11 +1251,17 @@ private fun SearchMessageResultItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    text = dateText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (simSlotNumber != null) {
+                        SimBadge(slotNumber = simSlotNumber)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = dateText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(2.dp))

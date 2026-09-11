@@ -63,7 +63,8 @@ class NotificationHelper private constructor(private val context: Context) {
         body: String,
         action: FilterAction,
         messageId: Long,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        subId: Int = android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID
     ) {
         // If action is SPAM, do NOT show any notification at all
         if (action == FilterAction.SPAM) {
@@ -100,7 +101,7 @@ class NotificationHelper private constructor(private val context: Context) {
             .setKey(sender)
             .build()
 
-        val existingStyle = try {
+        val existingStyle: NotificationCompat.MessagingStyle? = try {
             notificationManager.activeNotifications
                 ?.find { it.id == notificationId }
                 ?.notification
@@ -142,6 +143,13 @@ class NotificationHelper private constructor(private val context: Context) {
             baseStyle
         }
 
+        val simRepo = com.miss.ga.data.telephony.SimRepository(context)
+        val simInfo = if (subId != android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            simRepo.getSimInfo(subId)
+        } else {
+            null
+        }
+
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.sym_action_chat)
             .setStyle(finalStyle)
@@ -151,6 +159,11 @@ class NotificationHelper private constructor(private val context: Context) {
             .setAutoCancel(true)
             .setPriority(if (action == FilterAction.NORMAL) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+
+        if (simInfo != null && simRepo.isDualSim()) {
+            builder.setSubText(simInfo.badgeLabel)
+        }
+
         buildActions(threadId, sender).forEach { builder.addAction(it) }
 
         try {

@@ -20,6 +20,7 @@ import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.model.SenderTab
+import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.CancellationException
@@ -43,7 +44,9 @@ data class ConversationsUiState(
     val hasSmsPermission: Boolean = true,
     val error: String? = null,
     val tabs: List<SenderTab> = emptyList(),
-    val selectedTabId: Long? = null
+    val selectedTabId: Long? = null,
+    val availableSims: List<SimInfo> = emptyList(),
+    val selectedSimFilterSubId: Int? = null
 )
 
 class ConversationsViewModel(application: Application) : AndroidViewModel(application) {
@@ -79,6 +82,27 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         }
         viewModelScope.launch {
             dbHelper.tabsChanged.collect { loadTabs() }
+        }
+        viewModelScope.launch {
+            repository.simRepository.observeActiveSims().collect { sims ->
+                val current = _uiState.value
+                val validFilter = if (current.selectedSimFilterSubId != null && sims.any { it.subscriptionId == current.selectedSimFilterSubId }) {
+                    current.selectedSimFilterSubId
+                } else {
+                    null
+                }
+                _uiState.value = current.copy(
+                    availableSims = sims,
+                    selectedSimFilterSubId = validFilter,
+                    filteredThreads = filterThreads(
+                        threads = current.threads,
+                        query = current.searchQuery.trim(),
+                        selectedTabId = current.selectedTabId,
+                        tabs = current.tabs,
+                        selectedSimFilterSubId = validFilter
+                    )
+                )
+            }
         }
     }
 
@@ -265,7 +289,8 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         threads: List<ConversationThread>,
         query: String,
         selectedTabId: Long? = _uiState.value.selectedTabId,
-        tabs: List<SenderTab> = _uiState.value.tabs
+        tabs: List<SenderTab> = _uiState.value.tabs,
+        selectedSimFilterSubId: Int? = _uiState.value.selectedSimFilterSubId
     ): List<ConversationThread> {
         val tab = if (selectedTabId != null) tabs.find { it.id == selectedTabId } else null
         val tabFiltered = if (tab != null) {
@@ -273,12 +298,32 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
         } else {
             threads
         }
-        if (query.isBlank()) return tabFiltered
-        return tabFiltered.filter {
+        val simFiltered = if (selectedSimFilterSubId != null) {
+            tabFiltered.filter { it.subId == selectedSimFilterSubId }
+        } else {
+            tabFiltered
+        }
+        if (query.isBlank()) return simFiltered
+        return simFiltered.filter {
             (it.contactName?.contains(query, ignoreCase = true) == true) ||
                     it.address.contains(query, ignoreCase = true) ||
                     it.snippet.contains(query, ignoreCase = true)
         }
+    }
+
+    fun selectSimFilter(subId: Int?) {
+        val current = _uiState.value
+        if (current.selectedSimFilterSubId == subId) return
+        _uiState.value = current.copy(
+            selectedSimFilterSubId = subId,
+            filteredThreads = filterThreads(
+                threads = current.threads,
+                query = current.searchQuery.trim(),
+                selectedTabId = current.selectedTabId,
+                tabs = current.tabs,
+                selectedSimFilterSubId = subId
+            )
+        )
     }
 
     fun onSearchQueryChanged(query: String) {

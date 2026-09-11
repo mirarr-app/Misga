@@ -5,10 +5,12 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import android.telephony.SubscriptionManager
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.PredefinedRules
+import com.miss.ga.data.model.PreferredSimMode
 import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
@@ -66,7 +68,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 custom_sound_uri TEXT,
                 is_blocked INTEGER NOT NULL DEFAULT 0,
                 notes TEXT,
-                updated_at INTEGER NOT NULL
+                updated_at INTEGER NOT NULL,
+                preferred_sub_id INTEGER NOT NULL DEFAULT -1
             )
             """.trimIndent()
         )
@@ -149,6 +152,10 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             try {
                 createSenderTabsTables(db)
             } catch (e: Exception) {}
+        }
+        if (oldVersion < 5) {
+            try { db.execSQL("ALTER TABLE sender_preferences ADD COLUMN preferred_sub_id INTEGER NOT NULL DEFAULT -1") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN sub_id INTEGER NOT NULL DEFAULT -1") } catch (e: Exception) {}
         }
     }
 
@@ -416,6 +423,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             put("is_blocked", if (pref.isBlocked) 1 else 0)
             put("notes", pref.notes)
             put("updated_at", System.currentTimeMillis())
+            put("preferred_sub_id", pref.preferredSubId)
         }
         writableDatabase.insertWithOnConflict(
             "sender_preferences",
@@ -424,6 +432,17 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             SQLiteDatabase.CONFLICT_REPLACE
         )
         _prefsChanged.value = System.currentTimeMillis()
+    }
+
+    suspend fun updateSenderPreferredSubId(address: String, preferredSubId: Int) = withContext(Dispatchers.IO) {
+        val existing = getSenderPreference(address)
+        val updated = existing?.copy(preferredSubId = preferredSubId, updatedAt = System.currentTimeMillis())
+            ?: SenderPreference(
+                address = address,
+                preferredSubId = preferredSubId,
+                updatedAt = System.currentTimeMillis()
+            )
+        saveSenderPreference(updated)
     }
 
     // --- Spam Metadata Operations ---
@@ -626,6 +645,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             val spamIdx = it.getColumnIndexOrThrow("is_unread_spam")
             val hasSpamIdx = it.getColumnIndexOrThrow("has_spam")
             val actionIdx = it.getColumnIndex("last_message_action")
+            val subIdIdx = it.getColumnIndex("sub_id")
             while (it.moveToNext()) {
                 val contactName = if (it.isNull(nameIdx)) null else it.getString(nameIdx)
                 val lastMessageAction = if (actionIdx >= 0 && !it.isNull(actionIdx)) {
@@ -636,6 +656,11 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                     }
                 } else {
                     FilterAction.NORMAL
+                }
+                val subId = if (subIdIdx >= 0 && !it.isNull(subIdIdx)) {
+                    it.getInt(subIdIdx)
+                } else {
+                    SubscriptionManager.INVALID_SUBSCRIPTION_ID
                 }
                 threads.add(
                     ConversationThread(
@@ -648,7 +673,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         unreadCount = it.getInt(unreadIdx),
                         hasSpam = it.getInt(hasSpamIdx) == 1,
                         isUnreadSpam = it.getInt(spamIdx) == 1,
-                        lastMessageAction = lastMessageAction
+                        lastMessageAction = lastMessageAction,
+                        subId = subId
                     )
                 )
             }
@@ -700,6 +726,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         put("is_unread_spam", if (thread.isUnreadSpam) 1 else 0)
                         put("has_spam", if (thread.hasSpam) 1 else 0)
                         put("last_message_action", thread.lastMessageAction.name)
+                        put("sub_id", thread.subId)
                     }
                     db.insertWithOnConflict(
                         "cached_threads",
@@ -984,7 +1011,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 unread_count INTEGER NOT NULL DEFAULT 0,
                 is_unread_spam INTEGER NOT NULL DEFAULT 0,
                 has_spam INTEGER NOT NULL DEFAULT 0,
-                last_message_action TEXT NOT NULL DEFAULT 'NORMAL'
+                last_message_action TEXT NOT NULL DEFAULT 'NORMAL',
+                sub_id INTEGER NOT NULL DEFAULT -1
             )
             """.trimIndent()
         )
@@ -1022,9 +1050,15 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         val isBlocked = cursor.getColumnIndexOrThrow("is_blocked")
         val notes = cursor.getColumnIndexOrThrow("notes")
         val updatedAt = cursor.getColumnIndexOrThrow("updated_at")
+        val preferredSubId = cursor.getColumnIndex("preferred_sub_id")
     }
 
     private fun readSenderPreference(cursor: Cursor, idx: SenderPreferenceIndices): SenderPreference {
+        val preferredSubId = if (idx.preferredSubId >= 0 && !cursor.isNull(idx.preferredSubId)) {
+            cursor.getInt(idx.preferredSubId)
+        } else {
+            PreferredSimMode.AUTO
+        }
         return SenderPreference(
             address = cursor.getString(idx.address),
             displayName = cursor.getString(idx.displayName),
@@ -1036,7 +1070,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             customSoundUri = cursor.getString(idx.customSoundUri),
             isBlocked = cursor.getInt(idx.isBlocked) == 1,
             notes = cursor.getString(idx.notes) ?: "",
-            updatedAt = cursor.getLong(idx.updatedAt)
+            updatedAt = cursor.getLong(idx.updatedAt),
+            preferredSubId = preferredSubId
         )
     }
 
@@ -1160,7 +1195,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile

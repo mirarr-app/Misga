@@ -81,12 +81,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.ChatNav
+import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.theme.InputBarShape
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.MessageBubble
+import com.miss.ga.ui.components.SimToggleButton
 import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.ui.components.SpamMessagePill
 import com.miss.ga.ui.util.senderDisplayName
@@ -338,6 +340,16 @@ fun ChatScreen(
                             maxLines = 5
                         )
 
+                        if (state.availableSims.size > 1) {
+                            SimToggleButton(
+                                availableSims = state.availableSims,
+                                selectedSim = state.selectedSim,
+                                onToggleSim = { viewModel.toggleSim() },
+                                onSelectSim = { viewModel.selectSim(it) },
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                        }
+
                         FilledIconButton(
                             onClick = {
                                 if (inputText.isNotBlank() && !state.isSending) {
@@ -435,6 +447,7 @@ fun ChatScreen(
             } else {
                 ChatMessageList(
                     messages = state.messages,
+                    availableSims = state.availableSims,
                     listState = listState,
                     highlightedMessageId = highlightedMessageId,
                     isLoadingOlder = state.isLoadingOlder,
@@ -495,9 +508,13 @@ fun ChatScreen(
             sheetState = sheetState,
             availableTabs = state.availableTabs,
             senderTabIds = state.senderTabIds,
+            availableSims = state.availableSims,
             onDismiss = { showSettingsSheet = false },
             onUpdateAction = { action ->
                 viewModel.updateSenderDefaultAction(action)
+            },
+            onUpdatePreferredSim = { preferredSubId ->
+                viewModel.setPreferredSim(preferredSubId)
             },
             onAddSenderRule = { pattern, isRegex, action, name ->
                 viewModel.addSenderRule(pattern, isRegex, action, name)
@@ -575,6 +592,7 @@ fun ChatScreen(
 @Composable
 private fun ChatMessageList(
     messages: List<SmsMessage>,
+    availableSims: List<SimInfo>,
     listState: LazyListState,
     highlightedMessageId: Long?,
     isLoadingOlder: Boolean,
@@ -583,6 +601,11 @@ private fun ChatMessageList(
     onDelete: (Long) -> Unit,
     onLongClick: (SmsMessage) -> Unit
 ) {
+    val simSlotMap = remember(availableSims) {
+        availableSims.associate { it.subscriptionId to it.slotNumber }
+    }
+    val hasMultipleSims = availableSims.size > 1
+
     LazyColumn(
         state = listState,
         reverseLayout = true,
@@ -603,10 +626,12 @@ private fun ChatMessageList(
         ) { index ->
             val message = messages[messages.lastIndex - index]
             val isHighlighted = message.id == highlightedMessageId
+            val simSlotNumber = if (hasMultipleSims) simSlotMap[message.subId] else null
             if (message.isSpam) {
                 SpamMessagePill(
                     message = message,
                     isHighlighted = isHighlighted,
+                    simSlotNumber = simSlotNumber,
                     onRevealToggle = { revealed -> onRevealToggle(message.id, revealed) },
                     onMarkNotSpam = { onMarkNotSpam(message.id) },
                     onDelete = { onDelete(message.id) }
@@ -615,6 +640,7 @@ private fun ChatMessageList(
                 MessageBubble(
                     message = message,
                     isHighlighted = isHighlighted,
+                    simSlotNumber = simSlotNumber,
                     onLongClick = { onLongClick(message) }
                 )
             }

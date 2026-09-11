@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
+import android.telephony.SubscriptionManager
 import android.telephony.SmsMessage as AndroidSmsMessage
 import android.util.Log
 import com.miss.ga.data.db.MisgaDatabaseHelper
@@ -46,6 +47,7 @@ class SmsReceiver : BroadcastReceiver() {
         }
         if (messages.isNullOrEmpty()) return
 
+        val incomingSubId = extractSubscriptionId(intent)
         val pendingResult = goAsync()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
@@ -57,7 +59,12 @@ class SmsReceiver : BroadcastReceiver() {
                 ) {
                     return@launch
                 }
-                processIncomingMessages(context, messages, action == Telephony.Sms.Intents.SMS_DELIVER_ACTION)
+                processIncomingMessages(
+                    context = context,
+                    messages = messages,
+                    isDefaultAppDeliver = action == Telephony.Sms.Intents.SMS_DELIVER_ACTION,
+                    incomingSubId = incomingSubId
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing SMS", e)
             } finally {
@@ -67,10 +74,27 @@ class SmsReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun extractSubscriptionId(intent: Intent): Int {
+        val idFromExtra = intent.getIntExtra(
+            SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
+            SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        )
+        if (idFromExtra != SubscriptionManager.INVALID_SUBSCRIPTION_ID) return idFromExtra
+
+        val legacySub = intent.getIntExtra("subscription", SubscriptionManager.INVALID_SUBSCRIPTION_ID)
+        if (legacySub != SubscriptionManager.INVALID_SUBSCRIPTION_ID) return legacySub
+
+        val legacySubId = intent.getIntExtra("sub_id", SubscriptionManager.INVALID_SUBSCRIPTION_ID)
+        if (legacySubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) return legacySubId
+
+        return SubscriptionManager.INVALID_SUBSCRIPTION_ID
+    }
+
     private suspend fun processIncomingMessages(
         context: Context,
         messages: Array<AndroidSmsMessage>,
-        isDefaultAppDeliver: Boolean
+        isDefaultAppDeliver: Boolean,
+        incomingSubId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
     ) {
         val dbHelper = MisgaDatabaseHelper.getInstance(context)
         val filterEngine = SmsFilterEngine(dbHelper)
@@ -141,7 +165,11 @@ class SmsReceiver : BroadcastReceiver() {
                     put(Telephony.Sms.DATE, timestamp)
                     put(Telephony.Sms.READ, if (filterResult.action == FilterAction.SPAM) 1 else 0)
                     put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
-                    smsRepository.putDefaultSmsSubscription(this)
+                    if (incomingSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                        put(Telephony.Sms.SUBSCRIPTION_ID, incomingSubId)
+                    } else {
+                        smsRepository.putDefaultSmsSubscription(this)
+                    }
                 }
 
                 try {
@@ -195,7 +223,8 @@ class SmsReceiver : BroadcastReceiver() {
                     body = fullBody,
                     action = filterResult.action,
                     messageId = messageId,
-                    timestamp = timestamp
+                    timestamp = timestamp,
+                    subId = incomingSubId
                 )
             }
         }

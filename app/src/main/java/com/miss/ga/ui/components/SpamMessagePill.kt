@@ -68,7 +68,8 @@ fun SpamMessagePill(
     onMarkNotSpam: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
-    isHighlighted: Boolean = false
+    isHighlighted: Boolean = false,
+    simSlotNumber: Int? = null
 ) {
     val isDark = isSystemInDarkTheme()
     val bgColor = if (isDark) SpamWarningDark else SpamWarningLight
@@ -214,13 +215,21 @@ fun SpamMessagePill(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = timeText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.7f),
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = timeText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = textColor.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (simSlotNumber != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                SimBadge(slotNumber = simSlotNumber)
+                            }
+                        }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(

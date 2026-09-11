@@ -40,7 +40,8 @@ fun MessageBubble(
     message: SmsMessage,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isHighlighted: Boolean = false
+    isHighlighted: Boolean = false,
+    simSlotNumber: Int? = null
 ) {
     val isSent = message.isSent
     val bubbleShape = if (isSent) OutgoingBubbleShape else IncomingBubbleShape
@@ -101,6 +102,13 @@ fun MessageBubble(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (simSlotNumber != null) {
+                        SimBadge(
+                            slotNumber = simSlotNumber,
+                            isSent = isSent
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                    }
                     Text(
                         text = timeText,
                         style = MaterialTheme.typography.labelSmall,

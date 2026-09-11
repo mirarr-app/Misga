@@ -10,5 +10,6 @@ data class SenderPreference(
     val customSoundUri: String? = null,
     val isBlocked: Boolean = false,
     val notes: String = "",
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val preferredSubId: Int = PreferredSimMode.AUTO
 )
