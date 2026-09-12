@@ -96,6 +96,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          gh release upload "$VERSION" \
+            "dist/misga-${VERSION}-universal.apk" \
+            dist/SHA256SUMS \
+            --clobber 2>/dev/null || \
           gh release create "$VERSION" \
             --title "$VERSION" \
             --generate-notes \

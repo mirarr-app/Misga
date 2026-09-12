@@ -7,9 +7,10 @@ SourceCode: https://github.com/mirarr-app/Misga
 IssueTracker: https://github.com/mirarr-app/Misga/issues
 Changelog: https://github.com/mirarr-app/Misga/releases
 
+AutoName: Misga
+
 RepoType: git
 Repo: https://github.com/mirarr-app/Misga.git
-
 Binaries: https://github.com/mirarr-app/Misga/releases/download/%v/misga-%v-universal.apk
 
 Builds:
