@@ -19,6 +19,7 @@ Builds:
     subdir: app
     gradle:
       - yes
+    prebuild: sed -i -e '/foojay/d' ../settings.gradle.kts
 
 AllowedAPKSigningKeys: f3c773e0a12e662c9ba90f7010500dec470dfd0d3b4db23ed19965c7d6de1f89
 
