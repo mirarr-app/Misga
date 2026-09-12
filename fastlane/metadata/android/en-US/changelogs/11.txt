@@ -1,0 +1,4 @@
+• Stack multiple SMS notifications using MessagingStyle
+• RTL message rendering improvements for Persian and Arabic
+• Updated spam filter presets
+• Stability improvements

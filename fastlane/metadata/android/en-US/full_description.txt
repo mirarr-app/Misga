@@ -1,0 +1,14 @@
+An Android SMS application designed to solve the spam and advertisement problem in Iran.
+
+Iran's SMS has turned into a flood of spam messages and unwanted promotions. Misga fixes this with powerful regex filters and predefined rules that automatically silence spam and keep your notifications clean.
+
+<b>Features</b>
+<ul>
+  <li><b>Regex filters with allowlist priority:</b> Allowlist rules are evaluated first so you never miss critical OTP verification codes or banking messages.</li>
+  <li><b>Built-in Iranian spam presets:</b> Ships with filters for Iranian spam, ads, and scams, which you can customize or replace.</li>
+  <li><b>Filter Studio:</b> Add custom regex or substring rules, test patterns against sample text, and import/export filter lists as JSON.</li>
+  <li><b>Material 3 Expressive:</b> Clean, intuitive UI built with modern Material Design 3.</li>
+  <li><b>Dual SIM support:</b> Seamlessly view and manage conversations across multiple SIM cards.</li>
+</ul>
+
+Set Misga as your default SMS app so it can filter incoming messages in real time.

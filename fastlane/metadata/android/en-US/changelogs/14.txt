@@ -1,0 +1,5 @@
+• Comprehensive dual SIM support
+• Native text selection in chat messages
+• Sender tabs for grouping conversations
+• RTL rendering and UI polish
+• Performance improvements and bug fixes
