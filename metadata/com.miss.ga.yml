@@ -23,10 +23,3 @@ Builds:
     subdir: app
     gradle:
       - assembleRelease
-
-  - versionName: 1.3.0
-    versionCode: 14
-    commit: 1.3.0
-    subdir: app
-    gradle:
-      - assembleRelease
