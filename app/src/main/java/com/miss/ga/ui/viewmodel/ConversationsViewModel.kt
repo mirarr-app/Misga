@@ -22,7 +22,9 @@ import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.repository.SmsRepository
+import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.PhoneNumberKeys
+import com.miss.ga.data.util.UserPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -49,7 +51,12 @@ data class ConversationsUiState(
     val selectedSimFilterSubId: Int? = null
 )
 
-class ConversationsViewModel(application: Application) : AndroidViewModel(application) {
+class ConversationsViewModel(
+    application: Application,
+    private val userPreferences: UserPreferences
+) : AndroidViewModel(application) {
+
+    constructor(application: Application) : this(application, AppPreferences(application))
 
     private val repository = SmsRepository(application)
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
@@ -60,7 +67,11 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     private var lastLoadFinishedAt = 0L
     private var smsContentObserver: ContentObserver? = null
 
-    private val _uiState = MutableStateFlow(ConversationsUiState())
+    private val _uiState = MutableStateFlow(
+        ConversationsUiState(
+            showContactsOnly = userPreferences.showContactsOnly
+        )
+    )
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
 
     val selectedThreadIds = mutableStateSetOf<Long>()
@@ -367,8 +378,10 @@ class ConversationsViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun toggleContactsOnly() {
+        val nextValue = !_uiState.value.showContactsOnly
+        userPreferences.showContactsOnly = nextValue
         _uiState.value = _uiState.value.copy(
-            showContactsOnly = !_uiState.value.showContactsOnly
+            showContactsOnly = nextValue
         )
     }
 
