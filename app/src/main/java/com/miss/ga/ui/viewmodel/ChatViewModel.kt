@@ -24,6 +24,7 @@ import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.UserPreferences
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,12 +32,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ChatUiState(
     val isLoading: Boolean = true,
     val threadId: Long = 0,
     val address: String = "",
     val contactName: String? = null,
+    val photoUri: String? = null,
+    val contactLookupUri: String? = null,
     val messages: List<SmsMessage> = emptyList(),
     val senderPreference: SenderPreference? = null,
     val senderRules: List<FilterRule> = emptyList(),
@@ -81,6 +85,7 @@ class ChatViewModel(
 
     init {
         registerSmsContentObserver()
+        loadContactDetails()
         loadMessages()
         loadSenderSettings()
         loadTabs()
@@ -420,12 +425,28 @@ class ChatViewModel(
         }
     }
 
+    fun loadContactDetails() {
+        viewModelScope.launch {
+            val detail = withContext(Dispatchers.IO) {
+                repository.resolveContactDetail(initialAddress)
+            }
+            if (detail != null) {
+                _uiState.value = _uiState.value.copy(
+                    contactName = detail.name,
+                    photoUri = detail.photoUri,
+                    contactLookupUri = detail.lookupUri
+                )
+            }
+        }
+    }
+
     fun setScreenResumed(resumed: Boolean) {
         isScreenResumed = resumed
         if (resumed) {
             _uiState.value = _uiState.value.copy(
                 showShamsiDate = userPreferences.showShamsiDate
             )
+            loadContactDetails()
         }
     }
 
