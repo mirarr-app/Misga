@@ -348,15 +348,15 @@ object PredefinedRules {
             ),
             FilterRule(
                 id = -26,
-                name = "Snapp Pay Short Links (l.snpy.ir)",
-                pattern = "(?i)(https?://)?([a-z0-9-]+\\.)*l\\.snpy\\.ir",
+                name = "Spam URL Links",
+                pattern = "(?i)(https?://)?([a-z0-9-]+\\.)*(?:(l\\.snpy\\.ir|i\\.jabama\\.me|i\\.weurl\\.co|zbl\\.io|payment\\.samantel\\.ir/package)(?:[/?#]\\S*)?|my\\.irancell\\.ir/dlp\\S*[?&]id=gift\\S*)",
                 isRegex = true,
                 action = FilterAction.SPAM,
                 listType = RuleListType.BLOCKLIST,
                 isEnabled = true,
                 isPredefined = true,
                 category = RuleCategory.SPAM_KEYWORD,
-                description = "Blocks l.snpy.ir shortened links in any casing (l.snpy.ir / L.SNPY.IR / https://l.snpy.ir/...)"
+                description = "Blocks spam and promotional URLs with optional https, subdomains, paths, and queries: l.snpy.ir, i.jabama.me, i.weurl.co, zbl.io, my.irancell.ir/dlp?id=gift, payment.samantel.ir/package"
             ),
 
             // ==========================================

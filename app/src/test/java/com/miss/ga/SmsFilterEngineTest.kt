@@ -302,19 +302,59 @@ class SmsFilterEngineTest {
             )
         }
 
-        val snpyRule = PredefinedRules.getDefaultRules().first { it.id == -26L }
+        val spamUrlRule = PredefinedRules.getDefaultRules().first { it.id == -26L }
         listOf(
             "l.snpy.ir/iouvc",
             "https://l.snpy.ir/wqbxd",
             "http://www.l.snpy.ir/abc",
             "L.SNPY.IR",
-            "L.Snpy.Ir/xyz"
+            "L.Snpy.Ir/xyz",
+            "https://l.snpy.ir/deal?ref=sms",
+            "i.jabama.me/resort",
+            "https://i.jabama.me/deal",
+            "https://i.jabama.me/hotel/tehran?checkin=today",
+            "i.weurl.co/promo",
+            "https://i.weurl.co/special",
+            "https://i.weurl.co/shortlink?ref=ad",
+            "zbl.io",
+            "https://zbl.io",
+            "zbl.io/discount",
+            "https://zbl.io/offer",
+            "https://zbl.io/something",
+            "zbl.io/something",
+            "http://zbl.io/something?q=1&v=2",
+            "https://zbl.io?deal=weekend",
+            "https://www.zbl.io/something",
+            "my.irancell.ir/dlp?id=gift",
+            "https://my.irancell.ir/dlp?id=gift",
+            "https://my.irancell.ir/dlp?id=gift&track=1",
+            "https://my.irancell.ir/dlp?utm_source=sms&id=gift",
+            "https://my.irancell.ir/dlp/?id=gift&token=xyz",
+            "payment.samantel.ir/package",
+            "https://payment.samantel.ir/package",
+            "https://payment.samantel.ir/package/bundle",
+            "https://payment.samantel.ir/package?id=123",
+            "payment.samantel.ir/package/bundle?offer=1"
         ).forEach { sample ->
             assertTrue(
-                "l.snpy.ir variant should match case-insensitively: $sample",
-                SmsFilterEngine.testPattern(snpyRule.pattern, true, sample).isMatch
+                "Spam URL variant should match: $sample",
+                SmsFilterEngine.testPattern(spamUrlRule.pattern, true, sample).isMatch
             )
         }
+
+        // Non-matching legitimate URLs under irancell and samantel
+        listOf(
+            "my.irancell.ir",
+            "https://my.irancell.ir/profile",
+            "payment.samantel.ir",
+            "https://payment.samantel.ir/bill"
+        ).forEach { sample ->
+            assertFalse(
+                "Legitimate URL should not match spam rule: $sample",
+                SmsFilterEngine.testPattern(spamUrlRule.pattern, true, sample).isMatch
+            )
+        }
+
         val snpyPromo = """با خرید قسطی، نگران آخر ماه نیستی!
 با اسنپ‌پی، کالاهای مورد نیازت رو آخر ماه، آنلاین و حضوری در ۴قسط بخر.
 + ۲۰۰هزار تومن تخفیف بیشتر با کد PAY2TMH
