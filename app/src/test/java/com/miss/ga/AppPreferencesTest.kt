@@ -90,4 +90,35 @@ class AppPreferencesTest {
         val appPreferences = AppPreferences(fakePrefs.proxy)
         assertTrue(appPreferences.showContactsOnly)
     }
+
+    @Test
+    fun defaultShowShamsiDateIsFalse() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertFalse(appPreferences.showShamsiDate)
+    }
+
+    @Test
+    fun showShamsiDatePersistsWhenSet() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.showShamsiDate = true
+        assertTrue(appPreferences.showShamsiDate)
+        assertEquals(true, fakePrefs.storage[AppPreferences.KEY_SHOW_SHAMSI_DATE])
+
+        appPreferences.showShamsiDate = false
+        assertFalse(appPreferences.showShamsiDate)
+        assertEquals(false, fakePrefs.storage[AppPreferences.KEY_SHOW_SHAMSI_DATE])
+    }
+
+    @Test
+    fun showShamsiDateInitializesFromExistingStoredValue() {
+        val fakePrefs = InMemorySharedPreferences()
+        fakePrefs.storage[AppPreferences.KEY_SHOW_SHAMSI_DATE] = true
+
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+        assertTrue(appPreferences.showShamsiDate)
+    }
 }

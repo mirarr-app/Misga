@@ -21,6 +21,8 @@ import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
+import com.miss.ga.data.util.AppPreferences
+import com.miss.ga.data.util.UserPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -45,7 +47,8 @@ data class ChatUiState(
     val availableTabs: List<SenderTab> = emptyList(),
     val senderTabIds: Set<Long> = emptySet(),
     val availableSims: List<SimInfo> = emptyList(),
-    val selectedSim: SimInfo? = null
+    val selectedSim: SimInfo? = null,
+    val showShamsiDate: Boolean = false
 )
 
 class ChatViewModel(
@@ -53,7 +56,8 @@ class ChatViewModel(
     private val initialThreadId: Long,
     private val initialAddress: String,
     private val initialContactName: String?,
-    private val initialMessageId: Long? = null
+    private val initialMessageId: Long? = null,
+    private val userPreferences: UserPreferences = AppPreferences(application)
 ) : AndroidViewModel(application) {
 
     private val repository = SmsRepository(application)
@@ -69,7 +73,8 @@ class ChatViewModel(
         ChatUiState(
             threadId = initialThreadId,
             address = initialAddress,
-            contactName = initialContactName
+            contactName = initialContactName,
+            showShamsiDate = userPreferences.showShamsiDate
         )
     )
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -417,6 +422,19 @@ class ChatViewModel(
 
     fun setScreenResumed(resumed: Boolean) {
         isScreenResumed = resumed
+        if (resumed) {
+            _uiState.value = _uiState.value.copy(
+                showShamsiDate = userPreferences.showShamsiDate
+            )
+        }
+    }
+
+    fun toggleShamsiDate() {
+        val nextValue = !_uiState.value.showShamsiDate
+        userPreferences.showShamsiDate = nextValue
+        _uiState.value = _uiState.value.copy(
+            showShamsiDate = nextValue
+        )
     }
 
     fun loadTabs() {

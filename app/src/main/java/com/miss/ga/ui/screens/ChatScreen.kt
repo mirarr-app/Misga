@@ -451,6 +451,8 @@ fun ChatScreen(
                     listState = listState,
                     highlightedMessageId = highlightedMessageId,
                     isLoadingOlder = state.isLoadingOlder,
+                    showShamsiDate = state.showShamsiDate,
+                    onToggleDateFormat = { viewModel.toggleShamsiDate() },
                     onRevealToggle = onRevealToggle,
                     onMarkNotSpam = onMarkNotSpam,
                     onDelete = onDeleteMessage,
@@ -596,6 +598,8 @@ private fun ChatMessageList(
     listState: LazyListState,
     highlightedMessageId: Long?,
     isLoadingOlder: Boolean,
+    showShamsiDate: Boolean,
+    onToggleDateFormat: () -> Unit,
     onRevealToggle: (Long, Boolean) -> Unit,
     onMarkNotSpam: (Long) -> Unit,
     onDelete: (Long) -> Unit,
@@ -632,6 +636,8 @@ private fun ChatMessageList(
                     message = message,
                     isHighlighted = isHighlighted,
                     simSlotNumber = simSlotNumber,
+                    useShamsi = showShamsiDate,
+                    onToggleDateFormat = onToggleDateFormat,
                     onRevealToggle = { revealed -> onRevealToggle(message.id, revealed) },
                     onMarkNotSpam = { onMarkNotSpam(message.id) },
                     onDelete = { onDelete(message.id) }
@@ -641,6 +647,8 @@ private fun ChatMessageList(
                     message = message,
                     isHighlighted = isHighlighted,
                     simSlotNumber = simSlotNumber,
+                    useShamsi = showShamsiDate,
+                    onToggleDateFormat = onToggleDateFormat,
                     onLongClick = { onLongClick(message) }
                 )
             }
