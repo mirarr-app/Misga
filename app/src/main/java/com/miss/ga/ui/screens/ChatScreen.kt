@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -82,15 +83,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.ChatNav
 import com.miss.ga.data.model.SimInfo
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.theme.InputBarShape
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
+import com.miss.ga.ui.components.ContactProfileDialog
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.MessageBubble
 import com.miss.ga.ui.components.SimToggleButton
 import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.ui.components.SpamMessagePill
+import com.miss.ga.ui.util.ContactUtils
 import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.util.contentAware
 import com.miss.ga.ui.viewmodel.ChatViewModel
@@ -130,6 +135,7 @@ fun ChatScreen(
 
     var inputText by remember { mutableStateOf("") }
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var showContactProfileDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
@@ -222,10 +228,26 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                val opened = ContactUtils.openContactInfo(
+                                    context = context,
+                                    address = state.address,
+                                    contactLookupUri = state.contactLookupUri
+                                )
+                                if (!opened) {
+                                    showContactProfileDialog = true
+                                }
+                            }
+                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                    ) {
                         ConversationAvatar(
                             address = state.address,
                             contactName = state.contactName,
+                            photoUri = state.photoUri,
                             size = 42.dp
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -252,7 +274,7 @@ fun ChatScreen(
                 },
                 actions = {
                     // Call Button (visible only if sender address is a callable phone number)
-                    if (isCallable(state.address)) {
+                    if (ContactUtils.isCallable(state.address)) {
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -260,14 +282,7 @@ fun ChatScreen(
                         ) {
                             IconButton(
                                 onClick = {
-                                    try {
-                                        val dialIntent = Intent(Intent.ACTION_DIAL).apply {
-                                            data = Uri.parse("tel:${Uri.encode(state.address)}")
-                                        }
-                                        context.startActivity(dialIntent)
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Cannot open dialer", Toast.LENGTH_SHORT).show()
-                                    }
+                                    ContactUtils.openDialer(context, state.address)
                                 }
                             ) {
                                 Icon(
@@ -500,6 +515,22 @@ fun ChatScreen(
         }
     }
 
+    // Contact Profile Dialog (when tapping top bar for non-contact, or avatar quick preview)
+    if (showContactProfileDialog) {
+        ContactProfileDialog(
+            address = state.address,
+            contactName = state.contactName,
+            photoUri = state.photoUri,
+            contactLookupUri = state.contactLookupUri,
+            isContact = !state.contactName.isNullOrBlank(),
+            onDismiss = { showContactProfileDialog = false },
+            onOpenInfo = {
+                showContactProfileDialog = false
+                showSettingsSheet = true
+            }
+        )
+    }
+
     // Participant Settings Bottom Sheet
     if (showSettingsSheet) {
         ParticipantSettingsSheet(
@@ -670,14 +701,5 @@ private fun ChatMessageList(
             }
         }
     }
-}
-
-private fun isCallable(address: String): Boolean {
-    if (address.isBlank()) return false
-    val digits = address.filter { it.isDigit() }
-    val letters = address.filter { it.isLetter() }
-    // If it is an alphanumeric sender id (like "BankMellat", "Snapp", "Digikala") where letters exist and digits are fewer than 3, it is not a phone number
-    if (letters.isNotEmpty() && digits.length < 3) return false
-    return digits.length >= 3
 }
 

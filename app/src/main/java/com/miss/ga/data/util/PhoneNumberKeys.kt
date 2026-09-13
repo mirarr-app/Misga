@@ -62,6 +62,14 @@ object PhoneNumberKeys {
         return null
     }
 
+    fun <T> lookupValue(map: Map<String, T>, number: String): T? {
+        for (key in keys(number)) {
+            val value = map[key]
+            if (value != null) return value
+        }
+        return null
+    }
+
     fun redact(address: String): String {
         if (address.length <= 4) return "****"
         return address.take(2) + "****" + address.takeLast(2)

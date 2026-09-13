@@ -39,7 +39,9 @@ data class ConversationThread(
     val hasSpam: Boolean = false,
     val isUnreadSpam: Boolean = false,
     val lastMessageAction: FilterAction = FilterAction.NORMAL,
-    val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+    val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
+    val photoUri: String? = null,
+    val contactLookupUri: String? = null
 ) {
     val isContact: Boolean get() = !contactName.isNullOrBlank()
     val isLastReceivedSpam: Boolean get() = lastMessageAction == FilterAction.SPAM
@@ -56,5 +58,7 @@ data class SearchMessageResult(
     val read: Boolean,
     val type: Int,
     val isSpam: Boolean = false,
-    val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+    val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
+    val photoUri: String? = null,
+    val contactLookupUri: String? = null
 )

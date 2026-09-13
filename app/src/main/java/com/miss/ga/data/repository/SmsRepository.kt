@@ -155,7 +155,8 @@ class SmsRepository(private val context: Context) {
             }
 
             val canonicalAddresses = loadCanonicalAddressMap()
-            val contactNames = loadContactNameMap()
+            val contactDetails = loadContactDetailMap()
+            val contactNames = contactDetails.mapValues { it.value.name }
 
             // Batch query all unread messages in a single fast query
             val unreadCounts = mutableMapOf<Long, Int>()
@@ -297,7 +298,10 @@ class SmsRepository(private val context: Context) {
             for (row in threadRows) {
                 val threadId = row.threadId
                 val address = resolveRecipientAddress(row.recipientIds, canonicalAddresses)
-                val contactName = PhoneNumberKeys.lookup(contactNames, address)
+                val contactDetail = PhoneNumberKeys.lookupValue(contactDetails, address)
+                val contactName = contactDetail?.name ?: PhoneNumberKeys.lookup(contactNames, address)
+                val photoUri = contactDetail?.photoUri
+                val contactLookupUri = contactDetail?.lookupUri
 
                 val unreadCount = unreadCounts[threadId] ?: 0
                 val lastInbox = latestInboxMessage[threadId]
@@ -328,7 +332,9 @@ class SmsRepository(private val context: Context) {
                         hasSpam = lastMessageAction == FilterAction.SPAM || isUnreadSpam,
                         isUnreadSpam = isUnreadSpam,
                         lastMessageAction = lastMessageAction,
-                        subId = subId
+                        subId = subId,
+                        photoUri = photoUri,
+                        contactLookupUri = contactLookupUri
                     )
                 )
             }
@@ -718,39 +724,66 @@ class SmsRepository(private val context: Context) {
         return map
     }
 
-    private fun loadContactNameMap(): Map<String, String> {
-        val cached = contactCache
+    private fun loadContactDetailMap(): Map<String, ContactDetail> {
+        val cached = contactDetailCache
         val now = System.currentTimeMillis()
         if (cached != null && now - cached.loadedAt < LOOKUP_CACHE_TTL_MS) {
             return cached.values
         }
-        val map = HashMap<String, String>()
+        val map = HashMap<String, ContactDetail>()
         try {
             val cursor = context.contentResolver.query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                 arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                    ContactsContract.CommonDataKinds.Phone.LOOKUP_KEY,
                     ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                    ContactsContract.CommonDataKinds.Phone.NUMBER,
+                    ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI,
+                    ContactsContract.CommonDataKinds.Phone.PHOTO_URI
                 ),
                 null, null, null
             )
             cursor?.use {
-                val nameIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                val numIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val contactIdIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+                val lookupKeyIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.LOOKUP_KEY)
+                val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val thumbIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI)
+                val photoIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
+
                 while (it.moveToNext()) {
-                    val name = it.getString(nameIdx) ?: continue
-                    val number = it.getString(numIdx) ?: continue
-                    if (name.isBlank() || number.isBlank()) continue
+                    val name = if (nameIdx >= 0) it.getString(nameIdx) else null
+                    val number = if (numIdx >= 0) it.getString(numIdx) else null
+                    if (name.isNullOrBlank() || number.isNullOrBlank()) continue
+
+                    val contactId = if (contactIdIdx >= 0 && !it.isNull(contactIdIdx)) it.getLong(contactIdIdx) else null
+                    val lookupKey = if (lookupKeyIdx >= 0) it.getString(lookupKeyIdx) else null
+                    val lookupUri = if (contactId != null && !lookupKey.isNullOrBlank()) {
+                        ContactsContract.Contacts.getLookupUri(contactId, lookupKey)?.toString()
+                    } else null
+
+                    val photoUri = when {
+                        thumbIdx >= 0 && !it.isNull(thumbIdx) -> it.getString(thumbIdx)
+                        photoIdx >= 0 && !it.isNull(photoIdx) -> it.getString(photoIdx)
+                        else -> null
+                    }
+
+                    val detail = ContactDetail(name, photoUri, lookupUri)
                     for (key in PhoneNumberKeys.keys(number)) {
-                        map.putIfAbsent(key, name)
+                        map.putIfAbsent(key, detail)
                     }
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Batch contact query failed, falling back", e)
         }
-        contactCache = CachedLookupMap(now, map)
+        contactDetailCache = CachedLookupMap(now, map)
         return map
+    }
+
+    private fun loadContactNameMap(): Map<String, String> {
+        return loadContactDetailMap().mapValues { it.value.name }
     }
 
     private fun resolveRecipientAddress(
@@ -876,7 +909,8 @@ class SmsRepository(private val context: Context) {
         val selectionArgs = arrayOf("%$trimmedQuery%", "%$trimmedQuery%")
 
         try {
-            val contactNames = loadContactNameMap()
+            val contactDetails = loadContactDetailMap()
+            val contactNames = contactDetails.mapValues { it.value.name }
             val cursor = contentResolver.query(
                 uri,
                 projection,
@@ -967,18 +1001,21 @@ class SmsRepository(private val context: Context) {
                     false
                 }
 
+                val detail = PhoneNumberKeys.lookupValue(contactDetails, hit.address)
                 results.add(
                     SearchMessageResult(
                         messageId = hit.messageId,
                         threadId = hit.threadId,
                         address = hit.address,
-                        contactName = PhoneNumberKeys.lookup(contactNames, hit.address),
+                        contactName = detail?.name ?: PhoneNumberKeys.lookup(contactNames, hit.address),
                         body = hit.body,
                         date = hit.date,
                         read = hit.read,
                         type = hit.type,
                         isSpam = isSpam,
-                        subId = hit.subId
+                        subId = hit.subId,
+                        photoUri = detail?.photoUri,
+                        contactLookupUri = detail?.lookupUri
                     )
                 )
             }
@@ -1040,7 +1077,7 @@ class SmsRepository(private val context: Context) {
 
     fun invalidateLookupCaches() {
         canonicalCache = null
-        contactCache = null
+        contactDetailCache = null
     }
 
     companion object {
@@ -1056,25 +1093,56 @@ class SmsRepository(private val context: Context) {
             (sendTokenCounter.incrementAndGet() and 0x7FFFFFFFL).toInt()
     }
 
-    fun resolveContactName(phoneNumber: String): String? {
+    fun resolveContactDetail(phoneNumber: String): ContactDetail? {
         if (phoneNumber.isBlank()) return null
-        PhoneNumberKeys.lookup(loadContactNameMap(), phoneNumber)?.let { return it }
+        PhoneNumberKeys.lookupValue(loadContactDetailMap(), phoneNumber)?.let { return it }
         try {
             val uri = Uri.withAppendedPath(
                 ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
                 Uri.encode(phoneNumber)
             )
-            val projection = arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME)
+            val projection = arrayOf(
+                ContactsContract.PhoneLookup._ID,
+                ContactsContract.PhoneLookup.LOOKUP_KEY,
+                ContactsContract.PhoneLookup.DISPLAY_NAME,
+                ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI,
+                ContactsContract.PhoneLookup.PHOTO_URI
+            )
             val cursor = context.contentResolver.query(uri, projection, null, null, null)
             cursor?.use {
                 if (it.moveToFirst()) {
-                    return it.getString(it.getColumnIndexOrThrow(ContactsContract.PhoneLookup.DISPLAY_NAME))
+                    val nameIdx = it.getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME)
+                    val idIdx = it.getColumnIndex(ContactsContract.PhoneLookup._ID)
+                    val keyIdx = it.getColumnIndex(ContactsContract.PhoneLookup.LOOKUP_KEY)
+                    val thumbIdx = it.getColumnIndex(ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI)
+                    val photoIdx = it.getColumnIndex(ContactsContract.PhoneLookup.PHOTO_URI)
+
+                    val name = if (nameIdx >= 0) it.getString(nameIdx) else null
+                    val contactId = if (idIdx >= 0 && !it.isNull(idIdx)) it.getLong(idIdx) else null
+                    val lookupKey = if (keyIdx >= 0) it.getString(keyIdx) else null
+                    val lookupUri = if (contactId != null && !lookupKey.isNullOrBlank()) {
+                        ContactsContract.Contacts.getLookupUri(contactId, lookupKey)?.toString()
+                    } else null
+
+                    val photoUri = when {
+                        thumbIdx >= 0 && !it.isNull(thumbIdx) -> it.getString(thumbIdx)
+                        photoIdx >= 0 && !it.isNull(photoIdx) -> it.getString(photoIdx)
+                        else -> null
+                    }
+
+                    if (!name.isNullOrBlank()) {
+                        return ContactDetail(name, photoUri, lookupUri)
+                    }
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "PhoneLookup query failed", e)
         }
         return null
+    }
+
+    fun resolveContactName(phoneNumber: String): String? {
+        return resolveContactDetail(phoneNumber)?.name
     }
 
     suspend fun getAllTabs(): List<SenderTab> = dbHelper.getAllTabs()
@@ -1119,6 +1187,12 @@ data class SendSmsResult(
     }
 }
 
+data class ContactDetail(
+    val name: String,
+    val photoUri: String? = null,
+    val lookupUri: String? = null
+)
+
 data class ContactItem(
     val name: String,
     val number: String
@@ -1133,9 +1207,9 @@ private data class ThreadProviderRow(
     val read: Boolean
 )
 
-private data class CachedLookupMap(
+private data class CachedLookupMap<T>(
     val loadedAt: Long,
-    val values: Map<String, String>
+    val values: Map<String, T>
 )
 
 private data class SearchHit(
@@ -1153,8 +1227,8 @@ private const val LOOKUP_CACHE_TTL_MS = 60_000L
 private const val SQLITE_IN_CHUNK_SIZE = 500
 
 @Volatile
-private var canonicalCache: CachedLookupMap? = null
+private var canonicalCache: CachedLookupMap<String>? = null
 
 @Volatile
-private var contactCache: CachedLookupMap? = null
+private var contactDetailCache: CachedLookupMap<ContactDetail>? = null
 

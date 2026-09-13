@@ -97,9 +97,11 @@ import com.miss.ga.ChatNav
 import com.miss.ga.R
 import com.miss.ga.data.model.ConversationThread
 import com.miss.ga.data.model.SearchMessageResult
+import androidx.compose.ui.semantics.Role
 import com.miss.ga.data.model.SenderTab
 import com.miss.ga.theme.PillShape
 import com.miss.ga.ui.components.AddToTabDialog
+import com.miss.ga.ui.components.ContactProfileDialog
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.CreateTabDialog
 import com.miss.ga.ui.components.DefaultSmsBanner
@@ -164,6 +166,7 @@ fun ConversationsScreen(
     var tabToManageSenders by remember { mutableStateOf<SenderTab?>(null) }
     var tabForOptionsMenu by remember { mutableStateOf<SenderTab?>(null) }
     var showAddToTabDialog by remember { mutableStateOf(false) }
+    var activeProfileDialogInfo by remember { mutableStateOf<ProfileDialogData?>(null) }
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
@@ -502,7 +505,17 @@ fun ConversationsScreen(
                                             )
                                         )
                                     },
-                                    onLongClick = {}
+                                    onLongClick = {},
+                                    onAvatarClick = {
+                                        activeProfileDialogInfo = ProfileDialogData(
+                                            threadId = thread.threadId,
+                                            address = thread.address,
+                                            contactName = thread.contactName,
+                                            photoUri = thread.photoUri,
+                                            contactLookupUri = thread.contactLookupUri,
+                                            isContact = thread.isContact
+                                        )
+                                    }
                                 )
                                 HorizontalDivider(
                                     modifier = Modifier.padding(start = AvatarDividerInset, end = 16.dp),
@@ -536,6 +549,16 @@ fun ConversationsScreen(
                                                 contactName = msg.contactName,
                                                 initialMessageId = msg.messageId
                                             )
+                                        )
+                                    },
+                                    onAvatarClick = {
+                                        activeProfileDialogInfo = ProfileDialogData(
+                                            threadId = msg.threadId,
+                                            address = msg.address,
+                                            contactName = msg.contactName,
+                                            photoUri = msg.photoUri,
+                                            contactLookupUri = msg.contactLookupUri,
+                                            isContact = !msg.contactName.isNullOrBlank()
                                         )
                                     }
                                 )
@@ -618,7 +641,17 @@ fun ConversationsScreen(
                     hasMultipleSims = hasMultipleSims,
                     onOpenChat = openChat,
                     onToggleSelect = viewModel::toggleSelectThread,
-                    onEnterSelection = viewModel::enterSelectionMode
+                    onEnterSelection = viewModel::enterSelectionMode,
+                    onAvatarClick = { thread ->
+                        activeProfileDialogInfo = ProfileDialogData(
+                            threadId = thread.threadId,
+                            address = thread.address,
+                            contactName = thread.contactName,
+                            photoUri = thread.photoUri,
+                            contactLookupUri = thread.contactLookupUri,
+                            isContact = thread.isContact
+                        )
+                    }
                 )
             }
         }
@@ -729,6 +762,27 @@ fun ConversationsScreen(
             onCreateNewTab = {
                 showAddToTabDialog = false
                 showCreateTabDialog = true
+            }
+        )
+    }
+
+    activeProfileDialogInfo?.let { profile ->
+        ContactProfileDialog(
+            address = profile.address,
+            contactName = profile.contactName,
+            photoUri = profile.photoUri,
+            contactLookupUri = profile.contactLookupUri,
+            isContact = profile.isContact,
+            onDismiss = { activeProfileDialogInfo = null },
+            onOpenInfo = {
+                activeProfileDialogInfo = null
+                openChat(
+                    ChatNav(
+                        threadId = profile.threadId,
+                        address = profile.address,
+                        contactName = profile.contactName
+                    )
+                )
             }
         )
     }
@@ -923,7 +977,8 @@ private fun ConversationsInboxList(
     hasMultipleSims: Boolean = false,
     onOpenChat: (ChatNav) -> Unit,
     onToggleSelect: (Long) -> Unit,
-    onEnterSelection: (Long) -> Unit
+    onEnterSelection: (Long) -> Unit,
+    onAvatarClick: (ConversationThread) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -958,6 +1013,9 @@ private fun ConversationsInboxList(
                     } else {
                         onEnterSelection(thread.threadId)
                     }
+                },
+                onAvatarClick = {
+                    onAvatarClick(thread)
                 }
             )
             HorizontalDivider(
@@ -1018,7 +1076,8 @@ private fun ConversationItem(
     isSelectionMode: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    simSlotNumber: Int? = null
+    simSlotNumber: Int? = null,
+    onAvatarClick: (() -> Unit)? = null
 ) {
     val isSelected by remember(thread.threadId) {
         derivedStateOf { thread.threadId in selectedIds }
@@ -1077,15 +1136,31 @@ private fun ConversationItem(
                     ConversationAvatar(
                         address = thread.address,
                         contactName = thread.contactName,
+                        photoUri = thread.photoUri,
                         size = 48.dp
                     )
                 }
             } else {
-                ConversationAvatar(
-                    address = thread.address,
-                    contactName = thread.contactName,
-                    size = 48.dp
-                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .then(
+                            if (onAvatarClick != null) {
+                                Modifier.clickable(
+                                    role = Role.Button,
+                                    onClick = onAvatarClick
+                                )
+                            } else Modifier
+                        )
+                ) {
+                    ConversationAvatar(
+                        address = thread.address,
+                        contactName = thread.contactName,
+                        photoUri = thread.photoUri,
+                        size = 48.dp
+                    )
+                }
             }
         }
 
@@ -1211,7 +1286,8 @@ private fun SearchMessageResultItem(
     item: SearchMessageResult,
     searchQuery: String,
     onClick: () -> Unit,
-    simSlotNumber: Int? = null
+    simSlotNumber: Int? = null,
+    onAvatarClick: (() -> Unit)? = null
 ) {
     val displayName = senderDisplayName(item.contactName, item.address)
 
@@ -1229,11 +1305,23 @@ private fun SearchMessageResultItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ConversationAvatar(
-            address = item.address,
-            contactName = item.contactName,
-            size = 48.dp
-        )
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .then(
+                    if (onAvatarClick != null) {
+                        Modifier.clickable(role = Role.Button, onClick = onAvatarClick)
+                    } else Modifier
+                )
+        ) {
+            ConversationAvatar(
+                address = item.address,
+                contactName = item.contactName,
+                photoUri = item.photoUri,
+                size = 48.dp
+            )
+        }
 
         Spacer(modifier = Modifier.width(14.dp))
 
@@ -1340,3 +1428,12 @@ private fun buildAnnotatedSearchSnippet(
 
     return builder.toAnnotatedString()
 }
+
+private data class ProfileDialogData(
+    val threadId: Long,
+    val address: String,
+    val contactName: String?,
+    val photoUri: String? = null,
+    val contactLookupUri: String? = null,
+    val isContact: Boolean = !contactName.isNullOrBlank()
+)

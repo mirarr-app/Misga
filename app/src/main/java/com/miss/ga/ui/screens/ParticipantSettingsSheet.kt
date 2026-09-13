@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,9 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SimCard
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.ui.platform.LocalContext
+import com.miss.ga.ui.util.ContactUtils
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -133,6 +137,24 @@ fun ParticipantSettingsSheet(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
+                    }
+                }
+
+                if (contactName.isNullOrBlank() && ContactUtils.isCallable(address)) {
+                    val context = LocalContext.current
+                    FilledTonalButton(
+                        onClick = {
+                            ContactUtils.openAddToContacts(context, address)
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.PersonAdd,
+                            contentDescription = "Add to contacts",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Add", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
