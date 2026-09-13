@@ -98,6 +98,32 @@ fun ComposeScreen(
     var selectedContactName by remember { mutableStateOf<String?>(null) }
     var messageBody by remember { mutableStateOf(initialBody) }
     var isSending by remember { mutableStateOf(false) }
+    var isNavigating by remember { mutableStateOf(false) }
+
+    val openConversation: (String, String?) -> Unit = { targetAddress, targetName ->
+        val cleanAddr = targetAddress.trim()
+        if (!isNavigating && cleanAddr.isNotBlank()) {
+            isNavigating = true
+            coroutineScope.launch {
+                val threadId = repository.getOrCreateThreadId(cleanAddr)
+                val resolvedName = targetName?.takeIf { it.isNotBlank() } ?: repository.resolveContactName(cleanAddr)
+                onNavigateToChat(
+                    ChatNav(
+                        threadId = threadId,
+                        address = cleanAddr,
+                        contactName = resolvedName,
+                        initialBody = messageBody.takeIf { it.isNotBlank() }
+                    )
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(initialAddress) {
+        if (initialAddress.isNotBlank() && selectedContactName == null) {
+            selectedContactName = repository.resolveContactName(initialAddress)
+        }
+    }
 
     var contactSuggestions by remember { mutableStateOf<List<ContactItem>>(emptyList()) }
     var isLoadingContacts by remember { mutableStateOf(false) }
@@ -329,8 +355,11 @@ fun ComposeScreen(
                 }
             }
 
+            val cleanRecipient = recipient.trim()
+            val hasRecipient = cleanRecipient.isNotBlank()
+
             // Contact Suggestions List
-            if (contactSuggestions.isEmpty() && !isLoadingContacts) {
+            if (contactSuggestions.isEmpty() && !hasRecipient && !isLoadingContacts) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -346,7 +375,7 @@ fun ComposeScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (recipient.isBlank()) "No contacts found" else "No matching contact for \"$recipient\"",
+                            text = "No contacts found",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -357,15 +386,30 @@ fun ComposeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
+                    // 1. Direct "Send to <number>" action whenever a recipient is entered
+                    if (hasRecipient) {
+                        item(key = "direct_send_$cleanRecipient") {
+                            SendToNumberItem(
+                                address = cleanRecipient,
+                                onClick = { openConversation(cleanRecipient, selectedContactName) }
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 64.dp, end = 8.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                            )
+                        }
+                    }
+
+                    // 2. Matching contacts and existing conversation threads
                     items(
                         items = contactSuggestions,
-                        key = { "${it.name}_${it.number}" }
+                        key = { "${it.name}_${it.number}_${it.threadId}" }
                     ) { contact ->
                         ContactSuggestionItem(
                             contact = contact,
                             onClick = {
-                                recipient = contact.number
-                                selectedContactName = contact.name
+                                openConversation(contact.number, contact.name)
                             }
                         )
                         HorizontalDivider(
@@ -376,6 +420,54 @@ fun ComposeScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SendToNumberItem(
+    address: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(44.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Send to $address",
+                style = MaterialTheme.typography.titleMedium.contentAware(),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Start a conversation",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
         }
     }
 }
@@ -395,6 +487,7 @@ private fun ContactSuggestionItem(
         ConversationAvatar(
             address = contact.number.ifBlank { contact.name },
             contactName = contact.name,
+            photoUri = contact.photoUri,
             size = 44.dp
         )
 
@@ -409,10 +502,20 @@ private fun ContactSuggestionItem(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(2.dp))
+            val subtitle = when {
+                !contact.snippet.isNullOrBlank() && contact.number.isNotBlank() && contact.name != contact.number ->
+                    "${contact.number} • ${contact.snippet}"
+                !contact.snippet.isNullOrBlank() ->
+                    contact.snippet
+                else ->
+                    contact.number
+            }
             Text(
-                text = contact.number,
+                text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
+                color = MaterialTheme.colorScheme.outline,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

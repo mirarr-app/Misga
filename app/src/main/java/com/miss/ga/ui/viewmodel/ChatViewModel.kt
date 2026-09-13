@@ -129,25 +129,26 @@ class ChatViewModel(
     }
 
     fun loadMessages(markAsRead: Boolean = isScreenResumed) {
-        // Keep mark-as-read off the cancellable load job so a second loadMessages()
-        // (init + ON_RESUME) cannot abort writing READ/SEEN.
-        // Only mark read while the chat screen is actually resumed; otherwise a
-        // backgrounded observer reload would cancel the notification just posted
-        // by SmsReceiver for the newly arrived message.
-        if (markAsRead) {
-            viewModelScope.launch {
-                repository.markThreadRead(initialThreadId)
-            }
-        }
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
+            var currentThreadId = _uiState.value.threadId
+            if (currentThreadId <= 0L && initialAddress.isNotBlank()) {
+                val resolvedId = repository.getOrCreateThreadId(initialAddress)
+                if (resolvedId > 0L) {
+                    currentThreadId = resolvedId
+                    _uiState.value = _uiState.value.copy(threadId = resolvedId)
+                }
+            }
+            if (markAsRead && currentThreadId > 0L) {
+                repository.markThreadRead(currentThreadId)
+            }
             val hadMessages = _uiState.value.messages.isNotEmpty()
             if (!hadMessages) {
                 _uiState.value = _uiState.value.copy(isLoading = true)
             }
             try {
                 val page = repository.getMessagesForThread(
-                    threadId = initialThreadId,
+                    threadId = currentThreadId,
                     address = initialAddress,
                     beforeDate = null,
                     limit = MESSAGE_PAGE_SIZE
@@ -195,8 +196,9 @@ class ChatViewModel(
                     )
                     return@launch
                 }
+                val currentThreadId = _uiState.value.threadId.takeIf { it > 0L } ?: initialThreadId
                 val page = repository.getMessagesForThread(
-                    threadId = initialThreadId,
+                    threadId = currentThreadId,
                     address = initialAddress,
                     beforeDate = beforeDate,
                     limit = MESSAGE_PAGE_SIZE
@@ -222,8 +224,9 @@ class ChatViewModel(
             if (state.messages.any { it.id == messageId }) return
             if (!state.hasMoreOlder) return
             val beforeDate = state.messages.firstOrNull()?.date ?: return
+            val currentThreadId = _uiState.value.threadId.takeIf { it > 0L } ?: initialThreadId
             val page = repository.getMessagesForThread(
-                threadId = initialThreadId,
+                threadId = currentThreadId,
                 address = initialAddress,
                 beforeDate = beforeDate,
                 limit = MESSAGE_PAGE_SIZE

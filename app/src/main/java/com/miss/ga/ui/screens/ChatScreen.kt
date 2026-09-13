@@ -133,7 +133,9 @@ fun ChatScreen(
         viewModel.setScreenResumed(false)
     }
 
-    var inputText by remember { mutableStateOf("") }
+    var inputText by remember(nav.threadId, nav.address) {
+        mutableStateOf(nav.initialBody.orEmpty())
+    }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showContactProfileDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

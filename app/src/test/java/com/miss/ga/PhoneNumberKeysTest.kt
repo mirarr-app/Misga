@@ -44,4 +44,18 @@ class PhoneNumberKeysTest {
         assertEquals("10001234", PhoneNumberKeys.canonical("1000-1234"))
         assertEquals("Snapp", PhoneNumberKeys.canonical(" Snapp "))
     }
+
+    @Test
+    fun toLatinDigitsConvertsPersianAndArabicDigits() {
+        assertEquals("09121234567", PhoneNumberKeys.toLatinDigits("۰۹۱۲۱۲۳۴۵۶۷"))
+        assertEquals("09121234567", PhoneNumberKeys.toLatinDigits("٠٩١٢١٢٣٤٥٦٧"))
+        assertEquals("989121234567", PhoneNumberKeys.canonical("۰۹۱۲۱۲۳۴۵۶۷"))
+    }
+
+    @Test
+    fun sanitizeAddressCleansSymbolsAndKeepsPlus() {
+        assertEquals("+989121234567", PhoneNumberKeys.sanitizeAddress("+98 (912) 123-4567"))
+        assertEquals("09121234567", PhoneNumberKeys.sanitizeAddress("۰۹۱۲ ۱۲۳ ۴۵۶۷"))
+        assertEquals("BankMelli", PhoneNumberKeys.sanitizeAddress(" BankMelli "))
+    }
 }

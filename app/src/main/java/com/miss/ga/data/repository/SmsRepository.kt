@@ -374,14 +374,32 @@ class SmsRepository(private val context: Context) {
             Telephony.Sms.SUBSCRIPTION_ID
         )
 
+        val effectiveThreadId = if (threadId <= 0 && address.isNotBlank()) {
+            getOrCreateThreadId(address)
+        } else {
+            threadId
+        }
+
         val selection: String
         val selectionArgs: Array<String>
-        if (beforeDate != null) {
-            selection = "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.DATE} < ?"
-            selectionArgs = arrayOf(threadId.toString(), beforeDate.toString())
+        if (effectiveThreadId > 0) {
+            if (beforeDate != null) {
+                selection = "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.DATE} < ?"
+                selectionArgs = arrayOf(effectiveThreadId.toString(), beforeDate.toString())
+            } else {
+                selection = "${Telephony.Sms.THREAD_ID} = ?"
+                selectionArgs = arrayOf(effectiveThreadId.toString())
+            }
         } else {
-            selection = "${Telephony.Sms.THREAD_ID} = ?"
-            selectionArgs = arrayOf(threadId.toString())
+            val candidateAddrs = (PhoneNumberKeys.keys(address) + address).filter { it.isNotBlank() }.distinct()
+            val placeholders = candidateAddrs.joinToString(",") { "?" }
+            if (beforeDate != null) {
+                selection = "${Telephony.Sms.ADDRESS} IN ($placeholders) AND ${Telephony.Sms.DATE} < ?"
+                selectionArgs = (candidateAddrs + beforeDate.toString()).toTypedArray()
+            } else {
+                selection = "${Telephony.Sms.ADDRESS} IN ($placeholders)"
+                selectionArgs = candidateAddrs.toTypedArray()
+            }
         }
 
         try {
@@ -1031,48 +1049,214 @@ class SmsRepository(private val context: Context) {
     }
 
     suspend fun searchContacts(query: String): List<ContactItem> = withContext(Dispatchers.IO) {
+        val cleanQuery = PhoneNumberKeys.toLatinDigits(query).trim()
         val contacts = mutableListOf<ContactItem>()
-        val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
-        val projection = arrayOf(
-            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-            ContactsContract.CommonDataKinds.Phone.NUMBER
-        )
-        val selection = if (query.isBlank()) null else "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ? OR ${ContactsContract.CommonDataKinds.Phone.NUMBER} LIKE ?"
-        val selectionArgs = if (query.isBlank()) null else arrayOf("%$query%", "%$query%")
+        val seenKeys = mutableSetOf<String>()
 
+        // 1. Get cached conversations to enrich matching contacts with threadId / snippet / photo
+        val cachedThreads = try { getCachedThreads() } catch (_: Exception) { emptyList() }
+        val threadsByCanonical = cachedThreads.associateBy { PhoneNumberKeys.canonical(it.address) }
+
+        if (cleanQuery.isBlank()) {
+            // Return top contacts alphabetically
+            try {
+                val cursor = context.contentResolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER,
+                        ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI
+                    ),
+                    null,
+                    null,
+                    "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+                )
+                cursor?.use {
+                    val nameIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                    val numIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    val photoIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI)
+                    while (it.moveToNext() && contacts.size < 50) {
+                        val name = it.getString(nameIdx) ?: ""
+                        val number = (it.getString(numIdx) ?: "").replace(" ", "")
+                        val photoUri = if (photoIdx >= 0 && !it.isNull(photoIdx)) it.getString(photoIdx) else null
+                        val key = PhoneNumberKeys.canonical(number)
+                        if (number.isNotBlank() && seenKeys.add(key)) {
+                            val thread = threadsByCanonical[key]
+                            contacts.add(
+                                ContactItem(
+                                    name = name,
+                                    number = number,
+                                    photoUri = photoUri ?: thread?.photoUri,
+                                    threadId = thread?.threadId,
+                                    snippet = thread?.snippet
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error listing all contacts", e)
+            }
+            return@withContext contacts
+        }
+
+        // 2. Query ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI (Native phone matching)
         try {
-            val cursor = context.contentResolver.query(
-                uri,
-                projection,
-                selection,
-                selectionArgs,
-                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+            val filterUri = Uri.withAppendedPath(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI,
+                Uri.encode(cleanQuery)
             )
-            cursor?.use {
-                val nameIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                val numIdx = it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                val seen = mutableSetOf<String>()
-                while (it.moveToNext() && contacts.size < 40) {
-                    val name = it.getString(nameIdx) ?: ""
-                    val number = it.getString(numIdx)?.replace(" ", "") ?: ""
-                    if (number.isNotBlank() && seen.add(number)) {
-                        contacts.add(ContactItem(name = name, number = number))
+            val projection = arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI
+            )
+            context.contentResolver.query(
+                filterUri,
+                projection,
+                null,
+                null,
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+            )?.use { cursor ->
+                val nameIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val photoIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI)
+                while (cursor.moveToNext() && contacts.size < 50) {
+                    val name = cursor.getString(nameIdx) ?: ""
+                    val rawNumber = cursor.getString(numIdx) ?: ""
+                    val number = rawNumber.replace(" ", "")
+                    val photoUri = if (photoIdx >= 0 && !cursor.isNull(photoIdx)) cursor.getString(photoIdx) else null
+                    val key = PhoneNumberKeys.canonical(number)
+                    if (number.isNotBlank() && seenKeys.add(key)) {
+                        val thread = threadsByCanonical[key]
+                        contacts.add(
+                            ContactItem(
+                                name = name,
+                                number = number,
+                                photoUri = photoUri ?: thread?.photoUri,
+                                threadId = thread?.threadId,
+                                snippet = thread?.snippet
+                            )
+                        )
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error searching contacts", e)
+            Log.w(TAG, "Phone CONTENT_FILTER_URI query failed", e)
         }
+
+        // 3. Fallback LIKE query on ContactsContract if filter returned empty or query has digits
+        val digits = PhoneNumberKeys.digitsOnly(cleanQuery)
+        if (contacts.isEmpty()) {
+            val candidateKeys = if (digits.length >= 3) {
+                (PhoneNumberKeys.keys(digits) + cleanQuery).distinct()
+            } else {
+                listOf(cleanQuery)
+            }
+            val selectionClauses = candidateKeys.joinToString(" OR ") {
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ? OR ${ContactsContract.CommonDataKinds.Phone.NUMBER} LIKE ?"
+            }
+            val selectionArgs = candidateKeys.flatMap { listOf("%$it%", "%$it%") }.toTypedArray()
+
+            try {
+                context.contentResolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER,
+                        ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI
+                    ),
+                    selectionClauses,
+                    selectionArgs,
+                    null
+                )?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                    val numIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    val photoIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI)
+                    while (cursor.moveToNext() && contacts.size < 50) {
+                        val name = cursor.getString(nameIdx) ?: ""
+                        val num = (cursor.getString(numIdx) ?: "").replace(" ", "")
+                        val photoUri = if (photoIdx >= 0 && !cursor.isNull(photoIdx)) cursor.getString(photoIdx) else null
+                        val key = PhoneNumberKeys.canonical(num)
+                        if (num.isNotBlank() && seenKeys.add(key)) {
+                            val thread = threadsByCanonical[key]
+                            contacts.add(
+                                ContactItem(
+                                    name = name,
+                                    number = num,
+                                    photoUri = photoUri ?: thread?.photoUri,
+                                    threadId = thread?.threadId,
+                                    snippet = thread?.snippet
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Fallback contact search failed", e)
+            }
+        }
+
+        // 4. Also search cached threads to find active conversations with unsaved numbers or matching snippets
+        for (thread in cachedThreads) {
+            val threadKey = PhoneNumberKeys.canonical(thread.address)
+            if (threadKey in seenKeys) continue
+
+            val matchesAddress = (digits.isNotBlank() && PhoneNumberKeys.keys(thread.address).any { it.contains(digits) }) ||
+                thread.address.contains(cleanQuery, ignoreCase = true)
+            val matchesName = thread.contactName?.contains(cleanQuery, ignoreCase = true) == true
+
+            if (matchesAddress || matchesName) {
+                seenKeys.add(threadKey)
+                contacts.add(
+                    ContactItem(
+                        name = thread.contactName ?: thread.address,
+                        number = thread.address,
+                        photoUri = thread.photoUri,
+                        threadId = thread.threadId,
+                        snippet = thread.snippet
+                    )
+                )
+            }
+        }
+
         contacts
     }
 
     suspend fun getOrCreateThreadId(address: String): Long = withContext(Dispatchers.IO) {
+        val sanitized = PhoneNumberKeys.sanitizeAddress(address)
+        if (sanitized.isBlank()) return@withContext 0L
+
+        // 1. Try system Telephony.Threads API
         try {
-            Telephony.Threads.getOrCreateThreadId(context, address)
+            val threadId = Telephony.Threads.getOrCreateThreadId(context, sanitized)
+            if (threadId > 0L) return@withContext threadId
         } catch (e: Exception) {
-            Log.w(TAG, "getOrCreateThreadId failed", e)
-            0L
+            Log.w(TAG, "Telephony.Threads.getOrCreateThreadId failed for ${PhoneNumberKeys.redact(sanitized)}", e)
         }
+
+        // 2. Fallback: Query Telephony.Sms directly for an existing thread with this address
+        try {
+            val candidateAddresses = (PhoneNumberKeys.keys(sanitized) + sanitized + address).filter { it.isNotBlank() }.distinct()
+            val placeholders = candidateAddresses.joinToString(",") { "?" }
+            context.contentResolver.query(
+                Telephony.Sms.CONTENT_URI,
+                arrayOf(Telephony.Sms.THREAD_ID),
+                "${Telephony.Sms.ADDRESS} IN ($placeholders)",
+                candidateAddresses.toTypedArray(),
+                "${Telephony.Sms.DATE} DESC"
+            )?.use { cursor ->
+                val tIdIdx = cursor.getColumnIndex(Telephony.Sms.THREAD_ID)
+                if (tIdIdx >= 0 && cursor.moveToFirst()) {
+                    val foundId = cursor.getLong(tIdIdx)
+                    if (foundId > 0L) return@withContext foundId
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Fallback thread ID lookup failed for ${PhoneNumberKeys.redact(sanitized)}", e)
+        }
+
+        0L
     }
 
     fun invalidateLookupCaches() {
@@ -1195,7 +1379,10 @@ data class ContactDetail(
 
 data class ContactItem(
     val name: String,
-    val number: String
+    val number: String,
+    val photoUri: String? = null,
+    val threadId: Long? = null,
+    val snippet: String? = null
 )
 
 private data class ThreadProviderRow(

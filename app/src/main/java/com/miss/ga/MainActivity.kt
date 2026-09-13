@@ -91,6 +91,15 @@ class MainActivity : ComponentActivity() {
             body = smsBodyFromUri(uri).orEmpty()
         }
 
+        if (recipient.isBlank()) {
+            recipient = intent.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
+                ?: intent.getStringExtra("address")
+                ?: intent.getStringArrayExtra("addresses")?.firstOrNull()
+                ?: intent.getStringArrayExtra(Intent.EXTRA_EMAIL)?.firstOrNull()
+                ?: intent.getStringExtra(Intent.EXTRA_EMAIL)
+                ?: ""
+        }
+
         if (body.isBlank()) {
             body = intent.getStringExtra("sms_body")
                 ?: intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
@@ -98,7 +107,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (recipient.isBlank() && body.isBlank()) return null
-        return ComposeNav(address = recipient, body = body)
+        return ComposeNav(address = recipient.trim(), body = body.trim())
     }
 
     private fun requestRequiredPermissions() {
@@ -124,14 +133,14 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        private val SMS_URI_SCHEMES = setOf("sms", "smsto", "mms", "mmsto")
+        private val SMS_URI_SCHEMES = setOf("sms", "smsto", "mms", "mmsto", "tel")
 
         private fun smsAddressFromUri(uri: Uri): String {
             val ssp = uri.schemeSpecificPart ?: return ""
             val withoutPrefix = ssp.removePrefix("//")
             val qIndex = withoutPrefix.indexOf('?')
             val addressPart = if (qIndex >= 0) withoutPrefix.substring(0, qIndex) else withoutPrefix
-            return addressPart.trim()
+            return Uri.decode(addressPart).trim()
         }
 
         private fun smsBodyFromUri(uri: Uri): String? {

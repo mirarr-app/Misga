@@ -6,7 +6,35 @@ package com.miss.ga.data.util
  * ContactsContract lookup per conversation.
  */
 object PhoneNumberKeys {
-    fun digitsOnly(number: String): String = number.filter { it.isDigit() }
+    /**
+     * Converts Persian (۰-۹) and Arabic-Indic (٠-٩) digits to standard ASCII (0-9).
+     */
+    fun toLatinDigits(input: String): String {
+        val builder = StringBuilder(input.length)
+        for (ch in input) {
+            when (ch) {
+                in '۰'..'۹' -> builder.append(ch - '۰')
+                in '٠'..'٩' -> builder.append(ch - '٠')
+                else -> builder.append(ch)
+            }
+        }
+        return builder.toString()
+    }
+
+    /**
+     * Cleans an address for Telephony/Contacts operations:
+     * - Normalizes Persian/Arabic digits
+     * - Strips formatting whitespace and symbols while preserving '+' or alphanumeric characters.
+     */
+    fun sanitizeAddress(address: String): String {
+        val latin = toLatinDigits(address.trim())
+        val hasPlus = latin.startsWith("+")
+        val stripped = latin.filter { it.isLetterOrDigit() || it == '+' }
+        val withoutExtraPlus = if (hasPlus) "+" + stripped.replace("+", "") else stripped.replace("+", "")
+        return withoutExtraPlus
+    }
+
+    fun digitsOnly(number: String): String = toLatinDigits(number).filter { it.isDigit() }
 
     /**
      * Stable lookup key for sender prefs / sender-targeted rules.
@@ -14,12 +42,13 @@ object PhoneNumberKeys {
      * Shortcodes stay digits-only; alphanumeric ids keep light punctuation stripping.
      */
     fun canonical(address: String): String {
-        val cleaned = address.trim()
+        val latin = toLatinDigits(address).trim()
+        val cleaned = latin
             .replace(" ", "")
             .replace("-", "")
             .replace("(", "")
             .replace(")", "")
-        val digits = digitsOnly(address)
+        val digits = digitsOnly(cleaned)
         if (digits.isEmpty()) return cleaned
 
         val national = when {
