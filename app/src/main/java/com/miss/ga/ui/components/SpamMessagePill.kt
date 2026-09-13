@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,7 +71,9 @@ fun SpamMessagePill(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     isHighlighted: Boolean = false,
-    simSlotNumber: Int? = null
+    simSlotNumber: Int? = null,
+    useShamsi: Boolean = false,
+    onToggleDateFormat: () -> Unit = {}
 ) {
     val isDark = isSystemInDarkTheme()
     val bgColor = if (isDark) SpamWarningDark else SpamWarningLight
@@ -79,7 +83,8 @@ fun SpamMessagePill(
     var isRevealed by remember(message.isRevealed, isHighlighted) {
         mutableStateOf(if (isHighlighted) true else message.isRevealed)
     }
-    val timeText = remember(message.date) { SmsDateFormats.monthDayClock(message.date) }
+    val dateText = remember(message.date, useShamsi) { SmsDateFormats.formatDate(message.date, useShamsi) }
+    val clockText = remember(message.date) { SmsDateFormats.clock(message.date) }
 
     Card(
         modifier = modifier
@@ -220,7 +225,19 @@ fun SpamMessagePill(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = timeText,
+                                text = dateText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = textColor.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier
+                                    .pointerInput(onToggleDateFormat) {
+                                        detectTapGestures(onTap = { onToggleDateFormat() })
+                                    }
+                                    .padding(horizontal = 2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = clockText,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = textColor.copy(alpha = 0.7f),
                                 fontWeight = FontWeight.Medium

@@ -41,7 +41,9 @@ fun MessageBubble(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     isHighlighted: Boolean = false,
-    simSlotNumber: Int? = null
+    simSlotNumber: Int? = null,
+    useShamsi: Boolean = false,
+    onToggleDateFormat: () -> Unit = {}
 ) {
     val isSent = message.isSent
     val bubbleShape = if (isSent) OutgoingBubbleShape else IncomingBubbleShape
@@ -63,6 +65,7 @@ fun MessageBubble(
         isSent -> null
         else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     }
+    val dateText = remember(message.date, useShamsi) { SmsDateFormats.formatDate(message.date, useShamsi) }
     val timeText = remember(message.date) { SmsDateFormats.clock(message.date) }
 
     Column(
@@ -109,6 +112,22 @@ fun MessageBubble(
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                     }
+                    Text(
+                        text = dateText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.65f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .pointerInput(onToggleDateFormat, onLongClick) {
+                                detectTapGestures(
+                                    onTap = { onToggleDateFormat() },
+                                    onLongPress = { onLongClick() }
+                                )
+                            }
+                            .padding(horizontal = 2.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = timeText,
                         style = MaterialTheme.typography.labelSmall,
