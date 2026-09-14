@@ -1,0 +1,8 @@
+• Delete action button on SMS notifications (#20)
+• Customize homepage & optional Shamsi date toggle (#19)
+• Google Messages-style contact integration & profile dialog (#15)
+• Tap contact to open chat & direct send for unsaved numbers
+• Message date in chat bubbles with tap-to-switch Shamsi date (#14)
+• Persist contacts-only conversations filter (#13)
+• Expanded spam URL link blocking rules
+• Bug fixes and performance improvements
