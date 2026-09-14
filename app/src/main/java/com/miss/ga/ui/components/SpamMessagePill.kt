@@ -73,7 +73,7 @@ fun SpamMessagePill(
     isHighlighted: Boolean = false,
     simSlotNumber: Int? = null,
     useShamsi: Boolean = false,
-    onToggleDateFormat: () -> Unit = {}
+    onToggleDateFormat: (() -> Unit)? = null
 ) {
     val isDark = isSystemInDarkTheme()
     val bgColor = if (isDark) SpamWarningDark else SpamWarningLight
@@ -231,7 +231,9 @@ fun SpamMessagePill(
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier
                                     .pointerInput(onToggleDateFormat) {
-                                        detectTapGestures(onTap = { onToggleDateFormat() })
+                                        detectTapGestures(
+                                            onTap = if (onToggleDateFormat != null) { { onToggleDateFormat() } } else null
+                                        )
                                     }
                                     .padding(horizontal = 2.dp)
                             )

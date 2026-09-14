@@ -52,7 +52,8 @@ data class ChatUiState(
     val senderTabIds: Set<Long> = emptySet(),
     val availableSims: List<SimInfo> = emptyList(),
     val selectedSim: SimInfo? = null,
-    val showShamsiDate: Boolean = false
+    val showShamsiDate: Boolean = false,
+    val enableDateTapShamsiToggle: Boolean = true
 )
 
 class ChatViewModel(
@@ -78,7 +79,8 @@ class ChatViewModel(
             threadId = initialThreadId,
             address = initialAddress,
             contactName = initialContactName,
-            showShamsiDate = userPreferences.showShamsiDate
+            showShamsiDate = userPreferences.showShamsiDate,
+            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
         )
     )
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -447,13 +449,15 @@ class ChatViewModel(
         isScreenResumed = resumed
         if (resumed) {
             _uiState.value = _uiState.value.copy(
-                showShamsiDate = userPreferences.showShamsiDate
+                showShamsiDate = userPreferences.showShamsiDate,
+                enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
             )
             loadContactDetails()
         }
     }
 
     fun toggleShamsiDate() {
+        if (!_uiState.value.enableDateTapShamsiToggle) return
         val nextValue = !_uiState.value.showShamsiDate
         userPreferences.showShamsiDate = nextValue
         _uiState.value = _uiState.value.copy(

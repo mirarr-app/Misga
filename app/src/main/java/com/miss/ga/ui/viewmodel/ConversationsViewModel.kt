@@ -48,7 +48,8 @@ data class ConversationsUiState(
     val tabs: List<SenderTab> = emptyList(),
     val selectedTabId: Long? = null,
     val availableSims: List<SimInfo> = emptyList(),
-    val selectedSimFilterSubId: Int? = null
+    val selectedSimFilterSubId: Int? = null,
+    val enableDateTapShamsiToggle: Boolean = true
 )
 
 class ConversationsViewModel(
@@ -69,7 +70,8 @@ class ConversationsViewModel(
 
     private val _uiState = MutableStateFlow(
         ConversationsUiState(
-            showContactsOnly = userPreferences.showContactsOnly
+            showContactsOnly = userPreferences.showContactsOnly,
+            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
         )
     )
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -118,6 +120,9 @@ class ConversationsViewModel(
     }
 
     fun onInboxResumed() {
+        _uiState.value = _uiState.value.copy(
+            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
+        )
         repository.invalidateLookupCaches()
         checkDefaultSmsStatus()
         loadTabs()
@@ -382,6 +387,13 @@ class ConversationsViewModel(
         userPreferences.showContactsOnly = nextValue
         _uiState.value = _uiState.value.copy(
             showContactsOnly = nextValue
+        )
+    }
+
+    fun setDateTapShamsiEnabled(enabled: Boolean) {
+        userPreferences.enableDateTapShamsiToggle = enabled
+        _uiState.value = _uiState.value.copy(
+            enableDateTapShamsiToggle = enabled
         )
     }
 

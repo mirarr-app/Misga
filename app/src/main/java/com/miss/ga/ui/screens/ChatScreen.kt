@@ -469,6 +469,7 @@ fun ChatScreen(
                     highlightedMessageId = highlightedMessageId,
                     isLoadingOlder = state.isLoadingOlder,
                     showShamsiDate = state.showShamsiDate,
+                    enableDateTapShamsiToggle = state.enableDateTapShamsiToggle,
                     onToggleDateFormat = { viewModel.toggleShamsiDate() },
                     onRevealToggle = onRevealToggle,
                     onMarkNotSpam = onMarkNotSpam,
@@ -632,6 +633,7 @@ private fun ChatMessageList(
     highlightedMessageId: Long?,
     isLoadingOlder: Boolean,
     showShamsiDate: Boolean,
+    enableDateTapShamsiToggle: Boolean = true,
     onToggleDateFormat: () -> Unit,
     onRevealToggle: (Long, Boolean) -> Unit,
     onMarkNotSpam: (Long) -> Unit,
@@ -642,6 +644,7 @@ private fun ChatMessageList(
         availableSims.associate { it.subscriptionId to it.slotNumber }
     }
     val hasMultipleSims = availableSims.size > 1
+    val onDateTapAction: (() -> Unit)? = if (enableDateTapShamsiToggle) onToggleDateFormat else null
 
     LazyColumn(
         state = listState,
@@ -670,7 +673,7 @@ private fun ChatMessageList(
                     isHighlighted = isHighlighted,
                     simSlotNumber = simSlotNumber,
                     useShamsi = showShamsiDate,
-                    onToggleDateFormat = onToggleDateFormat,
+                    onToggleDateFormat = onDateTapAction,
                     onRevealToggle = { revealed -> onRevealToggle(message.id, revealed) },
                     onMarkNotSpam = { onMarkNotSpam(message.id) },
                     onDelete = { onDelete(message.id) }
@@ -681,7 +684,7 @@ private fun ChatMessageList(
                     isHighlighted = isHighlighted,
                     simSlotNumber = simSlotNumber,
                     useShamsi = showShamsiDate,
-                    onToggleDateFormat = onToggleDateFormat,
+                    onToggleDateFormat = onDateTapAction,
                     onLongClick = { onLongClick(message) }
                 )
             }
