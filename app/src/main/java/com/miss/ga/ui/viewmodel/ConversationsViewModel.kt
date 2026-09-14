@@ -49,7 +49,8 @@ data class ConversationsUiState(
     val selectedTabId: Long? = null,
     val availableSims: List<SimInfo> = emptyList(),
     val selectedSimFilterSubId: Int? = null,
-    val enableDateTapShamsiToggle: Boolean = true
+    val enableDateTapShamsiToggle: Boolean = true,
+    val showNotificationDeleteAction: Boolean = false
 )
 
 class ConversationsViewModel(
@@ -71,7 +72,8 @@ class ConversationsViewModel(
     private val _uiState = MutableStateFlow(
         ConversationsUiState(
             showContactsOnly = userPreferences.showContactsOnly,
-            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
+            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
+            showNotificationDeleteAction = userPreferences.showNotificationDeleteAction
         )
     )
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -121,7 +123,8 @@ class ConversationsViewModel(
 
     fun onInboxResumed() {
         _uiState.value = _uiState.value.copy(
-            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
+            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
+            showNotificationDeleteAction = userPreferences.showNotificationDeleteAction
         )
         repository.invalidateLookupCaches()
         checkDefaultSmsStatus()
@@ -394,6 +397,13 @@ class ConversationsViewModel(
         userPreferences.enableDateTapShamsiToggle = enabled
         _uiState.value = _uiState.value.copy(
             enableDateTapShamsiToggle = enabled
+        )
+    }
+
+    fun setNotificationDeleteActionEnabled(enabled: Boolean) {
+        userPreferences.showNotificationDeleteAction = enabled
+        _uiState.value = _uiState.value.copy(
+            showNotificationDeleteAction = enabled
         )
     }
 

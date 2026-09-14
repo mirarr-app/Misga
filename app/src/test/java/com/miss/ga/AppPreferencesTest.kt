@@ -152,4 +152,35 @@ class AppPreferencesTest {
         val appPreferences = AppPreferences(fakePrefs.proxy)
         assertFalse(appPreferences.enableDateTapShamsiToggle)
     }
+
+    @Test
+    fun defaultShowNotificationDeleteActionIsFalse() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertFalse(appPreferences.showNotificationDeleteAction)
+    }
+
+    @Test
+    fun showNotificationDeleteActionPersistsWhenSet() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.showNotificationDeleteAction = true
+        assertTrue(appPreferences.showNotificationDeleteAction)
+        assertEquals(true, fakePrefs.storage[AppPreferences.KEY_SHOW_NOTIFICATION_DELETE_ACTION])
+
+        appPreferences.showNotificationDeleteAction = false
+        assertFalse(appPreferences.showNotificationDeleteAction)
+        assertEquals(false, fakePrefs.storage[AppPreferences.KEY_SHOW_NOTIFICATION_DELETE_ACTION])
+    }
+
+    @Test
+    fun showNotificationDeleteActionInitializesFromExistingStoredValue() {
+        val fakePrefs = InMemorySharedPreferences()
+        fakePrefs.storage[AppPreferences.KEY_SHOW_NOTIFICATION_DELETE_ACTION] = true
+
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+        assertTrue(appPreferences.showNotificationDeleteAction)
+    }
 }
