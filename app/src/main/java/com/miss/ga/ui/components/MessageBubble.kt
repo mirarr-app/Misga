@@ -43,7 +43,7 @@ fun MessageBubble(
     isHighlighted: Boolean = false,
     simSlotNumber: Int? = null,
     useShamsi: Boolean = false,
-    onToggleDateFormat: () -> Unit = {}
+    onToggleDateFormat: (() -> Unit)? = null
 ) {
     val isSent = message.isSent
     val bubbleShape = if (isSent) OutgoingBubbleShape else IncomingBubbleShape
@@ -121,7 +121,7 @@ fun MessageBubble(
                         modifier = Modifier
                             .pointerInput(onToggleDateFormat, onLongClick) {
                                 detectTapGestures(
-                                    onTap = { onToggleDateFormat() },
+                                    onTap = if (onToggleDateFormat != null) { { onToggleDateFormat() } } else null,
                                     onLongPress = { onLongClick() }
                                 )
                             }

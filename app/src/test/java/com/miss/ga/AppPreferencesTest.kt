@@ -121,4 +121,35 @@ class AppPreferencesTest {
         val appPreferences = AppPreferences(fakePrefs.proxy)
         assertTrue(appPreferences.showShamsiDate)
     }
+
+    @Test
+    fun defaultEnableDateTapShamsiToggleIsTrue() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertTrue(appPreferences.enableDateTapShamsiToggle)
+    }
+
+    @Test
+    fun enableDateTapShamsiTogglePersistsWhenSet() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.enableDateTapShamsiToggle = false
+        assertFalse(appPreferences.enableDateTapShamsiToggle)
+        assertEquals(false, fakePrefs.storage[AppPreferences.KEY_ENABLE_DATE_TAP_SHAMSI_TOGGLE])
+
+        appPreferences.enableDateTapShamsiToggle = true
+        assertTrue(appPreferences.enableDateTapShamsiToggle)
+        assertEquals(true, fakePrefs.storage[AppPreferences.KEY_ENABLE_DATE_TAP_SHAMSI_TOGGLE])
+    }
+
+    @Test
+    fun enableDateTapShamsiToggleInitializesFromExistingStoredValue() {
+        val fakePrefs = InMemorySharedPreferences()
+        fakePrefs.storage[AppPreferences.KEY_ENABLE_DATE_TAP_SHAMSI_TOGGLE] = false
+
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+        assertFalse(appPreferences.enableDateTapShamsiToggle)
+    }
 }

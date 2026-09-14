@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
@@ -104,6 +105,7 @@ import com.miss.ga.ui.components.AddToTabDialog
 import com.miss.ga.ui.components.ContactProfileDialog
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.CreateTabDialog
+import com.miss.ga.ui.components.CustomizationSheet
 import com.miss.ga.ui.components.DefaultSmsBanner
 import com.miss.ga.ui.components.DeleteTabDialog
 import com.miss.ga.ui.components.ManageTabSendersDialog
@@ -167,6 +169,7 @@ fun ConversationsScreen(
     var tabForOptionsMenu by remember { mutableStateOf<SenderTab?>(null) }
     var showAddToTabDialog by remember { mutableStateOf(false) }
     var activeProfileDialogInfo by remember { mutableStateOf<ProfileDialogData?>(null) }
+    var showCustomizationSheet by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
@@ -217,7 +220,8 @@ fun ConversationsScreen(
                     }
                 },
                 onNavigateToTestLab = onNavigateToTestLab,
-                onNavigateToFilterStudio = onNavigateToFilterStudio
+                onNavigateToFilterStudio = onNavigateToFilterStudio,
+                onOpenCustomization = { showCustomizationSheet = true }
             )
         },
         floatingActionButton = {
@@ -786,6 +790,16 @@ fun ConversationsScreen(
             }
         )
     }
+
+    if (showCustomizationSheet) {
+        CustomizationSheet(
+            enableDateTapShamsiToggle = state.enableDateTapShamsiToggle,
+            onToggleDateTapShamsi = { enabled ->
+                viewModel.setDateTapShamsiEnabled(enabled)
+            },
+            onDismiss = { showCustomizationSheet = false }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -805,7 +819,8 @@ private fun ConversationsTopBar(
     onToggleContactsOnly: () -> Unit,
     onMarkAllRead: () -> Unit,
     onNavigateToTestLab: () -> Unit,
-    onNavigateToFilterStudio: () -> Unit
+    onNavigateToFilterStudio: () -> Unit,
+    onOpenCustomization: () -> Unit
 ) {
     if (isSelectionMode) {
         val selectedCount = selectedThreadIds.size
@@ -949,12 +964,26 @@ private fun ConversationsTopBar(
                 Surface(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.padding(end = 8.dp)
+                    modifier = Modifier.padding(end = 6.dp)
                 ) {
                     IconButton(onClick = onNavigateToFilterStudio) {
                         Icon(
                             imageVector = Icons.Default.FilterAlt,
                             contentDescription = "Filter Studio",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    IconButton(onClick = onOpenCustomization) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Customize",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
