@@ -797,6 +797,10 @@ fun ConversationsScreen(
             onToggleDateTapShamsi = { enabled ->
                 viewModel.setDateTapShamsiEnabled(enabled)
             },
+            showNotificationDeleteAction = state.showNotificationDeleteAction,
+            onToggleNotificationDeleteAction = { enabled ->
+                viewModel.setNotificationDeleteActionEnabled(enabled)
+            },
             onDismiss = { showCustomizationSheet = false }
         )
     }

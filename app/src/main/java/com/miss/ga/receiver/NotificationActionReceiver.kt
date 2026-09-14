@@ -37,6 +37,18 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         SmsRepository(context).sendSms(address, replyBody)
                     }
                     NotificationActions.ACTION_MARK_READ -> Unit
+                    NotificationActions.ACTION_DELETE -> {
+                        val messageId = intent.getLongExtra(NotificationActions.EXTRA_MESSAGE_ID, -1L)
+                        if (messageId > 0) {
+                            SmsRepository(context).deleteMessage(messageId)
+                        } else if (threadId > 0) {
+                            SmsRepository(context).deleteThread(threadId)
+                        }
+                        if (threadId > 0) {
+                            NotificationActions.cancel(context, threadId)
+                        }
+                        return@launch
+                    }
                     else -> return@launch
                 }
                 if (threadId > 0) {
@@ -69,9 +81,11 @@ class NotificationActionReceiver : BroadcastReceiver() {
 object NotificationActions {
     const val ACTION_REPLY = "com.miss.ga.ACTION_NOTIFICATION_REPLY"
     const val ACTION_MARK_READ = "com.miss.ga.ACTION_NOTIFICATION_MARK_READ"
+    const val ACTION_DELETE = "com.miss.ga.ACTION_NOTIFICATION_DELETE"
     const val KEY_REPLY_TEXT = "com.miss.ga.KEY_NOTIFICATION_REPLY_TEXT"
     const val EXTRA_THREAD_ID = "EXTRA_THREAD_ID"
     const val EXTRA_ADDRESS = "EXTRA_ADDRESS"
+    const val EXTRA_MESSAGE_ID = "EXTRA_MESSAGE_ID"
 
     fun cancel(context: Context, threadId: Long) {
         val notificationId = (threadId xor (threadId ushr 32)).toInt()

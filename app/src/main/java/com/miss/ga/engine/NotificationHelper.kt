@@ -15,10 +15,15 @@ import androidx.core.app.RemoteInput
 import com.miss.ga.MainActivity
 import com.miss.ga.R
 import com.miss.ga.data.model.FilterAction
+import com.miss.ga.data.util.AppPreferences
+import com.miss.ga.data.util.UserPreferences
 import com.miss.ga.receiver.NotificationActionReceiver
 import com.miss.ga.receiver.NotificationActions
 
-class NotificationHelper private constructor(private val context: Context) {
+class NotificationHelper private constructor(
+    private val context: Context,
+    private val userPreferences: UserPreferences = AppPreferences(context)
+) {
 
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -164,7 +169,7 @@ class NotificationHelper private constructor(private val context: Context) {
             builder.setSubText(simInfo.badgeLabel)
         }
 
-        buildActions(threadId, sender).forEach { builder.addAction(it) }
+        buildActions(threadId, sender, messageId).forEach { builder.addAction(it) }
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
@@ -201,12 +206,13 @@ class NotificationHelper private constructor(private val context: Context) {
         return list
     }
 
-    private fun buildActions(threadId: Long, sender: String): List<NotificationCompat.Action> {
+    private fun buildActions(threadId: Long, sender: String, messageId: Long): List<NotificationCompat.Action> {
         fun actionIntent(action: String): Intent =
             Intent(context, NotificationActionReceiver::class.java).apply {
                 this.action = action
                 putExtra(NotificationActions.EXTRA_THREAD_ID, threadId)
                 putExtra(NotificationActions.EXTRA_ADDRESS, sender)
+                putExtra(NotificationActions.EXTRA_MESSAGE_ID, messageId)
             }
 
         // RemoteInput results are injected into the intent, so it must stay mutable.
@@ -240,11 +246,28 @@ class NotificationHelper private constructor(private val context: Context) {
             markReadPendingIntent
         ).build()
 
-        return listOf(replyAction, markReadAction)
+        val actions = mutableListOf(replyAction, markReadAction)
+        if (userPreferences.showNotificationDeleteAction) {
+            val deletePendingIntent = PendingIntent.getBroadcast(
+                context,
+                deleteRequestCode(threadId),
+                actionIntent(NotificationActions.ACTION_DELETE),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val deleteAction = NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_delete,
+                context.getString(R.string.notification_action_delete),
+                deletePendingIntent
+            ).build()
+            actions.add(deleteAction)
+        }
+
+        return actions
     }
 
     private fun replyRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt()
     private fun markReadRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x4D524400.toInt()
+    private fun deleteRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x44454C00.toInt()
 
     fun cancelNotification(threadId: Long) {
         notificationManager.cancel(notificationIdFor(threadId))
