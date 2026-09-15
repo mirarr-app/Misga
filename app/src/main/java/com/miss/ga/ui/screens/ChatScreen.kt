@@ -150,6 +150,7 @@ fun ChatScreen(
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
     val selectedMessageIds = viewModel.selectedMessageIds
     val isSelectionMode = viewModel.isSelectionMode
+    var selectionResetTick by remember { mutableStateOf(0) }
     var hasInitiallyScrolled by remember(nav.threadId, nav.address, nav.initialMessageId) { mutableStateOf(false) }
     var highlightedMessageId by remember(nav.threadId, nav.address, nav.initialMessageId) {
         mutableStateOf(nav.initialMessageId)
@@ -246,6 +247,9 @@ fun ChatScreen(
     }
     val onTapMessage = remember(viewModel) {
         { message: SmsMessage -> viewModel.toggleSelectMessage(message.id) }
+    }
+    val onClearTextSelection = remember {
+        { selectionResetTick += 1 }
     }
     val onShowInfoForSelected = remember(viewModel) {
         {
@@ -568,7 +572,9 @@ fun ChatScreen(
                     onLongClick = onLongClickMessage,
                     isSelectionMode = isSelectionMode,
                     selectedMessageIds = selectedMessageIds,
-                    onTapMessage = onTapMessage
+                    onTapMessage = onTapMessage,
+                    selectionResetKey = selectionResetTick,
+                    onOutsideTap = onClearTextSelection
                 )
             }
 
@@ -784,7 +790,9 @@ private fun ChatMessageList(
     onLongClick: (SmsMessage) -> Unit,
     isSelectionMode: Boolean = false,
     selectedMessageIds: Set<Long> = emptySet(),
-    onTapMessage: (SmsMessage) -> Unit = {}
+    onTapMessage: (SmsMessage) -> Unit = {},
+    selectionResetKey: Any = Unit,
+    onOutsideTap: () -> Unit = {}
 ) {
     val simSlotMap = remember(availableSims) {
         availableSims.associate { it.subscriptionId to it.slotNumber }
@@ -838,7 +846,9 @@ private fun ChatMessageList(
                     onLongClick = { onLongClick(message) },
                     isSelectionMode = isSelectionMode,
                     isSelected = message.id in selectedMessageIds,
-                    onToggleSelect = { onTapMessage(message) }
+                    onToggleSelect = { onTapMessage(message) },
+                    selectionResetKey = selectionResetKey,
+                    onOutsideTap = onOutsideTap
                 )
             }
         }

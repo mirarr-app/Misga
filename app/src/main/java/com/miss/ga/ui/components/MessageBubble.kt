@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +49,9 @@ fun MessageBubble(
     onToggleDateFormat: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
-    onToggleSelect: () -> Unit = {}
+    onToggleSelect: () -> Unit = {},
+    selectionResetKey: Any = Unit,
+    onOutsideTap: () -> Unit = {}
 ) {
     val isSent = message.isSent
     val bubbleShape = if (isSent) OutgoingBubbleShape else IncomingBubbleShape
@@ -76,9 +79,9 @@ fun MessageBubble(
 
     val outsideModifier = Modifier
         .fillMaxSize()
-        .pointerInput(onLongClick, onToggleSelect, isSelectionMode) {
+        .pointerInput(onLongClick, onToggleSelect, onOutsideTap, isSelectionMode) {
             detectTapGestures(
-                onTap = if (isSelectionMode) { { onToggleSelect() } } else null,
+                onTap = { if (isSelectionMode) onToggleSelect() else onOutsideTap() },
                 onLongPress = { onLongClick() }
             )
         }
@@ -109,7 +112,8 @@ fun MessageBubble(
                     isSent = isSent,
                     simSlotNumber = simSlotNumber,
                     onToggleDateFormat = onToggleDateFormat,
-                    selectable = false
+                    selectable = false,
+                    selectionResetKey = selectionResetKey
                 )
             }
         } else {
@@ -128,7 +132,8 @@ fun MessageBubble(
                     isSent = isSent,
                     simSlotNumber = simSlotNumber,
                     onToggleDateFormat = onToggleDateFormat,
-                    selectable = true
+                    selectable = true,
+                    selectionResetKey = selectionResetKey
                 )
             }
         }
@@ -147,7 +152,8 @@ private fun BubbleContent(
     isSent: Boolean,
     simSlotNumber: Int?,
     onToggleDateFormat: (() -> Unit)?,
-    selectable: Boolean
+    selectable: Boolean,
+    selectionResetKey: Any = Unit
 ) {
     Column(
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
@@ -162,7 +168,9 @@ private fun BubbleContent(
             )
         }
         if (selectable) {
-            SelectionContainer { bodyText() }
+            key(selectionResetKey) {
+                SelectionContainer { bodyText() }
+            }
         } else {
             bodyText()
         }
