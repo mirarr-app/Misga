@@ -8,6 +8,10 @@ import android.os.Looper
 import android.provider.Telephony
 import android.util.Log
 import android.telephony.SubscriptionManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.miss.ga.data.db.MisgaDatabaseHelper
@@ -67,6 +71,9 @@ class ChatViewModel(
 
     private val repository = SmsRepository(application)
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
+    val selectedMessageIds = mutableStateSetOf<Long>()
+    var isSelectionMode by mutableStateOf(false)
+        private set
     private var messagesJob: Job? = null
     private var olderJob: Job? = null
     private var observerDebounceJob: Job? = null
@@ -394,6 +401,41 @@ class ChatViewModel(
                 val updated = _uiState.value.messages.filter { it.id != messageId }
                 _uiState.value = _uiState.value.copy(messages = updated)
             }
+        }
+    }
+
+    fun enterSelectionMode(messageId: Long) {
+        selectedMessageIds.clear()
+        selectedMessageIds.add(messageId)
+        isSelectionMode = true
+    }
+
+    fun toggleSelectMessage(messageId: Long) {
+        if (messageId in selectedMessageIds) {
+            selectedMessageIds.remove(messageId)
+        } else {
+            selectedMessageIds.add(messageId)
+        }
+        isSelectionMode = selectedMessageIds.isNotEmpty()
+    }
+
+    fun clearSelection() {
+        selectedMessageIds.clear()
+        isSelectionMode = false
+    }
+
+    fun deleteSelectedMessages(onComplete: (Int) -> Unit = {}) {
+        val targetIds = selectedMessageIds.toSet()
+        viewModelScope.launch {
+            var deletedCount = 0
+            for (id in targetIds) {
+                if (repository.deleteMessage(id)) deletedCount++
+            }
+            val updated = _uiState.value.messages.filter { it.id !in targetIds }
+            _uiState.value = _uiState.value.copy(messages = updated)
+            selectedMessageIds.clear()
+            isSelectionMode = false
+            onComplete(deletedCount)
         }
     }
 

@@ -23,6 +23,8 @@ object SmsDateFormats {
         DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
     private val monthDayClock: DateTimeFormatter =
         DateTimeFormatter.ofPattern("MMM d, HH:mm", Locale.getDefault())
+    private val yearMonthDayClock: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy MMMM d, HH:mm", Locale.getDefault())
 
     private val SHAMSI_MONTH_NAMES = arrayOf(
         "Farvardin",
@@ -133,6 +135,9 @@ object SmsDateFormats {
             gregorianDate(timestamp, now)
         }
     }
+
+    fun formatDateTimeWithYear(timestamp: Long): String =
+        Instant.ofEpochMilli(timestamp).atZone(zone).format(yearMonthDayClock)
 
     fun clock(timestamp: Long): String =
         Instant.ofEpochMilli(timestamp).atZone(zone).toLocalTime().format(clock)

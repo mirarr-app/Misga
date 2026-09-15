@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -36,8 +37,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tune
@@ -98,6 +104,7 @@ import com.miss.ga.ui.components.SpamMessagePill
 import com.miss.ga.ui.util.ContactUtils
 import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.util.contentAware
+import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 
@@ -141,9 +148,16 @@ fun ChatScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
+    val selectedMessageIds = viewModel.selectedMessageIds
+    val isSelectionMode = viewModel.isSelectionMode
+    var selectionResetTick by remember { mutableStateOf(0) }
     var hasInitiallyScrolled by remember(nav.threadId, nav.address, nav.initialMessageId) { mutableStateOf(false) }
     var highlightedMessageId by remember(nav.threadId, nav.address, nav.initialMessageId) {
         mutableStateOf(nav.initialMessageId)
+    }
+
+    BackHandler(enabled = isSelectionMode) {
+        viewModel.clearSelection()
     }
 
     LaunchedEffect(highlightedMessageId, hasInitiallyScrolled) {
@@ -222,98 +236,179 @@ fun ChatScreen(
     val onDeleteMessage = remember(viewModel) {
         { id: Long -> viewModel.deleteMessage(id) }
     }
-    val onLongClickMessage = remember {
-        { message: SmsMessage -> selectedMessageForDialog = message }
+    val onLongClickMessage = remember(viewModel) {
+        { message: SmsMessage ->
+            if (viewModel.isSelectionMode) {
+                viewModel.toggleSelectMessage(message.id)
+            } else {
+                viewModel.enterSelectionMode(message.id)
+            }
+        }
+    }
+    val onTapMessage = remember(viewModel) {
+        { message: SmsMessage -> viewModel.toggleSelectMessage(message.id) }
+    }
+    val onClearTextSelection = remember {
+        { selectionResetTick += 1 }
+    }
+    val onShowInfoForSelected = remember(viewModel) {
+        {
+            val id = selectedMessageIds.singleOrNull()
+            if (id != null) {
+                selectedMessageForDialog = state.messages.find { it.id == id }
+            }
+        }
+    }
+    val onDeleteSelected = remember(viewModel, context) {
+        {
+            viewModel.deleteSelectedMessages { count ->
+                Toast.makeText(
+                    context,
+                    "Deleted $count message${if (count > 1) "s" else ""}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                val opened = ContactUtils.openContactInfo(
-                                    context = context,
-                                    address = state.address,
-                                    contactLookupUri = state.contactLookupUri
-                                )
-                                if (!opened) {
-                                    showContactProfileDialog = true
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "${selectedMessageIds.size} selected",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { viewModel.clearSelection() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel selection")
+                        }
+                    },
+                    actions = {
+                        if (selectedMessageIds.size == 1) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.padding(end = 6.dp)
+                            ) {
+                                IconButton(onClick = onShowInfoForSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "Message info",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
-                            .padding(horizontal = 4.dp, vertical = 4.dp)
-                    ) {
-                        ConversationAvatar(
-                            address = state.address,
-                            contactName = state.contactName,
-                            photoUri = state.photoUri,
-                            size = 42.dp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = senderDisplayName(state.contactName, state.address),
-                                style = MaterialTheme.typography.titleMedium.contentAware(),
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (state.contactName != null) {
-                                Text(
-                                    text = state.address,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Call Button (visible only if sender address is a callable phone number)
-                    if (ContactUtils.isCallable(state.address)) {
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.padding(end = 6.dp)
+                            modifier = Modifier.padding(end = 8.dp)
                         ) {
-                            IconButton(
-                                onClick = {
-                                    ContactUtils.openDialer(context, state.address)
-                                }
-                            ) {
+                            IconButton(onClick = onDeleteSelected) {
                                 Icon(
-                                    imageVector = Icons.Default.Call,
-                                    contentDescription = "Call Contact",
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete selected",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    val opened = ContactUtils.openContactInfo(
+                                        context = context,
+                                        address = state.address,
+                                        contactLookupUri = state.contactLookupUri
+                                    )
+                                    if (!opened) {
+                                        showContactProfileDialog = true
+                                    }
+                                }
+                                .padding(horizontal = 4.dp, vertical = 4.dp)
+                        ) {
+                            ConversationAvatar(
+                                address = state.address,
+                                contactName = state.contactName,
+                                photoUri = state.photoUri,
+                                size = 42.dp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = senderDisplayName(state.contactName, state.address),
+                                    style = MaterialTheme.typography.titleMedium.contentAware(),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (state.contactName != null) {
+                                    Text(
+                                        text = state.address,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        // Call Button (visible only if sender address is a callable phone number)
+                        if (ContactUtils.isCallable(state.address)) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.padding(end = 6.dp)
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        ContactUtils.openDialer(context, state.address)
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Call,
+                                        contentDescription = "Call Contact",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            IconButton(onClick = { showSettingsSheet = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "Participant Notification Settings",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
-                    }
-
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        IconButton(onClick = { showSettingsSheet = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = "Participant Notification Settings",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+            }
         },
         bottomBar = {
             Surface(
@@ -467,14 +562,19 @@ fun ChatScreen(
                     availableSims = state.availableSims,
                     listState = listState,
                     highlightedMessageId = highlightedMessageId,
-                    isLoadingOlder = state.isLoadingOlder,
                     showShamsiDate = state.showShamsiDate,
+                    isLoadingOlder = state.isLoadingOlder,
                     enableDateTapShamsiToggle = state.enableDateTapShamsiToggle,
                     onToggleDateFormat = { viewModel.toggleShamsiDate() },
                     onRevealToggle = onRevealToggle,
                     onMarkNotSpam = onMarkNotSpam,
                     onDelete = onDeleteMessage,
-                    onLongClick = onLongClickMessage
+                    onLongClick = onLongClickMessage,
+                    isSelectionMode = isSelectionMode,
+                    selectedMessageIds = selectedMessageIds,
+                    onTapMessage = onTapMessage,
+                    selectionResetKey = selectionResetTick,
+                    onOutsideTap = onClearTextSelection
                 )
             }
 
@@ -592,6 +692,54 @@ fun ChatScreen(
                             )
                         }
                     }
+                    if (msg.isSent) {
+                        val (statusIcon, statusText, statusTint) = when {
+                            msg.isFailed -> Triple(
+                                Icons.Default.ErrorOutline,
+                                "Failed",
+                                MaterialTheme.colorScheme.error
+                            )
+                            msg.isDelivered -> Triple(
+                                Icons.Default.DoneAll,
+                                "Delivered",
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            else -> Triple(
+                                Icons.Default.Done,
+                                "Sent",
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = statusIcon,
+                                contentDescription = statusText,
+                                tint = statusTint,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = statusText,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = statusTint
+                            )
+                        }
+                    }
+                    Text(
+                        text = msg.address,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = if (msg.isSent) 4.dp else 8.dp)
+                    )
+                    Text(
+                        text = SmsDateFormats.formatDateTimeWithYear(msg.date),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             },
             confirmButton = {
@@ -613,6 +761,7 @@ fun ChatScreen(
                 TextButton(
                     onClick = {
                         viewModel.deleteMessage(msg.id)
+                        viewModel.clearSelection()
                         selectedMessageForDialog = null
                     }
                 ) {
@@ -638,7 +787,12 @@ private fun ChatMessageList(
     onRevealToggle: (Long, Boolean) -> Unit,
     onMarkNotSpam: (Long) -> Unit,
     onDelete: (Long) -> Unit,
-    onLongClick: (SmsMessage) -> Unit
+    onLongClick: (SmsMessage) -> Unit,
+    isSelectionMode: Boolean = false,
+    selectedMessageIds: Set<Long> = emptySet(),
+    onTapMessage: (SmsMessage) -> Unit = {},
+    selectionResetKey: Any = Unit,
+    onOutsideTap: () -> Unit = {}
 ) {
     val simSlotMap = remember(availableSims) {
         availableSims.associate { it.subscriptionId to it.slotNumber }
@@ -676,7 +830,11 @@ private fun ChatMessageList(
                     onToggleDateFormat = onDateTapAction,
                     onRevealToggle = { revealed -> onRevealToggle(message.id, revealed) },
                     onMarkNotSpam = { onMarkNotSpam(message.id) },
-                    onDelete = { onDelete(message.id) }
+                    onDelete = { onDelete(message.id) },
+                    isSelectionMode = isSelectionMode,
+                    isSelected = message.id in selectedMessageIds,
+                    onLongClick = { onLongClick(message) },
+                    onToggleSelect = { onTapMessage(message) }
                 )
             } else {
                 MessageBubble(
@@ -685,7 +843,12 @@ private fun ChatMessageList(
                     simSlotNumber = simSlotNumber,
                     useShamsi = showShamsiDate,
                     onToggleDateFormat = onDateTapAction,
-                    onLongClick = { onLongClick(message) }
+                    onLongClick = { onLongClick(message) },
+                    isSelectionMode = isSelectionMode,
+                    isSelected = message.id in selectedMessageIds,
+                    onToggleSelect = { onTapMessage(message) },
+                    selectionResetKey = selectionResetKey,
+                    onOutsideTap = onOutsideTap
                 )
             }
         }
