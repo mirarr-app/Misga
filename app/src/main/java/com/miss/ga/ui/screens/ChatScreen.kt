@@ -38,6 +38,9 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tune
@@ -593,11 +596,47 @@ fun ChatScreen(
                             )
                         }
                     }
+                    if (msg.isSent) {
+                        val (statusIcon, statusText, statusTint) = when {
+                            msg.isFailed -> Triple(
+                                Icons.Default.ErrorOutline,
+                                "Failed",
+                                MaterialTheme.colorScheme.error
+                            )
+                            msg.isDelivered -> Triple(
+                                Icons.Default.DoneAll,
+                                "Delivered",
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            else -> Triple(
+                                Icons.Default.Done,
+                                "Sent",
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = statusIcon,
+                                contentDescription = statusText,
+                                tint = statusTint,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = statusText,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = statusTint
+                            )
+                        }
+                    }
                     Text(
                         text = SmsDateFormats.formatDateTimeWithYear(msg.date),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             },
