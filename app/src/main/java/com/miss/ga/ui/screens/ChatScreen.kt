@@ -633,6 +633,12 @@ fun ChatScreen(
                         }
                     }
                     Text(
+                        text = msg.address,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = if (msg.isSent) 4.dp else 8.dp)
+                    )
+                    Text(
                         text = SmsDateFormats.formatDateTimeWithYear(msg.date),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
