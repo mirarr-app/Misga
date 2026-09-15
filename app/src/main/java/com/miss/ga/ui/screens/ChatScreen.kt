@@ -98,6 +98,7 @@ import com.miss.ga.ui.components.SpamMessagePill
 import com.miss.ga.ui.util.ContactUtils
 import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.util.contentAware
+import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 
@@ -592,6 +593,12 @@ fun ChatScreen(
                             )
                         }
                     }
+                    Text(
+                        text = SmsDateFormats.formatDateTimeWithYear(msg.date),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
             },
             confirmButton = {
