@@ -1,0 +1,3 @@
+• Reorder conversation tabs by long pressing and dragging (#24)
+• Smooth animated tab transitions and haptic feedback on tab reordering (#24)
+• Bug fixes and stability improvements
