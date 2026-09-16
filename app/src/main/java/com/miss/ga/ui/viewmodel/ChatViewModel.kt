@@ -74,6 +74,8 @@ class ChatViewModel(
     val selectedMessageIds = mutableStateSetOf<Long>()
     var isSelectionMode by mutableStateOf(false)
         private set
+    var isDeletingSelection by mutableStateOf(false)
+        private set
     private var messagesJob: Job? = null
     private var olderJob: Job? = null
     private var observerDebounceJob: Job? = null
@@ -425,17 +427,30 @@ class ChatViewModel(
     }
 
     fun deleteSelectedMessages(onComplete: (Int) -> Unit = {}) {
+        if (isDeletingSelection) return
         val targetIds = selectedMessageIds.toSet()
+        if (targetIds.isEmpty()) return
+        isDeletingSelection = true
         viewModelScope.launch {
-            var deletedCount = 0
-            for (id in targetIds) {
-                if (repository.deleteMessage(id)) deletedCount++
+            try {
+                val successfullyDeletedIds = mutableSetOf<Long>()
+                for (id in targetIds) {
+                    if (repository.deleteMessage(id)) {
+                        successfullyDeletedIds.add(id)
+                    }
+                }
+                if (successfullyDeletedIds.isNotEmpty()) {
+                    val updated = _uiState.value.messages.filter { it.id !in successfullyDeletedIds }
+                    _uiState.value = _uiState.value.copy(messages = updated)
+                }
+                selectedMessageIds.removeAll(successfullyDeletedIds)
+                if (selectedMessageIds.isEmpty()) {
+                    isSelectionMode = false
+                }
+                onComplete(successfullyDeletedIds.size)
+            } finally {
+                isDeletingSelection = false
             }
-            val updated = _uiState.value.messages.filter { it.id !in targetIds }
-            _uiState.value = _uiState.value.copy(messages = updated)
-            selectedMessageIds.clear()
-            isSelectionMode = false
-            onComplete(deletedCount)
         }
     }
 

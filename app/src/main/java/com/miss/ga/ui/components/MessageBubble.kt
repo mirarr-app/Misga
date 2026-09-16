@@ -28,6 +28,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -51,6 +53,7 @@ fun MessageBubble(
     isSelected: Boolean = false,
     onToggleSelect: () -> Unit = {},
     selectionResetKey: Any = Unit,
+    onBubbleTouched: () -> Unit = {},
     onOutsideTap: () -> Unit = {}
 ) {
     val isSent = message.isSent
@@ -112,8 +115,7 @@ fun MessageBubble(
                     isSent = isSent,
                     simSlotNumber = simSlotNumber,
                     onToggleDateFormat = onToggleDateFormat,
-                    selectable = false,
-                    selectionResetKey = selectionResetKey
+                    selectable = false
                 )
             }
         } else {
@@ -122,7 +124,18 @@ fun MessageBubble(
                 color = containerColor,
                 border = border,
                 shadowElevation = 0.dp,
-                modifier = Modifier.widthIn(min = 80.dp, max = 320.dp)
+                modifier = Modifier
+                    .widthIn(min = 80.dp, max = 320.dp)
+                    .pointerInput(message.id) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.type == PointerEventType.Press) {
+                                    onBubbleTouched()
+                                }
+                            }
+                        }
+                    }
             ) {
                 BubbleContent(
                     message = message,

@@ -83,6 +83,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -147,9 +149,12 @@ fun ChatScreen(
     var showContactProfileDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val textToolbar = LocalTextToolbar.current
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
+    var showBatchDeleteConfirmDialog by remember { mutableStateOf(false) }
     val selectedMessageIds = viewModel.selectedMessageIds
     val isSelectionMode = viewModel.isSelectionMode
+    var activeTextBubbleId by remember { mutableStateOf<Long?>(null) }
     var selectionResetTick by remember { mutableStateOf(0) }
     var hasInitiallyScrolled by remember(nav.threadId, nav.address, nav.initialMessageId) { mutableStateOf(false) }
     var highlightedMessageId by remember(nav.threadId, nav.address, nav.initialMessageId) {
@@ -248,8 +253,14 @@ fun ChatScreen(
     val onTapMessage = remember(viewModel) {
         { message: SmsMessage -> viewModel.toggleSelectMessage(message.id) }
     }
-    val onClearTextSelection = remember {
-        { selectionResetTick += 1 }
+    val onClearTextSelection = remember(textToolbar) {
+        {
+            if (textToolbar.status == TextToolbarStatus.Shown) {
+                selectionResetTick += 1
+                activeTextBubbleId = null
+                textToolbar.hide()
+            }
+        }
     }
     val onShowInfoForSelected = remember(viewModel) {
         {
@@ -308,7 +319,7 @@ fun ChatScreen(
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.padding(end = 8.dp)
                         ) {
-                            IconButton(onClick = onDeleteSelected) {
+                            IconButton(onClick = { showBatchDeleteConfirmDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
                                     contentDescription = "Delete selected",
@@ -573,7 +584,9 @@ fun ChatScreen(
                     isSelectionMode = isSelectionMode,
                     selectedMessageIds = selectedMessageIds,
                     onTapMessage = onTapMessage,
-                    selectionResetKey = selectionResetTick,
+                    activeTextBubbleId = activeTextBubbleId,
+                    selectionResetTick = selectionResetTick,
+                    onBubbleTouched = { id -> activeTextBubbleId = id },
                     onOutsideTap = onClearTextSelection
                 )
             }
@@ -735,10 +748,18 @@ fun ChatScreen(
                         modifier = Modifier.padding(top = if (msg.isSent) 4.dp else 8.dp)
                     )
                     Text(
-                        text = SmsDateFormats.formatDateTimeWithYear(msg.date),
+                        text = SmsDateFormats.formatDateTimeWithYear(msg.date, state.showShamsiDate),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .then(
+                                if (state.enableDateTapShamsiToggle) {
+                                    Modifier
+                                        .clip(MaterialTheme.shapes.extraSmall)
+                                        .clickable { viewModel.toggleShamsiDate() }
+                                } else Modifier
+                            )
                     )
                 }
             },
@@ -748,6 +769,7 @@ fun ChatScreen(
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("SMS Message", msg.body))
                         Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                        viewModel.clearSelection()
                         selectedMessageForDialog = null
                     },
                     shape = PillShape
@@ -772,6 +794,55 @@ fun ChatScreen(
             }
         )
     }
+
+    // Batch Delete Confirmation Dialog
+    if (showBatchDeleteConfirmDialog) {
+        val count = selectedMessageIds.size
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteConfirmDialog = false },
+            shape = SquircleCardShape,
+            title = {
+                Text(
+                    text = "Delete Messages?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete $count selected message${if (count > 1) "s" else ""}? This action cannot be undone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showBatchDeleteConfirmDialog = false
+                        onDeleteSelected()
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "Delete",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteConfirmDialog = false }) {
+                    Text("Cancel", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -791,7 +862,9 @@ private fun ChatMessageList(
     isSelectionMode: Boolean = false,
     selectedMessageIds: Set<Long> = emptySet(),
     onTapMessage: (SmsMessage) -> Unit = {},
-    selectionResetKey: Any = Unit,
+    activeTextBubbleId: Long? = null,
+    selectionResetTick: Int = 0,
+    onBubbleTouched: (Long) -> Unit = {},
     onOutsideTap: () -> Unit = {}
 ) {
     val simSlotMap = remember(availableSims) {
@@ -837,6 +910,8 @@ private fun ChatMessageList(
                     onToggleSelect = { onTapMessage(message) }
                 )
             } else {
+                val isTargetOfReset = (activeTextBubbleId == message.id)
+                val bubbleResetKey = if (isTargetOfReset) selectionResetTick else 0
                 MessageBubble(
                     message = message,
                     isHighlighted = isHighlighted,
@@ -847,7 +922,8 @@ private fun ChatMessageList(
                     isSelectionMode = isSelectionMode,
                     isSelected = message.id in selectedMessageIds,
                     onToggleSelect = { onTapMessage(message) },
-                    selectionResetKey = selectionResetKey,
+                    selectionResetKey = bubbleResetKey,
+                    onBubbleTouched = { onBubbleTouched(message.id) },
                     onOutsideTap = onOutsideTap
                 )
             }

@@ -136,8 +136,17 @@ object SmsDateFormats {
         }
     }
 
-    fun formatDateTimeWithYear(timestamp: Long): String =
-        Instant.ofEpochMilli(timestamp).atZone(zone).format(yearMonthDayClock)
+    fun formatDateTimeWithYear(timestamp: Long, useShamsi: Boolean = false): String {
+        return if (useShamsi) {
+            val messageDate = Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()
+            val jDate = toJalali(messageDate.year, messageDate.monthValue, messageDate.dayOfMonth)
+            val monthName = SHAMSI_MONTH_NAMES.getOrElse(jDate.month - 1) { "" }
+            val timePart = clock(timestamp)
+            "${jDate.year} $monthName ${jDate.day}, $timePart"
+        } else {
+            Instant.ofEpochMilli(timestamp).atZone(zone).format(yearMonthDayClock)
+        }
+    }
 
     fun clock(timestamp: Long): String =
         Instant.ofEpochMilli(timestamp).atZone(zone).toLocalTime().format(clock)
