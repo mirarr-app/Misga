@@ -73,12 +73,17 @@ fun SpamMessagePill(
     isHighlighted: Boolean = false,
     simSlotNumber: Int? = null,
     useShamsi: Boolean = false,
-    onToggleDateFormat: (() -> Unit)? = null
+    onToggleDateFormat: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: () -> Unit = {},
+    onToggleSelect: () -> Unit = {}
 ) {
     val isDark = isSystemInDarkTheme()
     val bgColor = if (isDark) SpamWarningDark else SpamWarningLight
     val textColor = if (isDark) SpamWarningOnDark else SpamWarningOnLight
     val borderColor = if (isDark) SpamWarningBorderDark else SpamWarningBorderLight
+    val emphasized = isHighlighted || isSelected
 
     var isRevealed by remember(message.isRevealed, isHighlighted) {
         mutableStateOf(if (isHighlighted) true else message.isRevealed)
@@ -92,7 +97,7 @@ fun SpamMessagePill(
             .padding(horizontal = 14.dp, vertical = 5.dp),
         shape = SpamCardShape,
         colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = if (isHighlighted) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, borderColor.copy(alpha = 0.6f)),
+        border = if (emphasized) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, borderColor.copy(alpha = 0.6f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -108,7 +113,14 @@ fun SpamMessagePill(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .pointerInput(onLongClick, onToggleSelect, isSelectionMode) {
+                            detectTapGestures(
+                                onTap = { if (isSelectionMode) onToggleSelect() },
+                                onLongPress = { onLongClick() }
+                            )
+                        }
                 ) {
                     Box(
                         modifier = Modifier
