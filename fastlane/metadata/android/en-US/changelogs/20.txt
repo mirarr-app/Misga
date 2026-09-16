@@ -1,3 +1,6 @@
-• Reorder conversation tabs by long pressing and dragging (#24)
-• Smooth animated tab transitions and haptic feedback on tab reordering (#24)
-• Bug fixes and stability improvements
+• Reorder conversation tabs via long press and drag (#24)
+• Multi-select messages in chat with batch delete confirmation (#23)
+• Detailed message dialog: delivery status, full timestamp with year, and Shamsi toggle (#23)
+• Clear message text selection on outside tap (#23)
+• Isolated .dev package suffix for debug builds (#23)
+• Bug fixes, smoother animations, and stability improvements
