@@ -1,0 +1,6 @@
+• Multi-select messages in chat with safe batch deletion (#23)
+• Detailed message options dialog: delivery status, full timestamp with year, Shamsi toggle, and address (#23)
+• Tap date to toggle calendar inside message dialog (#23)
+• Clear text selection on outside tap (#23)
+• Isolated .dev package suffix for debug builds (#23)
+• Bug fixes and stability improvements
