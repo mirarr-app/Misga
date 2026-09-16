@@ -1337,6 +1337,9 @@ class SmsRepository(private val context: Context) {
     suspend fun updateTabName(tabId: Long, newName: String): Boolean =
         dbHelper.updateTabName(tabId, newName)
 
+    suspend fun updateTabOrder(tabIds: List<Long>): Boolean =
+        dbHelper.updateTabOrder(tabIds)
+
     suspend fun deleteTab(tabId: Long): Boolean =
         dbHelper.deleteTab(tabId)
 

@@ -325,6 +325,7 @@ fun ConversationsScreen(
                     onSelectTab = { viewModel.selectTab(it) },
                     onCreateTabClick = { showCreateTabDialog = true },
                     onTabOptionsClick = { tabForOptionsMenu = it },
+                    onReorderTabs = { viewModel.reorderTabs(it) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

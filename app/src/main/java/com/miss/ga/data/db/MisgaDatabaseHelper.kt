@@ -808,10 +808,16 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             var tabId = -1L
             db.beginTransaction()
             try {
+                var nextOrder = 0
+                db.rawQuery("SELECT MAX(sort_order) FROM sender_tabs", null).use { cursor ->
+                    if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                        nextOrder = cursor.getInt(0) + 1
+                    }
+                }
                 val cv = ContentValues().apply {
                     put("name", trimmed)
                     put("created_at", now)
-                    put("sort_order", 0)
+                    put("sort_order", nextOrder)
                 }
                 tabId = db.insert("sender_tabs", null, cv)
                 if (tabId != -1L && addresses.isNotEmpty()) {
@@ -833,6 +839,25 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             }
             tabId
         }
+
+    suspend fun updateTabOrder(tabIds: List<Long>): Boolean = withContext(Dispatchers.IO) {
+        if (tabIds.isEmpty()) return@withContext false
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val cv = ContentValues()
+            tabIds.forEachIndexed { index, id ->
+                cv.clear()
+                cv.put("sort_order", index)
+                db.update("sender_tabs", cv, "id = ?", arrayOf(id.toString()))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        _tabsChanged.value = System.currentTimeMillis()
+        true
+    }
 
     suspend fun updateTabName(tabId: Long, newName: String): Boolean = withContext(Dispatchers.IO) {
         val trimmed = newName.trim()
