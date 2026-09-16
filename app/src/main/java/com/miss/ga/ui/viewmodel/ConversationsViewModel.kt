@@ -553,6 +553,14 @@ class ConversationsViewModel(
         }
     }
 
+    fun reorderTabs(reorderedTabs: List<SenderTab>) {
+        val current = _uiState.value
+        _uiState.value = current.copy(tabs = reorderedTabs)
+        viewModelScope.launch {
+            repository.updateTabOrder(reorderedTabs.map { it.id })
+        }
+    }
+
     fun deleteTab(tabId: Long) {
         viewModelScope.launch {
             if (_uiState.value.selectedTabId == tabId) {

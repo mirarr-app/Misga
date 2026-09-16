@@ -97,4 +97,36 @@ class SenderTabTest {
         assertEquals(listOf(dad, mom), familyThreads)
         assertEquals(listOf(friend), friendsThreads)
     }
+
+    @Test
+    fun tabsSortBySortOrderAscendingThenIdAscending() {
+        val tab1 = SenderTab(id = 10L, name = "Tab 10", sortOrder = 2)
+        val tab2 = SenderTab(id = 5L, name = "Tab 5", sortOrder = 0)
+        val tab3 = SenderTab(id = 7L, name = "Tab 7", sortOrder = 1)
+        val tab4 = SenderTab(id = 2L, name = "Tab 2", sortOrder = 1)
+
+        val unsorted = listOf(tab1, tab2, tab3, tab4)
+        val sorted = unsorted.sortedWith(compareBy<SenderTab> { it.sortOrder }.thenBy { it.id })
+
+        assertEquals(listOf(tab2, tab4, tab3, tab1), sorted)
+    }
+
+    @Test
+    fun reorderingTabsUpdatesSortOrderIndices() {
+        val tabA = SenderTab(id = 1L, name = "A", sortOrder = 0)
+        val tabB = SenderTab(id = 2L, name = "B", sortOrder = 1)
+        val tabC = SenderTab(id = 3L, name = "C", sortOrder = 2)
+
+        val initialList = listOf(tabA, tabB, tabC)
+        // User moves C to the first position
+        val reordered = listOf(tabC, tabA, tabB)
+        val updatedWithOrder = reordered.mapIndexed { index, tab -> tab.copy(sortOrder = index) }
+
+        assertEquals(0, updatedWithOrder[0].sortOrder)
+        assertEquals("C", updatedWithOrder[0].name)
+        assertEquals(1, updatedWithOrder[1].sortOrder)
+        assertEquals("A", updatedWithOrder[1].name)
+        assertEquals(2, updatedWithOrder[2].sortOrder)
+        assertEquals("B", updatedWithOrder[2].name)
+    }
 }
