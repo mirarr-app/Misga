@@ -12,6 +12,7 @@ import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.db.SpamMetaWrite
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.repository.SmsRepository
+import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.PhoneNumberKeys
 import com.miss.ga.engine.IncomingMultipartAssembler
 import com.miss.ga.engine.IncomingSmsPart
@@ -97,9 +98,10 @@ class SmsReceiver : BroadcastReceiver() {
         incomingSubId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
     ) {
         val dbHelper = MisgaDatabaseHelper.getInstance(context)
-        val filterEngine = SmsFilterEngine(dbHelper)
+        val userPreferences = AppPreferences(context)
+        val filterEngine = SmsFilterEngine(dbHelper, userPreferences)
         val notificationHelper = NotificationHelper.getInstance(context)
-        val smsRepository = SmsRepository(context)
+        val smsRepository = SmsRepository(context, userPreferences)
 
         // Combine multipart messages by sender
         val messagesBySender = IncomingMultipartAssembler.assemble(messages.toList()) { message ->
@@ -150,8 +152,11 @@ class SmsReceiver : BroadcastReceiver() {
                 continue
             }
 
+            val contactName = smsRepository.resolveContactName(sender)
+            val isContact = !contactName.isNullOrBlank()
+
             // Run through the MISGA hierarchical filter engine
-            val filterResult = filterEngine.evaluateMessage(sender, fullBody)
+            val filterResult = filterEngine.evaluateMessage(sender, fullBody, isContact = isContact)
 
             var messageId: Long = -1L
             var threadId: Long = 0
@@ -215,7 +220,6 @@ class SmsReceiver : BroadcastReceiver() {
             // Only notify on SMS_DELIVER (we are default). SMS_RECEIVED is handled by the
             // default SMS app's own notification; we still resolve id and write filter meta.
             if (isDefaultAppDeliver) {
-                val contactName = smsRepository.resolveContactName(sender)
                 notificationHelper.showSmsNotification(
                     threadId = threadId,
                     sender = sender,

@@ -4,6 +4,7 @@ import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.util.PhoneNumberKeys
+import com.miss.ga.data.util.UserPreferences
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
@@ -22,14 +23,28 @@ data class RegexTestResult(
     val errorMessage: String? = null
 )
 
-class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
+class SmsFilterEngine(
+    private val dbHelper: MisgaDatabaseHelper,
+    private val userPreferences: UserPreferences? = null
+) {
 
     private val rulesCache = FilterRulesCache.getInstance(dbHelper)
 
-    suspend fun evaluateMessage(sender: String, body: String): FilterResult {
+    suspend fun evaluateMessage(
+        sender: String,
+        body: String,
+        isContact: Boolean = false
+    ): FilterResult {
         val prepared = rulesCache.preparedRules()
         val senderPref = rulesCache.senderPreference(sender)
-        return evaluateMessage(sender, body, prepared, senderPref)
+        return evaluateMessage(
+            sender = sender,
+            body = body,
+            prepared = prepared,
+            senderPreference = senderPref,
+            isContact = isContact,
+            noSpamForContacts = userPreferences?.noSpamForContacts ?: false
+        )
     }
 
     companion object {
@@ -41,9 +56,11 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
             sender: String,
             body: String,
             rules: List<FilterRule>,
-            senderPreference: com.miss.ga.data.model.SenderPreference? = null
+            senderPreference: com.miss.ga.data.model.SenderPreference? = null,
+            isContact: Boolean = false,
+            noSpamForContacts: Boolean = false
         ): FilterResult {
-            return evaluateMessage(sender, body, prepareRules(rules), senderPreference)
+            return evaluateMessage(sender, body, prepareRules(rules), senderPreference, isContact, noSpamForContacts)
         }
 
         fun prepareRules(rules: List<FilterRule>): PreparedFilterRules = PreparedFilterRules(rules)
@@ -52,7 +69,9 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
             sender: String,
             body: String,
             prepared: PreparedFilterRules,
-            senderPreference: com.miss.ga.data.model.SenderPreference? = null
+            senderPreference: com.miss.ga.data.model.SenderPreference? = null,
+            isContact: Boolean = false,
+            noSpamForContacts: Boolean = false
         ): FilterResult {
             val normalizedSender = normalizeAddress(sender)
             val normalizedBody = normalizePersianText(body.trim())
@@ -89,7 +108,16 @@ class SmsFilterEngine(private val dbHelper: MisgaDatabaseHelper) {
                 )
             }
 
-            // 3. Sender-specific custom blocklist rules
+            // 3. No Spam for Contacts: if sender is in contacts, blocklist rules cannot mark this message as spam
+            if (noSpamForContacts && isContact) {
+                return FilterResult(
+                    action = FilterAction.NORMAL,
+                    matchedRuleName = null,
+                    matchedPattern = null
+                )
+            }
+
+            // 4. Sender-specific custom blocklist rules
             prepared.senderBlock[normalizedSender]?.forEach { compiled ->
                 if (matchesRule(compiled, normalizedSender, normalizedBody)) {
                     return FilterResult(

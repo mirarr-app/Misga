@@ -485,4 +485,55 @@ l.snpy.ir/iouvc"""
         )
         assertTrue(result.isAllowlisted)
     }
+
+    @Test
+    fun testNoSpamForContactsBypassesBlocklistWhenEnabledForContact() {
+        val rules = PredefinedRules.getDefaultRules()
+        val spamBody = "مشترک گرامی، ۵۰ درصد تخفیف ویژه خرید اینترنت برای شما فعال شد. جهت انصراف لغو ۱۱ را ارسال فرمایید."
+
+        // Contact with noSpamForContacts = true -> FilterAction.NORMAL
+        val contactProtectedResult = SmsFilterEngine.evaluateMessage(
+            sender = "+989123456789",
+            body = spamBody,
+            rules = rules,
+            senderPreference = null,
+            isContact = true,
+            noSpamForContacts = true
+        )
+        assertEquals(
+            "Contact message must NOT be marked as spam when noSpamForContacts is enabled",
+            FilterAction.NORMAL,
+            contactProtectedResult.action
+        )
+
+        // Contact with noSpamForContacts = false -> FilterAction.SPAM
+        val contactUnprotectedResult = SmsFilterEngine.evaluateMessage(
+            sender = "+989123456789",
+            body = spamBody,
+            rules = rules,
+            senderPreference = null,
+            isContact = true,
+            noSpamForContacts = false
+        )
+        assertEquals(
+            "Contact message should be marked as spam when noSpamForContacts is disabled",
+            FilterAction.SPAM,
+            contactUnprotectedResult.action
+        )
+
+        // Non-contact with noSpamForContacts = true -> FilterAction.SPAM
+        val nonContactResult = SmsFilterEngine.evaluateMessage(
+            sender = "+989123456789",
+            body = spamBody,
+            rules = rules,
+            senderPreference = null,
+            isContact = false,
+            noSpamForContacts = true
+        )
+        assertEquals(
+            "Non-contact message must still be marked as spam when matching blocklist",
+            FilterAction.SPAM,
+            nonContactResult.action
+        )
+    }
 }

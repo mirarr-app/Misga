@@ -10,6 +10,7 @@ interface UserPreferences {
     var showNotificationDeleteAction: Boolean
     var showTabs: Boolean
     var showSimFilter: Boolean
+    var noSpamForContacts: Boolean
 }
 
 class AppPreferences(
@@ -56,6 +57,12 @@ class AppPreferences(
             prefs.edit().putBoolean(KEY_SHOW_SIM_FILTER, value).apply()
         }
 
+    override var noSpamForContacts: Boolean
+        get() = prefs.getBoolean(KEY_NO_SPAM_FOR_CONTACTS, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_NO_SPAM_FOR_CONTACTS, value).apply()
+        }
+
     companion object {
         const val PREFS_NAME = "misga_preferences"
         const val KEY_SHOW_CONTACTS_ONLY = "show_contacts_only"
@@ -64,5 +71,6 @@ class AppPreferences(
         const val KEY_SHOW_NOTIFICATION_DELETE_ACTION = "show_notification_delete_action"
         const val KEY_SHOW_TABS = "show_tabs"
         const val KEY_SHOW_SIM_FILTER = "show_sim_filter"
+        const val KEY_NO_SPAM_FOR_CONTACTS = "no_spam_for_contacts"
     }
 }

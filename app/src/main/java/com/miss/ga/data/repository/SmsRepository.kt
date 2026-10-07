@@ -23,7 +23,9 @@ import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.telephony.SimRepository
+import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.PhoneNumberKeys
+import com.miss.ga.data.util.UserPreferences
 import com.miss.ga.engine.FilterRulesCache
 import com.miss.ga.engine.IncomingSmsPolicy
 import com.miss.ga.engine.NotificationHelper
@@ -38,7 +40,10 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "SmsRepository"
 
-class SmsRepository(private val context: Context) {
+class SmsRepository(
+    private val context: Context,
+    private val userPreferences: UserPreferences = AppPreferences(context)
+) {
 
     private val dbHelper = MisgaDatabaseHelper.getInstance(context)
 
@@ -236,18 +241,29 @@ class SmsRepository(private val context: Context) {
                 senderPrefs = cache.senderPreferences()
             }
 
-            fun resolveInboxAction(msgId: Long, address: String, body: String): FilterAction {
+            fun resolveInboxAction(msgId: Long, address: String, body: String, isContact: Boolean): FilterAction {
                 evaluatedActions[msgId]?.let { return it }
                 val meta = spamMetaMap[msgId]
                 val action = if (meta != null) {
-                    meta.action
+                    if (userPreferences.noSpamForContacts && isContact && meta.action == FilterAction.SPAM) {
+                        FilterAction.NORMAL
+                    } else {
+                        meta.action
+                    }
                 } else {
                     val prepared = preparedRules
                     if (prepared == null) {
                         FilterAction.NORMAL
                     } else {
                         val pref = senderPrefs[dbHelper.normalizeAddress(address)]
-                        val eval = SmsFilterEngine.evaluateMessage(address, body, prepared, pref)
+                        val eval = SmsFilterEngine.evaluateMessage(
+                            sender = address,
+                            body = body,
+                            prepared = prepared,
+                            senderPreference = pref,
+                            isContact = isContact,
+                            noSpamForContacts = userPreferences.noSpamForContacts
+                        )
                         if (eval.action != FilterAction.NORMAL) {
                             pendingSpamMarks.add(
                                 SpamMetaWrite(
@@ -300,18 +316,19 @@ class SmsRepository(private val context: Context) {
                 val address = resolveRecipientAddress(row.recipientIds, canonicalAddresses)
                 val contactDetail = PhoneNumberKeys.lookupValue(contactDetails, address)
                 val contactName = contactDetail?.name ?: PhoneNumberKeys.lookup(contactNames, address)
+                val isContact = !contactName.isNullOrBlank()
                 val photoUri = contactDetail?.photoUri
                 val contactLookupUri = contactDetail?.lookupUri
 
                 val unreadCount = unreadCounts[threadId] ?: 0
                 val lastInbox = latestInboxMessage[threadId]
                 val lastMessageAction = if (lastInbox != null) {
-                    resolveInboxAction(lastInbox.first, address, lastInbox.second)
+                    resolveInboxAction(lastInbox.first, address, lastInbox.second, isContact)
                 } else {
                     FilterAction.NORMAL
                 }
                 val isUnreadSpam = unreadCount > 0 && latestUnreadMessage[threadId]?.let { latest ->
-                    resolveInboxAction(latest.first, address, latest.second) == FilterAction.SPAM
+                    resolveInboxAction(latest.first, address, latest.second, isContact) == FilterAction.SPAM
                 } == true
 
                 if (IncomingSmsPolicy.isGhostConversation(address, row.snippet)) {
@@ -416,6 +433,7 @@ class SmsRepository(private val context: Context) {
             val preparedRules = cache.preparedRules()
             val senderPref = cache.senderPreference(address)
             val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
+            val isContact = !resolveContactName(address).isNullOrBlank()
 
             cursor?.use {
                 val idIdx = it.getColumnIndexOrThrow(Telephony.Sms._ID)
@@ -453,12 +471,19 @@ class SmsRepository(private val context: Context) {
                     val isRevealed: Boolean
 
                     if (meta != null) {
-                        isSpam = meta.action == FilterAction.SPAM
+                        isSpam = if (userPreferences.noSpamForContacts && isContact) false else meta.action == FilterAction.SPAM
                         matchedRule = meta.matchedRuleName
                         isRevealed = meta.isRevealed
                     } else {
                         if (type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
-                            val eval = SmsFilterEngine.evaluateMessage(addr, body, preparedRules, senderPref)
+                            val eval = SmsFilterEngine.evaluateMessage(
+                                sender = addr,
+                                body = body,
+                                prepared = preparedRules,
+                                senderPreference = senderPref,
+                                isContact = isContact,
+                                noSpamForContacts = userPreferences.noSpamForContacts
+                            )
                             isSpam = eval.action == FilterAction.SPAM
                             matchedRule = eval.matchedRuleName
                             isRevealed = false
@@ -993,16 +1018,27 @@ class SmsRepository(private val context: Context) {
             }
 
             for (hit in hits) {
+                val detail = PhoneNumberKeys.lookupValue(contactDetails, hit.address)
+                val contactName = detail?.name ?: PhoneNumberKeys.lookup(contactNames, hit.address)
+                val isContact = !contactName.isNullOrBlank()
+
                 val meta = spamMetaMap[hit.messageId]
                 val isSpam = if (meta != null) {
-                    meta.action == FilterAction.SPAM
+                    if (userPreferences.noSpamForContacts && isContact) false else meta.action == FilterAction.SPAM
                 } else if (hit.type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
                     val prepared = preparedRules
                     if (prepared == null) {
                         false
                     } else {
                         val pref = senderPrefs[dbHelper.normalizeAddress(hit.address)]
-                        val eval = SmsFilterEngine.evaluateMessage(hit.address, hit.body, prepared, pref)
+                        val eval = SmsFilterEngine.evaluateMessage(
+                            sender = hit.address,
+                            body = hit.body,
+                            prepared = prepared,
+                            senderPreference = pref,
+                            isContact = isContact,
+                            noSpamForContacts = userPreferences.noSpamForContacts
+                        )
                         if (eval.action != FilterAction.NORMAL) {
                             pendingSpamMarks.add(
                                 SpamMetaWrite(
@@ -1019,13 +1055,12 @@ class SmsRepository(private val context: Context) {
                     false
                 }
 
-                val detail = PhoneNumberKeys.lookupValue(contactDetails, hit.address)
                 results.add(
                     SearchMessageResult(
                         messageId = hit.messageId,
                         threadId = hit.threadId,
                         address = hit.address,
-                        contactName = detail?.name ?: PhoneNumberKeys.lookup(contactNames, hit.address),
+                        contactName = contactName,
                         body = hit.body,
                         date = hit.date,
                         read = hit.read,

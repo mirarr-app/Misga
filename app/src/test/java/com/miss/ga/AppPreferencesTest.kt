@@ -245,4 +245,35 @@ class AppPreferencesTest {
         val appPreferences = AppPreferences(fakePrefs.proxy)
         assertFalse(appPreferences.showSimFilter)
     }
+
+    @Test
+    fun defaultNoSpamForContactsIsFalse() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertFalse(appPreferences.noSpamForContacts)
+    }
+
+    @Test
+    fun noSpamForContactsPersistsWhenSet() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.noSpamForContacts = true
+        assertTrue(appPreferences.noSpamForContacts)
+        assertEquals(true, fakePrefs.storage[AppPreferences.KEY_NO_SPAM_FOR_CONTACTS])
+
+        appPreferences.noSpamForContacts = false
+        assertFalse(appPreferences.noSpamForContacts)
+        assertEquals(false, fakePrefs.storage[AppPreferences.KEY_NO_SPAM_FOR_CONTACTS])
+    }
+
+    @Test
+    fun noSpamForContactsInitializesFromExistingStoredValue() {
+        val fakePrefs = InMemorySharedPreferences()
+        fakePrefs.storage[AppPreferences.KEY_NO_SPAM_FOR_CONTACTS] = true
+
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+        assertTrue(appPreferences.noSpamForContacts)
+    }
 }

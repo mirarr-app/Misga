@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.Tune
@@ -46,6 +47,8 @@ fun CustomizationSheet(
     onToggleShowTabs: (Boolean) -> Unit,
     showSimFilter: Boolean,
     onToggleShowSimFilter: (Boolean) -> Unit,
+    noSpamForContacts: Boolean,
+    onToggleNoSpamForContacts: (Boolean) -> Unit,
     enableDateTapShamsiToggle: Boolean,
     onToggleDateTapShamsi: (Boolean) -> Unit,
     showNotificationDeleteAction: Boolean,
@@ -216,7 +219,62 @@ fun CustomizationSheet(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                     )
 
-                    // Option 3: Tap date to switch calendar
+                    // Option 3: No spam for contacts
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleNoSpamForContacts(!noSpamForContacts) }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "No spam for contacts",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 15.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "SMS messages from people in contacts will not be marked as spam even if they send a blacklist message",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Switch(
+                            checked = noSpamForContacts,
+                            onCheckedChange = onToggleNoSpamForContacts
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
+
+                    // Option 4: Tap date to switch calendar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -52,7 +52,8 @@ data class ConversationsUiState(
     val enableDateTapShamsiToggle: Boolean = true,
     val showNotificationDeleteAction: Boolean = false,
     val showTabs: Boolean = true,
-    val showSimFilter: Boolean = true
+    val showSimFilter: Boolean = true,
+    val noSpamForContacts: Boolean = false
 )
 
 class ConversationsViewModel(
@@ -62,7 +63,7 @@ class ConversationsViewModel(
 
     constructor(application: Application) : this(application, AppPreferences(application))
 
-    private val repository = SmsRepository(application)
+    private val repository = SmsRepository(application, userPreferences)
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
     private var searchJob: Job? = null
     private var loadJob: Job? = null
@@ -77,7 +78,8 @@ class ConversationsViewModel(
             enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
             showNotificationDeleteAction = userPreferences.showNotificationDeleteAction,
             showTabs = userPreferences.showTabs,
-            showSimFilter = userPreferences.showSimFilter
+            showSimFilter = userPreferences.showSimFilter,
+            noSpamForContacts = userPreferences.noSpamForContacts
         )
     )
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -130,7 +132,8 @@ class ConversationsViewModel(
             enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
             showNotificationDeleteAction = userPreferences.showNotificationDeleteAction,
             showTabs = userPreferences.showTabs,
-            showSimFilter = userPreferences.showSimFilter
+            showSimFilter = userPreferences.showSimFilter,
+            noSpamForContacts = userPreferences.noSpamForContacts
         )
         repository.invalidateLookupCaches()
         checkDefaultSmsStatus()
@@ -448,6 +451,12 @@ class ConversationsViewModel(
                 showSimFilter = enabled
             )
         )
+    }
+
+    fun setNoSpamForContactsEnabled(enabled: Boolean) {
+        userPreferences.noSpamForContacts = enabled
+        _uiState.value = _uiState.value.copy(noSpamForContacts = enabled)
+        loadThreads(silent = true, force = true)
     }
 
     fun checkDefaultSmsStatus() {

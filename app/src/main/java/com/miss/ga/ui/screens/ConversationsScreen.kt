@@ -803,6 +803,10 @@ fun ConversationsScreen(
             onToggleShowSimFilter = { enabled ->
                 viewModel.setShowSimFilterEnabled(enabled)
             },
+            noSpamForContacts = state.noSpamForContacts,
+            onToggleNoSpamForContacts = { enabled ->
+                viewModel.setNoSpamForContactsEnabled(enabled)
+            },
             enableDateTapShamsiToggle = state.enableDateTapShamsiToggle,
             onToggleDateTapShamsi = { enabled ->
                 viewModel.setDateTapShamsiEnabled(enabled)
