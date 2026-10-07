@@ -183,4 +183,35 @@ class AppPreferencesTest {
         val appPreferences = AppPreferences(fakePrefs.proxy)
         assertTrue(appPreferences.showNotificationDeleteAction)
     }
+
+    @Test
+    fun defaultShowTabsIsTrue() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertTrue(appPreferences.showTabs)
+    }
+
+    @Test
+    fun showTabsPersistsWhenSet() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.showTabs = false
+        assertFalse(appPreferences.showTabs)
+        assertEquals(false, fakePrefs.storage[AppPreferences.KEY_SHOW_TABS])
+
+        appPreferences.showTabs = true
+        assertTrue(appPreferences.showTabs)
+        assertEquals(true, fakePrefs.storage[AppPreferences.KEY_SHOW_TABS])
+    }
+
+    @Test
+    fun showTabsInitializesFromExistingStoredValue() {
+        val fakePrefs = InMemorySharedPreferences()
+        fakePrefs.storage[AppPreferences.KEY_SHOW_TABS] = false
+
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+        assertFalse(appPreferences.showTabs)
+    }
 }

@@ -203,6 +203,7 @@ fun ConversationsScreen(
                     }
                 },
                 onDeleteSelected = { showBatchDeleteDialog = true },
+                showTabs = state.showTabs,
                 onAddToTab = { showAddToTabDialog = true },
                 onToggleContactsOnly = {
                     viewModel.toggleContactsOnly()
@@ -314,7 +315,7 @@ fun ConversationsScreen(
             }
 
             AnimatedVisibility(
-                visible = !isSelectionMode,
+                visible = !isSelectionMode && state.showTabs,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -577,7 +578,7 @@ fun ConversationsScreen(
                     }
                 }
             } else if (displayedThreads.isEmpty()) {
-                val selectedTab = state.selectedTabId?.let { id -> state.tabs.find { it.id == id } }
+                val selectedTab = if (state.showTabs) state.selectedTabId?.let { id -> state.tabs.find { it.id == id } } else null
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -794,6 +795,10 @@ fun ConversationsScreen(
 
     if (showCustomizationSheet) {
         CustomizationSheet(
+            showTabs = state.showTabs,
+            onToggleShowTabs = { enabled ->
+                viewModel.setShowTabsEnabled(enabled)
+            },
             enableDateTapShamsiToggle = state.enableDateTapShamsiToggle,
             onToggleDateTapShamsi = { enabled ->
                 viewModel.setDateTapShamsiEnabled(enabled)
@@ -820,6 +825,7 @@ private fun ConversationsTopBar(
     onSelectAll: () -> Unit,
     onMarkSelectedRead: () -> Unit,
     onDeleteSelected: () -> Unit,
+    showTabs: Boolean = true,
     onAddToTab: () -> Unit = {},
     onToggleContactsOnly: () -> Unit,
     onMarkAllRead: () -> Unit,
@@ -858,12 +864,14 @@ private fun ConversationsTopBar(
                     )
                 }
 
-                IconButton(onClick = onAddToTab) {
-                    Icon(
-                        imageVector = Icons.Default.DriveFileMove,
-                        contentDescription = "Add to Tab",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                if (showTabs) {
+                    IconButton(onClick = onAddToTab) {
+                        Icon(
+                            imageVector = Icons.Default.DriveFileMove,
+                            contentDescription = "Add to Tab",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
 
                 IconButton(onClick = onMarkSelectedRead) {
