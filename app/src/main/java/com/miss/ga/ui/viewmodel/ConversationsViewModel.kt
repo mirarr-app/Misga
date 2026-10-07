@@ -51,7 +51,8 @@ data class ConversationsUiState(
     val selectedSimFilterSubId: Int? = null,
     val enableDateTapShamsiToggle: Boolean = true,
     val showNotificationDeleteAction: Boolean = false,
-    val showTabs: Boolean = true
+    val showTabs: Boolean = true,
+    val showSimFilter: Boolean = true
 )
 
 class ConversationsViewModel(
@@ -75,7 +76,8 @@ class ConversationsViewModel(
             showContactsOnly = userPreferences.showContactsOnly,
             enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
             showNotificationDeleteAction = userPreferences.showNotificationDeleteAction,
-            showTabs = userPreferences.showTabs
+            showTabs = userPreferences.showTabs,
+            showSimFilter = userPreferences.showSimFilter
         )
     )
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -127,7 +129,8 @@ class ConversationsViewModel(
         _uiState.value = _uiState.value.copy(
             enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
             showNotificationDeleteAction = userPreferences.showNotificationDeleteAction,
-            showTabs = userPreferences.showTabs
+            showTabs = userPreferences.showTabs,
+            showSimFilter = userPreferences.showSimFilter
         )
         repository.invalidateLookupCaches()
         checkDefaultSmsStatus()
@@ -313,7 +316,8 @@ class ConversationsViewModel(
         selectedTabId: Long? = _uiState.value.selectedTabId,
         tabs: List<SenderTab> = _uiState.value.tabs,
         selectedSimFilterSubId: Int? = _uiState.value.selectedSimFilterSubId,
-        showTabs: Boolean = _uiState.value.showTabs
+        showTabs: Boolean = _uiState.value.showTabs,
+        showSimFilter: Boolean = _uiState.value.showSimFilter
     ): List<ConversationThread> {
         val tab = if (showTabs && selectedTabId != null) tabs.find { it.id == selectedTabId } else null
         val tabFiltered = if (tab != null) {
@@ -321,8 +325,9 @@ class ConversationsViewModel(
         } else {
             threads
         }
-        val simFiltered = if (selectedSimFilterSubId != null) {
-            tabFiltered.filter { it.subId == selectedSimFilterSubId }
+        val effectiveSubId = if (showSimFilter) selectedSimFilterSubId else null
+        val simFiltered = if (effectiveSubId != null) {
+            tabFiltered.filter { it.subId == effectiveSubId }
         } else {
             tabFiltered
         }
@@ -422,7 +427,25 @@ class ConversationsViewModel(
                 selectedTabId = current.selectedTabId,
                 tabs = current.tabs,
                 selectedSimFilterSubId = current.selectedSimFilterSubId,
-                showTabs = enabled
+                showTabs = enabled,
+                showSimFilter = current.showSimFilter
+            )
+        )
+    }
+
+    fun setShowSimFilterEnabled(enabled: Boolean) {
+        userPreferences.showSimFilter = enabled
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            showSimFilter = enabled,
+            filteredThreads = filterThreads(
+                threads = current.threads,
+                query = current.searchQuery.trim(),
+                selectedTabId = current.selectedTabId,
+                tabs = current.tabs,
+                selectedSimFilterSubId = current.selectedSimFilterSubId,
+                showTabs = current.showTabs,
+                showSimFilter = enabled
             )
         )
     }

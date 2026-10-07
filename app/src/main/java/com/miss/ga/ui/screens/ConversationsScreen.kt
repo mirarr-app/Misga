@@ -332,7 +332,7 @@ fun ConversationsScreen(
             }
 
             AnimatedVisibility(
-                visible = !isSelectionMode && hasMultipleSims,
+                visible = !isSelectionMode && hasMultipleSims && state.showSimFilter,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -798,6 +798,10 @@ fun ConversationsScreen(
             showTabs = state.showTabs,
             onToggleShowTabs = { enabled ->
                 viewModel.setShowTabsEnabled(enabled)
+            },
+            showSimFilter = state.showSimFilter,
+            onToggleShowSimFilter = { enabled ->
+                viewModel.setShowSimFilterEnabled(enabled)
             },
             enableDateTapShamsiToggle = state.enableDateTapShamsiToggle,
             onToggleDateTapShamsi = { enabled ->

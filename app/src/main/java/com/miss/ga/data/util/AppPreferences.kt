@@ -9,6 +9,7 @@ interface UserPreferences {
     var enableDateTapShamsiToggle: Boolean
     var showNotificationDeleteAction: Boolean
     var showTabs: Boolean
+    var showSimFilter: Boolean
 }
 
 class AppPreferences(
@@ -49,6 +50,12 @@ class AppPreferences(
             prefs.edit().putBoolean(KEY_SHOW_TABS, value).apply()
         }
 
+    override var showSimFilter: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_SIM_FILTER, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SHOW_SIM_FILTER, value).apply()
+        }
+
     companion object {
         const val PREFS_NAME = "misga_preferences"
         const val KEY_SHOW_CONTACTS_ONLY = "show_contacts_only"
@@ -56,5 +63,6 @@ class AppPreferences(
         const val KEY_ENABLE_DATE_TAP_SHAMSI_TOGGLE = "enable_date_tap_shamsi_toggle"
         const val KEY_SHOW_NOTIFICATION_DELETE_ACTION = "show_notification_delete_action"
         const val KEY_SHOW_TABS = "show_tabs"
+        const val KEY_SHOW_SIM_FILTER = "show_sim_filter"
     }
 }

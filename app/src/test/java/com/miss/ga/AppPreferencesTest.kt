@@ -214,4 +214,35 @@ class AppPreferencesTest {
         val appPreferences = AppPreferences(fakePrefs.proxy)
         assertFalse(appPreferences.showTabs)
     }
+
+    @Test
+    fun defaultShowSimFilterIsTrue() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertTrue(appPreferences.showSimFilter)
+    }
+
+    @Test
+    fun showSimFilterPersistsWhenSet() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.showSimFilter = false
+        assertFalse(appPreferences.showSimFilter)
+        assertEquals(false, fakePrefs.storage[AppPreferences.KEY_SHOW_SIM_FILTER])
+
+        appPreferences.showSimFilter = true
+        assertTrue(appPreferences.showSimFilter)
+        assertEquals(true, fakePrefs.storage[AppPreferences.KEY_SHOW_SIM_FILTER])
+    }
+
+    @Test
+    fun showSimFilterInitializesFromExistingStoredValue() {
+        val fakePrefs = InMemorySharedPreferences()
+        fakePrefs.storage[AppPreferences.KEY_SHOW_SIM_FILTER] = false
+
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+        assertFalse(appPreferences.showSimFilter)
+    }
 }
