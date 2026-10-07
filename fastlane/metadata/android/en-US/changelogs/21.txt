@@ -1,0 +1,3 @@
+• Customization toggle to hide or show conversation tabs
+• Customization toggle to hide or show SIM card filter tabs
+• "No spam for contacts" toggle to prevent contacts' messages from being marked as spam
