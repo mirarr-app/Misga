@@ -12,3 +12,5 @@ Iran's SMS has turned into a flood of spam messages and unwanted promotions. Mis
 </ul>
 
 Set Misga as your default SMS app so it can filter incoming messages in real time.
+
+<i>Note: Multimedia messages (MMS) are currently not supported.</i>
