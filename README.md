@@ -42,9 +42,13 @@ Set Misga as your **default SMS app** so it can intercept messages in real time.
 
 ## Install
 
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
+    alt="Get it on F-Droid"
+    height="80">](https://f-droid.org/en/packages/com.miss.ga/)
+
 Android 8.0 (API 26) or newer is required.
 
-Download the signed `misga-*-universal.apk` from the [GitHub Releases](https://github.com/mirarr-app/Misga/releases) page.
+Alternatively, you can download the signed `misga-*-universal.apk` from the [GitHub Releases](https://github.com/mirarr-app/Misga/releases) page.
 
 Install the APK, open Misga, grant SMS permissions, and set it as the default SMS app when prompted.
 
@@ -108,9 +112,13 @@ The debug APK is written to `app/build/outputs/apk/debug/`.
 
 ## نصب
 
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
+    alt="دریافت از F-Droid"
+    height="80">](https://f-droid.org/en/packages/com.miss.ga/)
+
 اندروید ۸٫۰ (API ۲۶) یا جدیدتر لازم است.
 
-`misga-*-universal.apk` امضاشده را از صفحهٔ [GitHub Releases](https://github.com/mirarr-app/Misga/releases) دانلود کنید.
+همچنین می‌توانید فایل `misga-*-universal.apk` امضاشده را از صفحهٔ [GitHub Releases](https://github.com/mirarr-app/Misga/releases) دانلود کنید.
 
 APK را نصب کنید، میسگا را باز کنید، دسترسی پیامک را بدهید، و وقتی پرسیده شد آن را برنامهٔ پیامک پیش‌فرض کنید.
 
