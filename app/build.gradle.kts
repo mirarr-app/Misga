@@ -14,8 +14,8 @@ android {
         applicationId = "com.miss.ga"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.3.7"
+        versionCode = 22
+        versionName = "1.3.8"
     }
 
     signingConfigs {
@@ -121,4 +121,3 @@ dependencies {
   // Kotlinx Serialization JSON
   implementation(libs.kotlinx.serialization.json)
 }
-

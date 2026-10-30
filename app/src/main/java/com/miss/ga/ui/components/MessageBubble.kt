@@ -39,6 +39,8 @@ import com.miss.ga.theme.IncomingBubbleShape
 import com.miss.ga.theme.OutgoingBubbleShape
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.util.contentAware
+import com.miss.ga.ui.util.rememberLinkClickHandler
+import com.miss.ga.ui.util.rememberLinkedText
 
 @Composable
 fun MessageBubble(
@@ -168,12 +170,21 @@ private fun BubbleContent(
     selectable: Boolean,
     selectionResetKey: Any = Unit
 ) {
+    val linkColor = MaterialTheme.colorScheme.primary
+    val onLinkClick = rememberLinkClickHandler()
+    val annotatedBody = rememberLinkedText(
+        text = message.body,
+        linkColor = linkColor,
+        enableLinks = selectable,
+        onLinkClick = onLinkClick
+    )
+
     Column(
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
         val bodyText = @Composable {
             Text(
-                text = message.body,
+                text = annotatedBody,
                 style = MaterialTheme.typography.bodyLarge.contentAware(),
                 color = contentColor,
                 lineHeight = 23.sp,

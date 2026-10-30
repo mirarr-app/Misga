@@ -62,6 +62,8 @@ import com.miss.ga.theme.SpamWarningOnLight
 import com.miss.ga.theme.TagShape
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.util.contentAware
+import com.miss.ga.ui.util.rememberLinkClickHandler
+import com.miss.ga.ui.util.rememberLinkedText
 
 @Composable
 fun SpamMessagePill(
@@ -214,9 +216,17 @@ fun SpamMessagePill(
                         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        val linkColor = MaterialTheme.colorScheme.primary
+                        val onLinkClick = rememberLinkClickHandler()
+                        val annotatedBody = rememberLinkedText(
+                            text = message.body,
+                            linkColor = linkColor,
+                            enableLinks = !isSelectionMode,
+                            onLinkClick = onLinkClick
+                        )
                         SelectionContainer {
                             Text(
-                                text = message.body,
+                                text = annotatedBody,
                                 style = MaterialTheme.typography.bodyMedium.contentAware(),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 lineHeight = 21.sp,
@@ -305,4 +315,3 @@ fun SpamMessagePill(
         }
     }
 }
-

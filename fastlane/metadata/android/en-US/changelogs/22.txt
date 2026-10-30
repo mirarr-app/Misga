@@ -1,0 +1,2 @@
+• Automatic URL recognition in SMS messages
+• Tap to open web links directly in your default browser
