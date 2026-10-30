@@ -38,8 +38,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
     private val _tabsChanged = MutableStateFlow(System.currentTimeMillis())
     val tabsChanged: Flow<Long> = _tabsChanged.asStateFlow()
 
-    private val _scheduledMessagesChanged = MutableStateFlow(System.currentTimeMillis())
+    private val _scheduledMessagesChanged = MutableStateFlow(0L)
     val scheduledMessagesChanged: Flow<Long> = _scheduledMessagesChanged.asStateFlow()
+    private val scheduledMessageChangeCounter = java.util.concurrent.atomic.AtomicLong(0L)
+
+    fun notifyScheduledMessagesChanged() {
+        _scheduledMessagesChanged.value = scheduledMessageChangeCounter.incrementAndGet()
+    }
 
     @Volatile
     private var predefinedRulesSeeded = false
@@ -1274,7 +1279,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
         val id = db.insert("scheduled_messages", null, cv)
         if (id != -1L) {
-            _scheduledMessagesChanged.value = System.currentTimeMillis()
+            notifyScheduledMessagesChanged()
         }
         id
     }
@@ -1356,7 +1361,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
         val rows = db.update("scheduled_messages", cv, "id = ?", arrayOf(id.toString()))
         if (rows > 0) {
-            _scheduledMessagesChanged.value = System.currentTimeMillis()
+            notifyScheduledMessagesChanged()
         }
         rows > 0
     }
@@ -1369,7 +1374,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
         val rows = db.update("scheduled_messages", cv, "id = ?", arrayOf(id.toString()))
         if (rows > 0) {
-            _scheduledMessagesChanged.value = System.currentTimeMillis()
+            notifyScheduledMessagesChanged()
         }
         rows > 0
     }
@@ -1378,7 +1383,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         val db = writableDatabase
         val rows = db.delete("scheduled_messages", "id = ?", arrayOf(id.toString()))
         if (rows > 0) {
-            _scheduledMessagesChanged.value = System.currentTimeMillis()
+            notifyScheduledMessagesChanged()
         }
         rows > 0
     }

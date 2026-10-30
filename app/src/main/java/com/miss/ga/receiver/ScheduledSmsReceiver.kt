@@ -50,6 +50,9 @@ class ScheduledSmsReceiver : BroadcastReceiver() {
                     return@launch
                 }
 
+                // Immediately remove from pending so the UI banner disappears instantly at the scheduled time
+                dbHelper.deleteScheduledMessage(scheduledId)
+
                 Log.d(TAG, "Dispatching scheduled SMS $scheduledId to ${scheduledMessage.address}")
                 val smsRepository = SmsRepository(context)
                 val subId = if (scheduledMessage.subId >= 0) scheduledMessage.subId else null
@@ -59,12 +62,10 @@ class ScheduledSmsReceiver : BroadcastReceiver() {
                     subscriptionId = subId
                 )
 
-                if (result.sent) {
-                    Log.d(TAG, "Scheduled SMS $scheduledId sent successfully")
-                    dbHelper.updateScheduledMessageStatus(scheduledId, ScheduledMessageStatus.SENT)
+                if (result.sent || result.storedInProvider) {
+                    Log.d(TAG, "Scheduled SMS $scheduledId dispatched successfully")
                 } else {
                     Log.e(TAG, "Failed to send scheduled SMS $scheduledId")
-                    dbHelper.updateScheduledMessageStatus(scheduledId, ScheduledMessageStatus.FAILED)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error executing scheduled SMS dispatch", e)

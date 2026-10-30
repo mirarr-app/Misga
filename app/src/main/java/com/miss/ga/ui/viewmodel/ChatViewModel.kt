@@ -371,11 +371,23 @@ class ChatViewModel(
     }
 
 
+    private var scheduledMessageTimerJob: Job? = null
+
     fun loadScheduledMessages() {
         viewModelScope.launch {
             val currentThreadId = _uiState.value.threadId.takeIf { it > 0L } ?: initialThreadId
             val list = dbHelper.getScheduledMessagesForThread(currentThreadId, initialAddress)
             _uiState.value = _uiState.value.copy(scheduledMessages = list)
+
+            scheduledMessageTimerJob?.cancel()
+            val nextUpcoming = list.minByOrNull { it.scheduledTime }
+            if (nextUpcoming != null) {
+                val delayMs = (nextUpcoming.scheduledTime - System.currentTimeMillis()).coerceAtLeast(0L) + 500L
+                scheduledMessageTimerJob = viewModelScope.launch {
+                    delay(delayMs)
+                    loadScheduledMessages()
+                }
+            }
         }
     }
 
@@ -655,11 +667,13 @@ class ChatViewModel(
         observerDebounceJob = viewModelScope.launch {
             delay(SMS_OBSERVER_DEBOUNCE_MS)
             loadMessages()
+            loadScheduledMessages()
         }
     }
 
     override fun onCleared() {
         observerDebounceJob?.cancel()
+        scheduledMessageTimerJob?.cancel()
         val observer = smsContentObserver
         if (observer != null) {
             try {

@@ -1,10 +1,9 @@
 package com.miss.ga.ui.components
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.text.format.DateFormat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,12 +19,18 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -40,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.miss.ga.ui.util.SmsDateFormats
 import java.util.Calendar
+import java.util.TimeZone
 
 data class SchedulePreset(
     val title: String,
@@ -47,6 +53,7 @@ data class SchedulePreset(
     val timeMillis: Long
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleMessageDialog(
     recipientName: String?,
@@ -134,44 +141,40 @@ fun ScheduleMessageDialog(
     }
     var isCustomSelected by remember { mutableStateOf(false) }
 
-    fun showCustomPickers() {
-        val cal = Calendar.getInstance().apply { timeInMillis = selectedTimeMillis }
-        val datePicker = DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val chosenCal = Calendar.getInstance().apply {
-                    set(Calendar.YEAR, year)
-                    set(Calendar.MONTH, month)
-                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                    set(Calendar.HOUR_OF_DAY, cal.get(Calendar.HOUR_OF_DAY))
-                    set(Calendar.MINUTE, cal.get(Calendar.MINUTE))
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var tempDateUtcMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-                // Next show TimePickerDialog
-                val timePicker = TimePickerDialog(
-                    context,
-                    { _, hourOfDay, minute ->
-                        chosenCal.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                        chosenCal.set(Calendar.MINUTE, minute)
-                        if (chosenCal.timeInMillis > System.currentTimeMillis()) {
-                            selectedTimeMillis = chosenCal.timeInMillis
-                            isCustomSelected = true
-                        }
-                    },
-                    cal.get(Calendar.HOUR_OF_DAY),
-                    cal.get(Calendar.MINUTE),
-                    DateFormat.is24HourFormat(context)
-                )
-                timePicker.show()
+    val is24Hour = remember(context) { DateFormat.is24HourFormat(context) }
+
+    if (showDatePicker) {
+        Material3DatePickerDialog(
+            initialDateMillis = selectedTimeMillis,
+            onDateSelected = { dateUtcMillis ->
+                tempDateUtcMillis = dateUtcMillis
+                showDatePicker = false
+                showTimePicker = true
             },
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH),
-            cal.get(Calendar.DAY_OF_MONTH)
+            onDismiss = { showDatePicker = false }
         )
-        datePicker.datePicker.minDate = System.currentTimeMillis()
-        datePicker.show()
+    }
+
+    if (showTimePicker) {
+        val initialCal = Calendar.getInstance().apply { timeInMillis = selectedTimeMillis }
+        Material3TimePickerDialog(
+            initialHour = initialCal.get(Calendar.HOUR_OF_DAY),
+            initialMinute = initialCal.get(Calendar.MINUTE),
+            is24Hour = is24Hour,
+            onTimeSelected = { hour, minute ->
+                val combined = combineDateAndTime(tempDateUtcMillis, hour, minute)
+                if (combined > System.currentTimeMillis()) {
+                    selectedTimeMillis = combined
+                    isCustomSelected = true
+                }
+                showTimePicker = false
+            },
+            onDismiss = { showTimePicker = false }
+        )
     }
 
     AlertDialog(
@@ -229,7 +232,7 @@ fun ScheduleMessageDialog(
                     },
                     isSelected = isCustomSelected,
                     onClick = {
-                        showCustomPickers()
+                        showDatePicker = true
                     }
                 )
 
@@ -284,6 +287,98 @@ fun ScheduleMessageDialog(
             }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Material3DatePickerDialog(
+    initialDateMillis: Long,
+    onDateSelected: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = initialDateMillis
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    datePickerState.selectedDateMillis?.let { onDateSelected(it) }
+                }
+            ) {
+                Text("Next")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    ) {
+        DatePicker(state = datePickerState)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Material3TimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    is24Hour: Boolean,
+    onTimeSelected: (hour: Int, minute: Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val timePickerState = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = is24Hour
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onTimeSelected(timePickerState.hour, timePickerState.minute)
+                }
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+        text = {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                TimePicker(state = timePickerState)
+            }
+        }
+    )
+}
+
+private fun combineDateAndTime(dateUtcMillis: Long, hour: Int, minute: Int): Long {
+    val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        timeInMillis = dateUtcMillis
+    }
+    val year = utcCal.get(Calendar.YEAR)
+    val month = utcCal.get(Calendar.MONTH)
+    val day = utcCal.get(Calendar.DAY_OF_MONTH)
+
+    val localCal = Calendar.getInstance().apply {
+        set(Calendar.YEAR, year)
+        set(Calendar.MONTH, month)
+        set(Calendar.DAY_OF_MONTH, day)
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, minute)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    return localCal.timeInMillis
 }
 
 @Composable
