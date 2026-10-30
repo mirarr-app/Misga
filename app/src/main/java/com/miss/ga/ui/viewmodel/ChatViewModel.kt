@@ -23,6 +23,8 @@ import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.SmsMessage
+import com.miss.ga.data.model.ScheduledMessage
+import com.miss.ga.engine.ScheduledSmsManager
 import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.AppPreferences
@@ -57,7 +59,8 @@ data class ChatUiState(
     val availableSims: List<SimInfo> = emptyList(),
     val selectedSim: SimInfo? = null,
     val showShamsiDate: Boolean = false,
-    val enableDateTapShamsiToggle: Boolean = true
+    val enableDateTapShamsiToggle: Boolean = true,
+    val scheduledMessages: List<ScheduledMessage> = emptyList()
 )
 
 class ChatViewModel(
@@ -120,6 +123,12 @@ class ChatViewModel(
         viewModelScope.launch {
             dbHelper.tabsChanged.collect {
                 loadTabs()
+            }
+        }
+        loadScheduledMessages()
+        viewModelScope.launch {
+            dbHelper.scheduledMessagesChanged.collect {
+                loadScheduledMessages()
             }
         }
         viewModelScope.launch {
@@ -359,6 +368,74 @@ class ChatViewModel(
         }
 
         return activeSims.find { it.subscriptionId == defaultSubId } ?: activeSims.first()
+    }
+
+
+    fun loadScheduledMessages() {
+        viewModelScope.launch {
+            val currentThreadId = _uiState.value.threadId.takeIf { it > 0L } ?: initialThreadId
+            val list = dbHelper.getScheduledMessagesForThread(currentThreadId, initialAddress)
+            _uiState.value = _uiState.value.copy(scheduledMessages = list)
+        }
+    }
+
+    fun scheduleMessage(text: String, scheduledTimeMillis: Long, onComplete: (Boolean) -> Unit = {}) {
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            var currentThreadId = _uiState.value.threadId
+            if (currentThreadId <= 0L && initialAddress.isNotBlank()) {
+                val resolvedId = repository.getOrCreateThreadId(initialAddress)
+                if (resolvedId > 0L) {
+                    currentThreadId = resolvedId
+                    _uiState.value = _uiState.value.copy(threadId = resolvedId)
+                }
+            }
+            val subId = _uiState.value.selectedSim?.subscriptionId ?: -1
+            val id = dbHelper.insertScheduledMessage(
+                threadId = currentThreadId,
+                address = initialAddress,
+                body = text,
+                scheduledTime = scheduledTimeMillis,
+                subId = subId
+            )
+            if (id > 0L) {
+                val scheduledMsg = dbHelper.getScheduledMessage(id)
+                if (scheduledMsg != null) {
+                    ScheduledSmsManager.schedule(getApplication(), scheduledMsg)
+                }
+                loadScheduledMessages()
+                onComplete(true)
+            } else {
+                onComplete(false)
+            }
+        }
+    }
+
+    fun cancelScheduledMessage(scheduledId: Long) {
+        viewModelScope.launch {
+            ScheduledSmsManager.cancel(getApplication(), scheduledId)
+            dbHelper.deleteScheduledMessage(scheduledId)
+            loadScheduledMessages()
+        }
+    }
+
+    fun sendScheduledMessageNow(scheduledMessage: ScheduledMessage) {
+        viewModelScope.launch {
+            ScheduledSmsManager.cancel(getApplication(), scheduledMessage.id)
+            dbHelper.deleteScheduledMessage(scheduledMessage.id)
+            sendMessage(scheduledMessage.body)
+        }
+    }
+
+    fun rescheduleMessage(scheduledId: Long, newTimeMillis: Long) {
+        viewModelScope.launch {
+            dbHelper.updateScheduledMessageTime(scheduledId, newTimeMillis)
+            val updated = dbHelper.getScheduledMessage(scheduledId)
+            if (updated != null) {
+                ScheduledSmsManager.schedule(getApplication(), updated)
+            }
+            loadScheduledMessages()
+        }
     }
 
     fun sendMessage(text: String, onComplete: (SendSmsResult) -> Unit = {}) {

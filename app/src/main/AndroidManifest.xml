@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <queries>
         <intent>
@@ -94,6 +97,23 @@
         <receiver
             android:name=".receiver.NotificationActionReceiver"
             android:exported="false" />
+
+        <!-- Receiver for scheduled SMS alarms -->
+        <receiver
+            android:name=".receiver.ScheduledSmsReceiver"
+            android:exported="false" />
+
+        <!-- Reschedules pending SMS on reboot, package replace, or time changes -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Service for quick responses (Required for default SMS app compliance) -->
         <service

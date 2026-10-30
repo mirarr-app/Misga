@@ -14,6 +14,8 @@ import com.miss.ga.data.model.PreferredSimMode
 import com.miss.ga.data.model.RuleCategory
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
+import com.miss.ga.data.model.ScheduledMessage
+import com.miss.ga.data.model.ScheduledMessageStatus
 import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +37,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     private val _tabsChanged = MutableStateFlow(System.currentTimeMillis())
     val tabsChanged: Flow<Long> = _tabsChanged.asStateFlow()
+
+    private val _scheduledMessagesChanged = MutableStateFlow(System.currentTimeMillis())
+    val scheduledMessagesChanged: Flow<Long> = _scheduledMessagesChanged.asStateFlow()
 
     @Volatile
     private var predefinedRulesSeeded = false
@@ -107,6 +112,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
         createCachedThreadsTable(db)
         createSenderTabsTables(db)
+        createScheduledMessagesTable(db)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_filter_rules_sender_target ON filter_rules(sender_target)"
@@ -151,12 +157,19 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         if (oldVersion < 4) {
             try {
                 createSenderTabsTables(db)
+        createScheduledMessagesTable(db)
             } catch (e: Exception) {}
         }
         if (oldVersion < 5) {
             try { db.execSQL("ALTER TABLE sender_preferences ADD COLUMN preferred_sub_id INTEGER NOT NULL DEFAULT -1") } catch (e: Exception) {}
             try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN sub_id INTEGER NOT NULL DEFAULT -1") } catch (e: Exception) {}
         }
+        if (oldVersion < 6) {
+            try {
+                createScheduledMessagesTable(db)
+            } catch (e: Exception) {}
+        }
+
     }
 
     // --- Filter Rules Operations ---
@@ -1067,6 +1080,27 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_sender_tab_members_tab ON sender_tab_members(tab_id)")
     }
 
+    private fun createScheduledMessagesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS scheduled_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id INTEGER NOT NULL DEFAULT 0,
+                address TEXT NOT NULL,
+                body TEXT NOT NULL,
+                scheduled_time INTEGER NOT NULL,
+                sub_id INTEGER NOT NULL DEFAULT -1,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_scheduled_messages_thread ON scheduled_messages(thread_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_scheduled_messages_address ON scheduled_messages(address)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_scheduled_messages_status_time ON scheduled_messages(status, scheduled_time)")
+    }
+
+
     private class SenderPreferenceIndices(cursor: Cursor) {
         val address = cursor.getColumnIndexOrThrow("address")
         val displayName = cursor.getColumnIndexOrThrow("display_name")
@@ -1218,9 +1252,166 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         )
     }
 
+
+    // --- Scheduled Messages Operations ---
+
+    suspend fun insertScheduledMessage(
+        threadId: Long,
+        address: String,
+        body: String,
+        scheduledTime: Long,
+        subId: Int = -1
+    ): Long = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        val cv = ContentValues().apply {
+            put("thread_id", threadId)
+            put("address", address.trim())
+            put("body", body)
+            put("scheduled_time", scheduledTime)
+            put("sub_id", subId)
+            put("status", ScheduledMessageStatus.PENDING.name)
+            put("created_at", System.currentTimeMillis())
+        }
+        val id = db.insert("scheduled_messages", null, cv)
+        if (id != -1L) {
+            _scheduledMessagesChanged.value = System.currentTimeMillis()
+        }
+        id
+    }
+
+    suspend fun getPendingScheduledMessages(): List<ScheduledMessage> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<ScheduledMessage>()
+        val db = readableDatabase
+        val cursor = db.query(
+            "scheduled_messages",
+            null,
+            "status = ?",
+            arrayOf(ScheduledMessageStatus.PENDING.name),
+            null, null,
+            "scheduled_time ASC"
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                list.add(cursorToScheduledMessage(it))
+            }
+        }
+        list
+    }
+
+    suspend fun getScheduledMessagesForThread(threadId: Long, address: String): List<ScheduledMessage> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<ScheduledMessage>()
+        val db = readableDatabase
+        val canonical = normalizeAddress(address)
+        val selection: String
+        val selectionArgs: Array<String>
+        if (threadId > 0L && address.isNotBlank()) {
+            selection = "status = ? AND (thread_id = ? OR address = ? OR address = ?)"
+            selectionArgs = arrayOf(ScheduledMessageStatus.PENDING.name, threadId.toString(), address.trim(), canonical)
+        } else if (threadId > 0L) {
+            selection = "status = ? AND thread_id = ?"
+            selectionArgs = arrayOf(ScheduledMessageStatus.PENDING.name, threadId.toString())
+        } else {
+            selection = "status = ? AND (address = ? OR address = ?)"
+            selectionArgs = arrayOf(ScheduledMessageStatus.PENDING.name, address.trim(), canonical)
+        }
+
+        val cursor = db.query(
+            "scheduled_messages",
+            null,
+            selection,
+            selectionArgs,
+            null, null,
+            "scheduled_time ASC"
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                list.add(cursorToScheduledMessage(it))
+            }
+        }
+        list
+    }
+
+    suspend fun getScheduledMessage(id: Long): ScheduledMessage? = withContext(Dispatchers.IO) {
+        val db = readableDatabase
+        val cursor = db.query(
+            "scheduled_messages",
+            null,
+            "id = ?",
+            arrayOf(id.toString()),
+            null, null, null
+        )
+        cursor.use {
+            if (it.moveToNext()) {
+                cursorToScheduledMessage(it)
+            } else {
+                null
+            }
+        }
+    }
+
+    suspend fun updateScheduledMessageStatus(id: Long, status: ScheduledMessageStatus): Boolean = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        val cv = ContentValues().apply {
+            put("status", status.name)
+        }
+        val rows = db.update("scheduled_messages", cv, "id = ?", arrayOf(id.toString()))
+        if (rows > 0) {
+            _scheduledMessagesChanged.value = System.currentTimeMillis()
+        }
+        rows > 0
+    }
+
+    suspend fun updateScheduledMessageTime(id: Long, newTime: Long): Boolean = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        val cv = ContentValues().apply {
+            put("scheduled_time", newTime)
+            put("status", ScheduledMessageStatus.PENDING.name)
+        }
+        val rows = db.update("scheduled_messages", cv, "id = ?", arrayOf(id.toString()))
+        if (rows > 0) {
+            _scheduledMessagesChanged.value = System.currentTimeMillis()
+        }
+        rows > 0
+    }
+
+    suspend fun deleteScheduledMessage(id: Long): Boolean = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        val rows = db.delete("scheduled_messages", "id = ?", arrayOf(id.toString()))
+        if (rows > 0) {
+            _scheduledMessagesChanged.value = System.currentTimeMillis()
+        }
+        rows > 0
+    }
+
+    private fun cursorToScheduledMessage(cursor: Cursor): ScheduledMessage {
+        val id = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+        val threadId = cursor.getLong(cursor.getColumnIndexOrThrow("thread_id"))
+        val address = cursor.getString(cursor.getColumnIndexOrThrow("address")) ?: ""
+        val body = cursor.getString(cursor.getColumnIndexOrThrow("body")) ?: ""
+        val scheduledTime = cursor.getLong(cursor.getColumnIndexOrThrow("scheduled_time"))
+        val subId = cursor.getInt(cursor.getColumnIndexOrThrow("sub_id"))
+        val statusStr = cursor.getString(cursor.getColumnIndexOrThrow("status")) ?: ScheduledMessageStatus.PENDING.name
+        val status = try {
+            ScheduledMessageStatus.valueOf(statusStr)
+        } catch (e: Exception) {
+            ScheduledMessageStatus.PENDING
+        }
+        val createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("created_at"))
+        return ScheduledMessage(
+            id = id,
+            threadId = threadId,
+            address = address,
+            body = body,
+            scheduledTime = scheduledTime,
+            subId = subId,
+            status = status,
+            createdAt = createdAt
+        )
+    }
+
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 5
+        private const val DATABASE_VERSION = 6
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile

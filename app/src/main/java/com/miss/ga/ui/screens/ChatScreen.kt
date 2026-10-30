@@ -24,6 +24,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import com.miss.ga.ui.components.ScheduleMessageDialog
+import com.miss.ga.ui.components.ScheduledMessagesBanner
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -147,6 +150,7 @@ fun ChatScreen(
     var inputText by remember(nav.threadId, nav.address) {
         mutableStateOf(nav.initialBody.orEmpty())
     }
+    var showScheduleDialog by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showContactProfileDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -435,6 +439,17 @@ fun ChatScreen(
                 Column(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
+                    ScheduledMessagesBanner(
+                        scheduledMessages = state.scheduledMessages,
+                        showShamsiDate = state.showShamsiDate,
+                        onSendNow = { scheduledMsg ->
+                            viewModel.sendScheduledMessageNow(scheduledMsg)
+                        },
+                        onCancel = { id ->
+                            viewModel.cancelScheduledMessage(id)
+                        }
+                    )
+
                     SmsSegmentCounter(text = inputText)
 
                     Row(
@@ -475,47 +490,58 @@ fun ChatScreen(
                             )
                         }
 
-                        FilledIconButton(
-                            onClick = {
-                                if (inputText.isNotBlank() && !state.isSending) {
-                                    val text = inputText
-                                    inputText = ""
-                                    viewModel.sendMessage(text) { result ->
-                                        if (!result.sent) {
-                                            inputText = text
-                                            Toast.makeText(context, "Couldn't send message. Check signal and default SMS app.", Toast.LENGTH_SHORT).show()
-                                        } else if (!result.storedInProvider) {
-                                            Toast.makeText(
-                                                context,
-                                                "Misga must be the default SMS app for sent messages to appear",
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                        val canSend = inputText.isNotBlank() && !state.isSending
+                        Surface(
+                            shape = CircleShape,
+                            color = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .combinedClickable(
+                                    enabled = canSend,
+                                    onClick = {
+                                        if (inputText.isNotBlank() && !state.isSending) {
+                                            val text = inputText
+                                            inputText = ""
+                                            viewModel.sendMessage(text) { result ->
+                                                if (!result.sent) {
+                                                    inputText = text
+                                                    Toast.makeText(context, "Couldn't send message. Check signal and default SMS app.", Toast.LENGTH_SHORT).show()
+                                                } else if (!result.storedInProvider) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Misga must be the default SMS app for sent messages to appear",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (inputText.isNotBlank() && !state.isSending) {
+                                            showScheduleDialog = true
                                         }
                                     }
-                                }
-                            },
-                            enabled = inputText.isNotBlank() && !state.isSending,
-                            shape = CircleShape,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                disabledContentColor = MaterialTheme.colorScheme.outline
-                            ),
-                            modifier = Modifier.size(50.dp)
+                                )
                         ) {
-                            if (state.isSending) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(22.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 2.5.dp
-                                )
-                            } else {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = "Send",
-                                    modifier = Modifier.size(20.dp)
-                                )
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                if (state.isSending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(22.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.5.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = "Send (hold to schedule)",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -849,6 +875,28 @@ fun ChatScreen(
             dismissButton = {
                 TextButton(onClick = { showBatchDeleteConfirmDialog = false }) {
                     Text("Cancel", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
+    }
+
+    if (showScheduleDialog) {
+        ScheduleMessageDialog(
+            recipientName = state.contactName,
+            address = state.address,
+            showShamsiDate = state.showShamsiDate,
+            onDismiss = { showScheduleDialog = false },
+            onSchedule = { scheduledTimeMillis ->
+                val text = inputText
+                inputText = ""
+                showScheduleDialog = false
+                viewModel.scheduleMessage(text, scheduledTimeMillis) { success ->
+                    if (success) {
+                        Toast.makeText(context, "Message scheduled", Toast.LENGTH_SHORT).show()
+                    } else {
+                        inputText = text
+                        Toast.makeText(context, "Failed to schedule message", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         )
