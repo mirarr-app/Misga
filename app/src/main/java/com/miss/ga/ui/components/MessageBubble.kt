@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.miss.ga.data.model.SmsMessage
+import com.miss.ga.engine.OtpExtractor
 import com.miss.ga.theme.IncomingBubbleShape
 import com.miss.ga.theme.OutgoingBubbleShape
 import com.miss.ga.ui.util.SmsDateFormats
@@ -197,6 +198,14 @@ private fun BubbleContent(
             }
         } else {
             bodyText()
+        }
+        val otpCode = remember(message.body) { OtpExtractor.extractOtp(message.body) }
+        if (!isSent && otpCode != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OtpCopyButton(
+                otpCode = otpCode,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
         }
         Spacer(modifier = Modifier.height(4.dp))
         Row(

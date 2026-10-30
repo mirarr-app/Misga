@@ -1,0 +1,3 @@
+• One-button OTP copy feature for Persian and English verification codes
+• Copy OTP codes with one tap directly from incoming notification bar
+• Quick one-tap OTP copy button on message bubbles inside chat

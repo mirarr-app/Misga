@@ -94,7 +94,28 @@ object FakeSmsSimulator {
             sender = "BankMellat",
             body = "رمز یکبار مصرف شما: ۷۸۴۵۱۲\nمبلغ: ۲۵۰,۰۰۰ ریال\nخرید اینترنتی\nبانک ملت",
             expectedAction = FilterAction.NORMAL,
-            description = "Transactional banking two-factor SMS"
+            description = "Transactional banking two-factor SMS (with Persian digits)"
+        ),
+        FakeSmsScenario(
+            title = "Persian Login OTP (Snapp)",
+            sender = "Snapp",
+            body = "کد تایید ورود به اسنپ: ۵۹۲۱",
+            expectedAction = FilterAction.NORMAL,
+            description = "Snapp Persian login OTP code"
+        ),
+        FakeSmsScenario(
+            title = "English 2FA Verification Code",
+            sender = "GitHub",
+            body = "Your verification code is 492018. It expires in 10 minutes.",
+            expectedAction = FilterAction.NORMAL,
+            description = "English two-factor authentication code"
+        ),
+        FakeSmsScenario(
+            title = "Google Verification Code",
+            sender = "Google",
+            body = "G-749201 is your Google verification code.",
+            expectedAction = FilterAction.NORMAL,
+            description = "Standard Google verification SMS"
         )
     )
 

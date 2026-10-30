@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">میسگا</string>
+    <string name="app_tagline">Make Iran\'s SMS Great Again</string>
+    <string name="sms_inbox">صندوق پیامک</string>
+    <string name="sms_permission_needed">دسترسی به پیامک لازم است</string>
+    <string name="open_settings">باز کردن تنظیمات</string>
+    <string name="retry">تلاش مجدد</string>
+    <string name="send_failed_check_signal">ارسال نشد. آنتن و برنامه پیش‌فرض پیامک را بررسی کنید.</string>
+    <string name="unknown_sender">فرستنده ناشناس</string>
+    <string name="notification_action_reply">پاسخ</string>
+    <string name="notification_action_mark_read">علامت به عنوان خوانده شده</string>
+    <string name="notification_action_delete">حذف</string>
+    <string name="notification_user_me">من</string>
+    <string name="notification_action_copy_otp">کپی %1$s</string>
+    <string name="copy_otp_button">کپی کد %1$s</string>
+    <string name="otp_copied_to_clipboard">کد %1$s در کلیپ‌بورد کپی شد</string>
+    <string name="copied">کپی شد!</string>
+</resources>

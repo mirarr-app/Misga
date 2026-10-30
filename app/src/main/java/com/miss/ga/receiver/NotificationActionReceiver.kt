@@ -11,7 +11,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
+import com.miss.ga.R
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Handles direct-reply and mark-as-read actions on message notifications.
@@ -27,6 +32,20 @@ class NotificationActionReceiver : BroadcastReceiver() {
         scope.launch {
             try {
                 when (intent.action) {
+                    NotificationActions.ACTION_COPY_OTP -> {
+                        val otpCode = intent.getStringExtra(NotificationActions.EXTRA_OTP_CODE).orEmpty()
+                        if (otpCode.isNotBlank()) {
+                            withContext(Dispatchers.Main) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("OTP Code", otpCode))
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.otp_copied_to_clipboard, otpCode),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
                     NotificationActions.ACTION_REPLY -> {
                         val address = intent.getStringExtra(NotificationActions.EXTRA_ADDRESS).orEmpty()
                         val replyBody = extractReplyText(intent)
@@ -79,6 +98,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
 /** Holds action constants plus helpers shared with [com.miss.ga.engine.NotificationHelper]. */
 object NotificationActions {
+    const val ACTION_COPY_OTP = "com.miss.ga.ACTION_NOTIFICATION_COPY_OTP"
+    const val EXTRA_OTP_CODE = "EXTRA_OTP_CODE"
     const val ACTION_REPLY = "com.miss.ga.ACTION_NOTIFICATION_REPLY"
     const val ACTION_MARK_READ = "com.miss.ga.ACTION_NOTIFICATION_MARK_READ"
     const val ACTION_DELETE = "com.miss.ga.ACTION_NOTIFICATION_DELETE"

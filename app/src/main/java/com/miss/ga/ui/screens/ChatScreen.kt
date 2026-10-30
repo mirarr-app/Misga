@@ -102,6 +102,8 @@ import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.MessageBubble
 import com.miss.ga.ui.components.SimToggleButton
 import com.miss.ga.ui.components.SmsSegmentCounter
+import com.miss.ga.engine.OtpExtractor
+import com.miss.ga.ui.components.OtpCopyButton
 import com.miss.ga.ui.components.SpamMessagePill
 import com.miss.ga.ui.util.ContactUtils
 import com.miss.ga.ui.util.senderDisplayName
@@ -704,6 +706,14 @@ fun ChatScreen(
                                 modifier = Modifier.padding(12.dp)
                             )
                         }
+                    }
+                    val dialogOtp = remember(msg.body) { OtpExtractor.extractOtp(msg.body) }
+                    if (dialogOtp != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OtpCopyButton(
+                            otpCode = dialogOtp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                     if (msg.isSent) {
                         val (statusIcon, statusText, statusTint) = when {

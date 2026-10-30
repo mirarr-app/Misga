@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.miss.ga.data.model.SmsMessage
+import com.miss.ga.engine.OtpExtractor
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SpamCardShape
 import com.miss.ga.theme.SpamWarningBorderDark
@@ -233,6 +234,12 @@ fun SpamMessagePill(
                                 modifier = Modifier.padding(12.dp)
                             )
                         }
+                    }
+
+                    val otpCode = remember(message.body) { OtpExtractor.extractOtp(message.body) }
+                    if (otpCode != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OtpCopyButton(otpCode = otpCode)
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

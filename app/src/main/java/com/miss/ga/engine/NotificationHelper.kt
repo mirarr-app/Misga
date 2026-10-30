@@ -169,7 +169,7 @@ class NotificationHelper private constructor(
             builder.setSubText(simInfo.badgeLabel)
         }
 
-        buildActions(threadId, sender, messageId).forEach { builder.addAction(it) }
+        buildActions(threadId, sender, messageId, body).forEach { builder.addAction(it) }
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
@@ -206,7 +206,7 @@ class NotificationHelper private constructor(
         return list
     }
 
-    private fun buildActions(threadId: Long, sender: String, messageId: Long): List<NotificationCompat.Action> {
+    private fun buildActions(threadId: Long, sender: String, messageId: Long, body: String): List<NotificationCompat.Action> {
         fun actionIntent(action: String): Intent =
             Intent(context, NotificationActionReceiver::class.java).apply {
                 this.action = action
@@ -214,6 +214,27 @@ class NotificationHelper private constructor(
                 putExtra(NotificationActions.EXTRA_ADDRESS, sender)
                 putExtra(NotificationActions.EXTRA_MESSAGE_ID, messageId)
             }
+
+        val actions = mutableListOf<NotificationCompat.Action>()
+
+        val otpCode = OtpExtractor.extractOtp(body)
+        if (!otpCode.isNullOrBlank()) {
+            val copyIntent = actionIntent(NotificationActions.ACTION_COPY_OTP).apply {
+                putExtra(NotificationActions.EXTRA_OTP_CODE, otpCode)
+            }
+            val copyPendingIntent = PendingIntent.getBroadcast(
+                context,
+                copyOtpRequestCode(threadId),
+                copyIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val copyAction = NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_save,
+                context.getString(R.string.notification_action_copy_otp, otpCode),
+                copyPendingIntent
+            ).build()
+            actions.add(copyAction)
+        }
 
         // RemoteInput results are injected into the intent, so it must stay mutable.
         val replyPendingIntent = PendingIntent.getBroadcast(
@@ -246,7 +267,8 @@ class NotificationHelper private constructor(
             markReadPendingIntent
         ).build()
 
-        val actions = mutableListOf(replyAction, markReadAction)
+        actions.add(replyAction)
+        actions.add(markReadAction)
         if (userPreferences.showNotificationDeleteAction) {
             val deletePendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -265,9 +287,10 @@ class NotificationHelper private constructor(
         return actions
     }
 
+    private fun copyOtpRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x43505900
     private fun replyRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt()
-    private fun markReadRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x4D524400.toInt()
-    private fun deleteRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x44454C00.toInt()
+    private fun markReadRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x4D524400
+    private fun deleteRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x44454C00
 
     fun cancelNotification(threadId: Long) {
         notificationManager.cancel(notificationIdFor(threadId))
