@@ -19,7 +19,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -31,10 +34,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.miss.ga.R
 import com.miss.ga.data.model.ScheduledMessage
+import com.miss.ga.data.model.ScheduledMessageStatus
 import com.miss.ga.ui.util.SmsDateFormats
 
 @Composable
@@ -76,10 +82,32 @@ private fun ScheduledMessageItem(
     onSendNow: () -> Unit,
     onCancel: () -> Unit
 ) {
+    val isFailed = message.status == ScheduledMessageStatus.FAILED
+    val containerColor = if (isFailed) {
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
+    } else {
+        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+    }
+    val iconBgColor = if (isFailed) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.secondary
+    }
+    val iconTintColor = if (isFailed) {
+        MaterialTheme.colorScheme.onError
+    } else {
+        MaterialTheme.colorScheme.onSecondary
+    }
+    val contentTextColor = if (isFailed) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
+
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+            containerColor = containerColor
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -91,13 +119,13 @@ private fun ScheduledMessageItem(
         ) {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.secondary,
+                color = iconBgColor,
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Schedule,
+                    imageVector = if (isFailed) Icons.Default.Warning else Icons.Default.Schedule,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondary,
+                    tint = iconTintColor,
                     modifier = Modifier
                         .size(16.dp)
                         .padding(6.dp)
@@ -112,17 +140,26 @@ private fun ScheduledMessageItem(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Scheduled for ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                    )
-                    Text(
-                        text = SmsDateFormats.formatDateTimeWithYear(message.scheduledTime, showShamsiDate),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+                    if (isFailed) {
+                        Text(
+                            text = stringResource(R.string.scheduled_sms_failed_banner_title),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text(
+                            text = "Scheduled for ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentTextColor.copy(alpha = 0.8f)
+                        )
+                        Text(
+                            text = SmsDateFormats.formatDateTimeWithYear(message.scheduledTime, showShamsiDate),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))
@@ -132,7 +169,7 @@ private fun ScheduledMessageItem(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    color = contentTextColor
                 )
             }
 
@@ -141,17 +178,21 @@ private fun ScheduledMessageItem(
             TextButton(
                 onClick = onSendNow,
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = if (isFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send now",
+                    imageVector = if (isFailed) Icons.Default.Refresh else Icons.AutoMirrored.Filled.Send,
+                    contentDescription = if (isFailed) stringResource(R.string.retry) else "Send now",
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Send now",
-                    style = MaterialTheme.typography.labelMedium
+                    text = if (isFailed) stringResource(R.string.retry) else "Send now",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
@@ -162,7 +203,7 @@ private fun ScheduledMessageItem(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Cancel schedule",
-                    tint = MaterialTheme.colorScheme.outline,
+                    tint = if (isFailed) MaterialTheme.colorScheme.error.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(16.dp)
                 )
             }

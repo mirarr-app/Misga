@@ -1309,15 +1309,17 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         val canonical = normalizeAddress(address)
         val selection: String
         val selectionArgs: Array<String>
+        val pendingStatus = ScheduledMessageStatus.PENDING.name
+        val failedStatus = ScheduledMessageStatus.FAILED.name
         if (threadId > 0L && address.isNotBlank()) {
-            selection = "status = ? AND (thread_id = ? OR address = ? OR address = ?)"
-            selectionArgs = arrayOf(ScheduledMessageStatus.PENDING.name, threadId.toString(), address.trim(), canonical)
+            selection = "status IN (?, ?) AND (thread_id = ? OR address = ? OR address = ?)"
+            selectionArgs = arrayOf(pendingStatus, failedStatus, threadId.toString(), address.trim(), canonical)
         } else if (threadId > 0L) {
-            selection = "status = ? AND thread_id = ?"
-            selectionArgs = arrayOf(ScheduledMessageStatus.PENDING.name, threadId.toString())
+            selection = "status IN (?, ?) AND thread_id = ?"
+            selectionArgs = arrayOf(pendingStatus, failedStatus, threadId.toString())
         } else {
-            selection = "status = ? AND (address = ? OR address = ?)"
-            selectionArgs = arrayOf(ScheduledMessageStatus.PENDING.name, address.trim(), canonical)
+            selection = "status IN (?, ?) AND (address = ? OR address = ?)"
+            selectionArgs = arrayOf(pendingStatus, failedStatus, address.trim(), canonical)
         }
 
         val cursor = db.query(

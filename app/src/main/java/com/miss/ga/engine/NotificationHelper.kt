@@ -19,6 +19,7 @@ import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.UserPreferences
 import com.miss.ga.receiver.NotificationActionReceiver
 import com.miss.ga.receiver.NotificationActions
+import com.miss.ga.receiver.ScheduledSmsReceiver
 
 class NotificationHelper private constructor(
     private val context: Context,
@@ -178,6 +179,93 @@ class NotificationHelper private constructor(
         }
     }
 
+    fun showScheduledSmsFailureNotification(
+        threadId: Long,
+        address: String,
+        body: String,
+        scheduledId: Long,
+        contactName: String?
+    ) {
+        val unknownLabel = context.getString(R.string.unknown_sender)
+        val displayName = IncomingSmsPolicy.displayName(contactName, address, unknownLabel)
+        val notificationId = scheduledFailureNotificationId(scheduledId)
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_THREAD_ID, threadId)
+            putExtra(EXTRA_ADDRESS, address)
+            putExtra(EXTRA_CONTACT_NAME, contactName)
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val retryIntent = Intent(context, ScheduledSmsReceiver::class.java).apply {
+            action = ScheduledSmsReceiver.ACTION_RETRY_SCHEDULED_SMS
+            putExtra(ScheduledSmsReceiver.EXTRA_SCHEDULED_ID, scheduledId)
+        }
+        val retryPendingIntent = PendingIntent.getBroadcast(
+            context,
+            retryRequestCode(scheduledId),
+            retryIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val retryAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_rotate,
+            context.getString(R.string.retry),
+            retryPendingIntent
+        ).build()
+
+        val cancelIntent = Intent(context, ScheduledSmsReceiver::class.java).apply {
+            action = ScheduledSmsReceiver.ACTION_CANCEL_SCHEDULED_SMS
+            putExtra(ScheduledSmsReceiver.EXTRA_SCHEDULED_ID, scheduledId)
+        }
+        val cancelPendingIntent = PendingIntent.getBroadcast(
+            context,
+            cancelRequestCode(scheduledId),
+            cancelIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val cancelAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            context.getString(R.string.notification_action_delete),
+            cancelPendingIntent
+        ).build()
+
+        val title = context.getString(R.string.scheduled_sms_failed_title)
+        val content = context.getString(R.string.scheduled_sms_failed_text, displayName)
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ALERT_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .setBigContentTitle(title)
+                    .bigText("$content\n\"$body\"")
+            )
+            .setContentIntent(contentPendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .addAction(retryAction)
+            .addAction(cancelAction)
+
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        } catch (e: SecurityException) {
+            Log.w(TAG, "POST_NOTIFICATIONS permission denied", e)
+        }
+    }
+
+    fun cancelScheduledSmsFailureNotification(scheduledId: Long) {
+        notificationManager.cancel(scheduledFailureNotificationId(scheduledId))
+    }
+
     private fun getUnreadMessagesForThread(threadId: Long): List<Pair<String, Long>> {
         val list = mutableListOf<Pair<String, Long>>()
         if (threadId <= 0) return list
@@ -291,6 +379,10 @@ class NotificationHelper private constructor(
     private fun replyRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt()
     private fun markReadRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x4D524400
     private fun deleteRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x44454C00
+
+    private fun scheduledFailureNotificationId(scheduledId: Long): Int = (scheduledId xor (scheduledId ushr 32)).toInt() xor 0x53464149
+    private fun retryRequestCode(scheduledId: Long): Int = (scheduledId xor (scheduledId ushr 32)).toInt() xor 0x52545259
+    private fun cancelRequestCode(scheduledId: Long): Int = (scheduledId xor (scheduledId ushr 32)).toInt() xor 0x43414E43
 
     fun cancelNotification(threadId: Long) {
         notificationManager.cancel(notificationIdFor(threadId))

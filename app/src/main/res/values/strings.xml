@@ -15,4 +15,8 @@
     <string name="copy_otp_button">Copy code %1$s</string>
     <string name="otp_copied_to_clipboard">Code %1$s copied to clipboard</string>
     <string name="copied">Copied!</string>
+    <string name="scheduled_sms_failed_title">Scheduled message failed to send</string>
+    <string name="scheduled_sms_failed_text">Could not send scheduled message to %1$s. Tap to retry.</string>
+    <string name="scheduled_sms_failed_banner_title">Failed to send (No signal or network)</string>
+    <string name="scheduled_time_passed_error">Selected time has already passed. Please choose a future time.</string>
 </resources>

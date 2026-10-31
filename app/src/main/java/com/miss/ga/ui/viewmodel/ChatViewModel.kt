@@ -24,6 +24,7 @@ import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.model.ScheduledMessage
+import com.miss.ga.engine.NotificationHelper
 import com.miss.ga.engine.ScheduledSmsManager
 import com.miss.ga.data.repository.SendSmsResult
 import com.miss.ga.data.repository.SmsRepository
@@ -426,6 +427,7 @@ class ChatViewModel(
     fun cancelScheduledMessage(scheduledId: Long) {
         viewModelScope.launch {
             ScheduledSmsManager.cancel(getApplication(), scheduledId)
+            NotificationHelper.getInstance(getApplication()).cancelScheduledSmsFailureNotification(scheduledId)
             dbHelper.deleteScheduledMessage(scheduledId)
             loadScheduledMessages()
         }
@@ -434,6 +436,7 @@ class ChatViewModel(
     fun sendScheduledMessageNow(scheduledMessage: ScheduledMessage) {
         viewModelScope.launch {
             ScheduledSmsManager.cancel(getApplication(), scheduledMessage.id)
+            NotificationHelper.getInstance(getApplication()).cancelScheduledSmsFailureNotification(scheduledMessage.id)
             dbHelper.deleteScheduledMessage(scheduledMessage.id)
             sendMessage(scheduledMessage.body)
         }

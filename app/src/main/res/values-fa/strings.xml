@@ -16,4 +16,8 @@
     <string name="copy_otp_button">کپی کد %1$s</string>
     <string name="otp_copied_to_clipboard">کد %1$s در کلیپ‌بورد کپی شد</string>
     <string name="copied">کپی شد!</string>
+    <string name="scheduled_sms_failed_title">ارسال پیام زمان‌بندی‌شده ناموفق بود</string>
+    <string name="scheduled_sms_failed_text">ارسال پیام زمان‌بندی‌شده به %1$s ناموفق بود. برای تلاش مجدد لمس کنید.</string>
+    <string name="scheduled_sms_failed_banner_title">ارسال ناموفق بود (عدم آنتن‌دهی یا شبکه)</string>
+    <string name="scheduled_time_passed_error">زمان انتخاب شده گذشته است. لطفاً زمان دیگری را انتخاب کنید.</string>
 </resources>

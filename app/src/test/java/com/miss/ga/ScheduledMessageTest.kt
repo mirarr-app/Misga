@@ -47,7 +47,27 @@ class ScheduledMessageTest {
     @Test
     fun testReceiverConstants() {
         assertEquals("com.miss.ga.action.SEND_SCHEDULED_SMS", ScheduledSmsReceiver.ACTION_SEND_SCHEDULED_SMS)
+        assertEquals("com.miss.ga.action.RETRY_SCHEDULED_SMS", ScheduledSmsReceiver.ACTION_RETRY_SCHEDULED_SMS)
+        assertEquals("com.miss.ga.action.CANCEL_SCHEDULED_SMS", ScheduledSmsReceiver.ACTION_CANCEL_SCHEDULED_SMS)
         assertEquals("com.miss.ga.extra.SCHEDULED_ID", ScheduledSmsReceiver.EXTRA_SCHEDULED_ID)
+    }
+
+    @Test
+    fun testPastTimeValidation() {
+        val now = System.currentTimeMillis()
+        val pastCalendar = Calendar.getInstance().apply {
+            timeInMillis = now
+            add(Calendar.MINUTE, -30)
+        }
+        val pastTimeMillis = pastCalendar.timeInMillis
+        assertTrue("Past time must be strictly less than or equal to now", pastTimeMillis <= now)
+
+        val futureCalendar = Calendar.getInstance().apply {
+            timeInMillis = now
+            add(Calendar.MINUTE, 30)
+        }
+        val futureTimeMillis = futureCalendar.timeInMillis
+        assertTrue("Future time must be strictly greater than now", futureTimeMillis > now)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.miss.ga.ui.components
 
 import android.text.format.DateFormat
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.miss.ga.R
 import com.miss.ga.ui.util.SmsDateFormats
 import java.util.Calendar
 import java.util.TimeZone
@@ -148,8 +151,21 @@ fun ScheduleMessageDialog(
     val is24Hour = remember(context) { DateFormat.is24HourFormat(context) }
 
     if (showDatePicker) {
+        val nowUtcMidnight = remember {
+            val localCal = Calendar.getInstance()
+            Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                set(Calendar.YEAR, localCal.get(Calendar.YEAR))
+                set(Calendar.MONTH, localCal.get(Calendar.MONTH))
+                set(Calendar.DAY_OF_MONTH, localCal.get(Calendar.DAY_OF_MONTH))
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+        }
         Material3DatePickerDialog(
-            initialDateMillis = selectedTimeMillis,
+            initialDateMillis = selectedTimeMillis.coerceAtLeast(nowUtcMidnight),
+            minDateUtcMillis = nowUtcMidnight,
             onDateSelected = { dateUtcMillis ->
                 tempDateUtcMillis = dateUtcMillis
                 showDatePicker = false
@@ -170,8 +186,14 @@ fun ScheduleMessageDialog(
                 if (combined > System.currentTimeMillis()) {
                     selectedTimeMillis = combined
                     isCustomSelected = true
+                    showTimePicker = false
+                } else {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.scheduled_time_passed_error),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
-                showTimePicker = false
             },
             onDismiss = { showTimePicker = false }
         )
@@ -293,11 +315,22 @@ fun ScheduleMessageDialog(
 @Composable
 private fun Material3DatePickerDialog(
     initialDateMillis: Long,
+    minDateUtcMillis: Long,
     onDateSelected: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
     val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = initialDateMillis
+        initialSelectedDateMillis = initialDateMillis,
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                return utcTimeMillis >= minDateUtcMillis
+            }
+
+            override fun isSelectableYear(year: Int): Boolean {
+                val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+                return year >= currentYear
+            }
+        }
     )
     DatePickerDialog(
         onDismissRequest = onDismiss,
