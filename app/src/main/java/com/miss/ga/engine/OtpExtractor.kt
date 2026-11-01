@@ -37,7 +37,7 @@ object OtpExtractor {
     private const val PREFIX_KEYWORD = (
         "(?:" +
         "کد\\s*(?:ت[اأآ]یید(?:یه)?|ورود|فعال[\\s\\u200c]*سازی|احراز[\\s\\u200c]*هویت|صحت[\\s\\u200c]*سنجی|ثبت[\\s\\u200c]*نام|امنیتی|یک[\\s\\u200c]*بار[\\s\\u200c]*مصرف|یکبارمصرف|شما)" +
-        "|رمز\\s*(?:یک[\\s\\u200c]*بار[\\s\\u200c]*مصرف|یکبارمصرف|1بار[\\s\\u200c]*مصرف|پویا|دوم(?:\\s*پویا)?|موقت(?:[\\s\\u200c]*ورود)?|ورود|عبور(?:[\\s\\u200c]*موقت)?|شما)" +
+        "|رمز\\s*(?:یک[\\s\\u200c]*بار[\\s\\u200c]*مصرف|یکبارمصرف|1بار[\\s\\u200c]*مصرف|پویا|دوم(?:\\s*پویا)?|موقت(?:[\\s\\u200c]*ورود)?|ورود|عبور(?:[\\s\\u200c]*موقت)?|فعال[\\s\\u200c]*سازی|فعالسازی|شما)" +
         "|\\b(?:verification|verify|auth|authentication|login|security|access|confirmation|activation)\\s*code\\b" +
         "|\\bone[\\s-]*time\\s*password\\b" +
         "|\\b(?:otp|passcode|pass\\s*code)\\b" +
@@ -56,7 +56,7 @@ object OtpExtractor {
     private const val SUFFIX_KEYWORD = (
         "(?:" +
         "کد\\s*(?:ت[اأآ]یید|ورود|فعال[\\s\\u200c]*سازی|احراز[\\s\\u200c]*هویت|ثبت[\\s\\u200c]*نام)" +
-        "|رمز\\s*(?:یک[\\s\\u200c]*بار[\\s\\u200c]*مصرف|پویا|دوم|موقت)" +
+        "|رمز\\s*(?:یک[\\s\\u200c]*بار[\\s\\u200c]*مصرف|پویا|دوم|موقت|فعال[\\s\\u200c]*سازی|فعالسازی)" +
         "|(?:is\\s*(?:your\\s*)?)?(?:[a-zA-Z0-9_-]+\\s*)?(?:verification|auth|login|security|confirmation|access|activation|steam|uber|instagram|telegram|whatsapp|discord|twitter|apple|google|github)?\\s*(?:code|passcode)\\b" +
         ")"
     )

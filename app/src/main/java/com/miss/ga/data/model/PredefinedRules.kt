@@ -21,7 +21,7 @@ object PredefinedRules {
             FilterRule(
                 id = -102,
                 name = "Banking Dynamic Passwords (رمز پویا / رمز دوم / رمز یکبار مصرف)",
-                pattern = "(?i)(رمز\\s*(پویا|دوم|یکبار\\s*مصرف|یک\\s*بار\\s*مصرف|۱بار\\s*مصرف|موقت|ورود|عبور)|(one[ -]?time\\s*password|otp\\s*code|dynamic\\s*password))",
+                pattern = "(?i)(رمز\\s*(پویا|دوم|یکبار\\s*مصرف|یک\\s*بار\\s*مصرف|۱بار\\s*مصرف|موقت|ورود|عبور|فعالسازی|فعال\\s*سازی)|(one[ -]?time\\s*password|otp\\s*code|dynamic\\s*password))",
                 isRegex = true,
                 action = FilterAction.NORMAL,
                 listType = RuleListType.ALLOWLIST,
@@ -32,15 +32,15 @@ object PredefinedRules {
             ),
             FilterRule(
                 id = -103,
-                name = "Direct OTP Key-Value Syntax (کد: / رمز: / OTP: / Code:)",
-                pattern = "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8}|code\\s*[:=]\\s*[0-9]{4,8})",
+                name = "Direct OTP Key-Value Syntax (کد: / رمز: / رمز فعالسازی: / OTP: / Code:)",
+                pattern = "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز(\\s*(فعالسازی|فعال\\s*سازی))?\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8}|code\\s*[:=]\\s*[0-9]{4,8})",
                 isRegex = true,
                 action = FilterAction.NORMAL,
                 listType = RuleListType.ALLOWLIST,
                 isEnabled = true,
                 isPredefined = true,
                 category = RuleCategory.OTP_ALLOWLIST,
-                description = "Structured authentication codes formatted like 'کد: 123456' or 'OTP: 890123'"
+                description = "Structured authentication codes formatted like 'کد: 123456', 'رمز: 123456', 'رمز فعالسازی: 123456', or 'OTP: 890123'"
             ),
 
             // ==========================================
@@ -357,6 +357,18 @@ object PredefinedRules {
                 isPredefined = true,
                 category = RuleCategory.SPAM_KEYWORD,
                 description = "Blocks spam and promotional URLs with optional https, subdomains, paths, and queries: l.snpy.ir, i.jabama.me, i.weurl.co, zbl.io, my.irancell.ir/dlp?id=gift, payment.samantel.ir/package"
+            ),
+            FilterRule(
+                id = -27,
+                name = "Irancell Marathon Promo (ماراتن / irancell)",
+                pattern = "(?is)(ماراتن.*(irancell|ایرانسل)|(irancell|ایرانسل).*ماراتن)",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Blocks Irancell marathon promotional SMS where 'ماراتن' and 'irancell' (or 'ایرانسل') appear anywhere in the text (including in URLs)"
             ),
 
             // ==========================================

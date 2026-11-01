@@ -81,6 +81,9 @@ class SmsFilterEngineTest {
             "بانک ملت: رمز دوم یکبار مصرف (پویا) شما: 981240",
             "بانک سامان: رمز پویا برای خرید اینترنتی: 618293",
             "کد: 182390 جهت احراز هویت",
+            "رمز فعالسازی: 749201",
+            "بانک آینده: رمز فعال سازی: 839201",
+            "رمز فعال‌سازی: 582019",
             "Your login verification code is 491029",
             "Snap OTP code: 991823"
         )
@@ -373,6 +376,81 @@ l.snpy.ir/iouvc"""
             snpyResult.action
         )
         assertFalse(snpyResult.isAllowlisted)
+    }
+
+    @Test
+    fun testActivationPasswordAllowlistPriorityOverBlocklist() {
+        val rules = PredefinedRules.getDefaultRules()
+        val sms = "بانک سپه: رمز فعالسازی: 619283 جهت ورود به همراه بانک"
+        val filterResult = SmsFilterEngine.evaluateMessage(
+            sender = "10008899",
+            body = sms,
+            rules = rules,
+            senderPreference = null
+        )
+        assertEquals(
+            "رمز فعالسازی: must override commercial shortcode and spam keyword blocklists",
+            FilterAction.NORMAL,
+            filterResult.action
+        )
+        assertTrue("Result should be marked as allowlisted", filterResult.isAllowlisted)
+    }
+
+    @Test
+    fun testIrancellMarathonBlocklist() {
+        val rule = PredefinedRules.getDefaultRules().first { it.id == -27L }
+
+        // Both orders and multiline variants containing "ماراتن" and "irancell" / "ایرانسل"
+        val matchingMessages = listOf(
+            "در ماراتن جوایز شرکت کنید: https://my.irancell.ir/marathon",
+            "https://irancell.ir/bonus\nماراتن بزرگ تابستانه آغاز شد",
+            "ماراتن شگفت‌انگیز برای مشترکین: https://shop.irancell.ir/deal",
+            "IRANCELL MARATHON: شرکت در ماراتن جوایز",
+            "ماراتن ایرانسل آغاز شد"
+        )
+        matchingMessages.forEach { sample ->
+            assertTrue(
+                "Irancell Marathon sample should match: $sample",
+                SmsFilterEngine.testPattern(rule.pattern, true, sample).isMatch
+            )
+        }
+
+        // Messages with only one of the words should NOT match
+        val nonMatchingMessages = listOf(
+            "ماراتن ورزشی تهران فردا صبح برگزار می‌شود.",
+            "مسابقه ماراتن بین‌المللی کیش",
+            "بسته اینترنت همراه: https://my.irancell.ir/profile",
+            "کد ورود به ایرانسل من: 49102"
+        )
+        nonMatchingMessages.forEach { sample ->
+            assertFalse(
+                "Sample should not match Irancell Marathon rule: $sample",
+                SmsFilterEngine.testPattern(rule.pattern, true, sample).isMatch
+            )
+        }
+
+        // evaluateMessage should classify it as SPAM
+        val promoSms = "ماراتن بزرگ اینترنت و مکالمه!\nجهت شرکت کلیک کنید:\nhttps://my.irancell.ir/m/bonus"
+        val eval = SmsFilterEngine.evaluateMessage(
+            sender = "+989351234567",
+            body = promoSms,
+            rules = PredefinedRules.getDefaultRules(),
+            senderPreference = null
+        )
+        assertEquals(FilterAction.SPAM, eval.action)
+        assertEquals("Irancell Marathon Promo (ماراتن / irancell)", eval.matchedRuleName)
+        assertFalse(eval.isAllowlisted)
+
+        // However, if the message has an OTP allowlist rule, allowlist priority takes precedence
+        val otpWithMarathon = "کد تایید شما: 849201\nماراتن جوایز: https://my.irancell.ir"
+        val otpEval = SmsFilterEngine.evaluateMessage(
+            sender = "100035",
+            body = otpWithMarathon,
+            rules = PredefinedRules.getDefaultRules(),
+            senderPreference = null
+        )
+        assertEquals(FilterAction.NORMAL, otpEval.action)
+        assertTrue(otpEval.isAllowlisted)
     }
 
     @Test

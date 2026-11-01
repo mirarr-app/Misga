@@ -38,6 +38,10 @@ class OtpExtractorTest {
         assertEquals("9021", OtpExtractor.extractOtp("کد تأیید: ۹۰۲۱"))
         assertEquals("481902", OtpExtractor.extractOtp("بانک سپه\nرمز پویا: 481902\nخرید اینترنتی"))
         assertEquals("3918", OtpExtractor.extractOtp("بلوبانک\nکد تایید: 3918"))
+        assertEquals("749201", OtpExtractor.extractOtp("بانک ملی: رمز فعالسازی: 749201"))
+        assertEquals("839201", OtpExtractor.extractOtp("رمز فعال‌سازی: 839201"))
+        assertEquals("582019", OtpExtractor.extractOtp("رمز فعال سازی: 582019"))
+        assertEquals("928371", OtpExtractor.extractOtp("928371 رمز فعالسازی شما است"))
     }
 
     @Test

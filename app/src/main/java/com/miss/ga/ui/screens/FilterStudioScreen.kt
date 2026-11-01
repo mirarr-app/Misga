@@ -611,7 +611,7 @@ private fun PlaygroundTab(
                     onClick = {
                         onPresetSelect(
                             "دیجی کالا: کد: 582103 برای ورود استفاده شود.",
-                            "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8})",
+                            "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز(\\s*(فعالسازی|فعال\\s*سازی))?\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8})",
                             RuleListType.ALLOWLIST
                         )
                     },
@@ -689,6 +689,20 @@ private fun PlaygroundTab(
                         )
                     },
                     label = { Text("Monthly Discount (تخفیف ماهیانه)") },
+                    shape = PillShape,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
+                )
+                AssistChip(
+                    onClick = {
+                        onPresetSelect(
+                            "در ماراتن جوایز شرکت کنید: https://my.irancell.ir/marathon",
+                            "(?is)(ماراتن.*(irancell|ایرانسل)|(irancell|ایرانسل).*ماراتن)",
+                            RuleListType.BLOCKLIST
+                        )
+                    },
+                    label = { Text("Irancell Marathon (ماراتن)") },
                     shape = PillShape,
                     colors = AssistChipDefaults.assistChipColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
