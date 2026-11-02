@@ -1,0 +1,6 @@
+• Scheduled messaging: long-press send to schedule SMS with presets or custom date and time
+• Material 3 time and date pickers with dark and light theme support
+• One-tap OTP copy button in notifications and message bubbles
+• Automatic link detection with clickable URLs
+• Predefined allowlist for activation codes and Irancell blocklist
+• Performance improvements and bug fixes
