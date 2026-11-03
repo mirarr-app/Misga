@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.ui.platform.LocalContext
 import com.miss.ga.ui.util.ContactUtils
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -54,8 +55,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.miss.ga.R
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.PreferredSimMode
@@ -92,6 +95,9 @@ fun ParticipantSettingsSheet(
     availableTabs: List<SenderTab> = emptyList(),
     senderTabIds: Set<Long> = emptySet(),
     availableSims: List<SimInfo> = emptyList(),
+    isMultiSimSupported: Boolean = false,
+    hasPhoneStatePermission: Boolean = true,
+    onRequestPhoneStatePermission: () -> Unit = {},
     onDismiss: () -> Unit,
     onUpdateAction: (FilterAction) -> Unit,
     onUpdatePreferredSim: (Int) -> Unit = {},
@@ -229,7 +235,7 @@ fun ParticipantSettingsSheet(
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
-                    text = "Preferred SIM Card",
+                    text = stringResource(R.string.preferred_sim_card),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -278,6 +284,55 @@ fun ParticipantSettingsSheet(
                                 selected = preferredSubId == sim.subscriptionId,
                                 onClick = { onUpdatePreferredSim(sim.subscriptionId) }
                             )
+                        }
+                    }
+                }
+            } else if (isMultiSimSupported && !hasPhoneStatePermission) {
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = stringResource(R.string.preferred_sim_card),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    shape = SquircleMediumShape,
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.dual_sim_permission_prompt_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.dual_sim_permission_prompt_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onRequestPhoneStatePermission,
+                            shape = PillShape
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SimCard,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.enable_dual_sim))
                         }
                     }
                 }

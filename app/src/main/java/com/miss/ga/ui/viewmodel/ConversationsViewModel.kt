@@ -136,6 +136,7 @@ class ConversationsViewModel(
             noSpamForContacts = userPreferences.noSpamForContacts
         )
         repository.invalidateLookupCaches()
+        repository.simRepository.refreshSims()
         checkDefaultSmsStatus()
         loadTabs()
         loadThreads(silent = true, force = true)
@@ -669,6 +670,14 @@ class ConversationsViewModel(
         viewModelScope.launch {
             repository.setTabSenders(tabId, addresses)
         }
+    }
+
+    fun hasPhoneStatePermission(): Boolean = repository.simRepository.hasPhoneStatePermission()
+
+    fun isMultiSimSupported(): Boolean = repository.simRepository.isMultiSimSupported()
+
+    fun refreshSims() {
+        repository.simRepository.refreshSims()
     }
 }
 

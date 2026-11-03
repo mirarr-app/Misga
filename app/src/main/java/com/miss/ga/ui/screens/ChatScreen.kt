@@ -1,5 +1,6 @@
 package com.miss.ga.ui.screens
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -7,6 +8,8 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -49,7 +52,10 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.ui.res.stringResource
+import com.miss.ga.R
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -138,6 +144,16 @@ fun ChatScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+
+    val phonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.refreshSims()
+        } else {
+            Toast.makeText(context, R.string.phone_state_permission_needed_sim, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.setScreenResumed(true)
@@ -488,6 +504,17 @@ fun ChatScreen(
                                 onSelectSim = { viewModel.selectSim(it) },
                                 modifier = Modifier.padding(end = 8.dp)
                             )
+                        } else if (viewModel.isMultiSimSupported() && !viewModel.hasPhoneStatePermission()) {
+                            IconButton(
+                                onClick = { phonePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE) },
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SimCard,
+                                    contentDescription = stringResource(R.string.enable_dual_sim),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
                         val canSend = inputText.isNotBlank() && !state.isSending
@@ -686,6 +713,9 @@ fun ChatScreen(
             availableTabs = state.availableTabs,
             senderTabIds = state.senderTabIds,
             availableSims = state.availableSims,
+            isMultiSimSupported = viewModel.isMultiSimSupported(),
+            hasPhoneStatePermission = viewModel.hasPhoneStatePermission(),
+            onRequestPhoneStatePermission = { phonePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE) },
             onDismiss = { showSettingsSheet = false },
             onUpdateAction = { action ->
                 viewModel.updateSenderDefaultAction(action)

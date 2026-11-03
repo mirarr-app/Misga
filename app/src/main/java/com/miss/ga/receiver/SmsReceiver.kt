@@ -138,6 +138,7 @@ class SmsReceiver : BroadcastReceiver() {
             val sender = IncomingSmsPolicy.storedAddress(entry.rawSender)
             val fullBody = entry.body
             val timestamp = entry.timestampMillis
+            val receiveTime = System.currentTimeMillis()
 
             if (!IncomingSmsPolicy.shouldKeepInInbox(
                     address = sender,
@@ -167,7 +168,10 @@ class SmsReceiver : BroadcastReceiver() {
                 val cv = ContentValues().apply {
                     put(Telephony.Sms.ADDRESS, sender)
                     put(Telephony.Sms.BODY, fullBody)
-                    put(Telephony.Sms.DATE, timestamp)
+                    // DATE is the local device receive time (keeps conversation order correct even
+                    // if the carrier SMSC clock or timezone differs). DATE_SENT is the network timestamp.
+                    put(Telephony.Sms.DATE, receiveTime)
+                    put(Telephony.Sms.DATE_SENT, timestamp)
                     put(Telephony.Sms.READ, if (filterResult.action == FilterAction.SPAM) 1 else 0)
                     put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
                     if (incomingSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
@@ -192,7 +196,7 @@ class SmsReceiver : BroadcastReceiver() {
                     Log.e(TAG, "Error writing to Telephony provider", e)
                 }
             } else {
-                resolveInboxMessageId(context, sender, fullBody, timestamp)?.let { realId ->
+                resolveInboxMessageId(context, sender, fullBody, timestamp, receiveTime)?.let { realId ->
                     messageId = realId
                     storedInProvider = true
                 }
@@ -227,7 +231,7 @@ class SmsReceiver : BroadcastReceiver() {
                     body = fullBody,
                     action = filterResult.action,
                     messageId = messageId,
-                    timestamp = timestamp,
+                    timestamp = receiveTime,
                     subId = incomingSubId
                 )
             }
@@ -242,10 +246,11 @@ class SmsReceiver : BroadcastReceiver() {
         context: Context,
         sender: String,
         body: String,
-        timestamp: Long
+        timestamp: Long,
+        receiveTime: Long = System.currentTimeMillis()
     ): Long? {
         repeat(INBOX_LOOKUP_ATTEMPTS) { attempt ->
-            queryInboxMessageId(context, sender, body, timestamp)?.let { return it }
+            queryInboxMessageId(context, sender, body, timestamp, receiveTime)?.let { return it }
             if (attempt < INBOX_LOOKUP_ATTEMPTS - 1) {
                 delay(INBOX_LOOKUP_DELAY_MS)
             }
@@ -257,27 +262,44 @@ class SmsReceiver : BroadcastReceiver() {
         context: Context,
         sender: String,
         body: String,
-        timestamp: Long
+        timestamp: Long,
+        receiveTime: Long = System.currentTimeMillis()
     ): Long? {
-        val minDate = timestamp - INBOX_LOOKUP_WINDOW_MS
-        val maxDate = timestamp + INBOX_LOOKUP_WINDOW_MS
+        val minReceive = receiveTime - INBOX_LOOKUP_WINDOW_MS
+        val maxReceive = receiveTime + INBOX_LOOKUP_WINDOW_MS
+        val minSent = timestamp - INBOX_LOOKUP_WINDOW_MS
+        val maxSent = timestamp + INBOX_LOOKUP_WINDOW_MS
         return try {
             context.contentResolver.query(
                 Telephony.Sms.Inbox.CONTENT_URI,
-                arrayOf(Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.DATE),
-                "${Telephony.Sms.BODY} = ? AND ${Telephony.Sms.DATE} BETWEEN ? AND ?",
-                arrayOf(body, minDate.toString(), maxDate.toString()),
+                arrayOf(Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.DATE, Telephony.Sms.DATE_SENT),
+                "${Telephony.Sms.BODY} = ? AND ((${Telephony.Sms.DATE} BETWEEN ? AND ?) OR (${Telephony.Sms.DATE} BETWEEN ? AND ?) OR (${Telephony.Sms.DATE_SENT} BETWEEN ? AND ?))",
+                arrayOf(
+                    body,
+                    minReceive.toString(),
+                    maxReceive.toString(),
+                    minSent.toString(),
+                    maxSent.toString(),
+                    minSent.toString(),
+                    maxSent.toString()
+                ),
                 "${Telephony.Sms.DATE} DESC"
             )?.use { cursor ->
                 val idIdx = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
                 val addrIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
                 val dateIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+                val dateSentIdx = cursor.getColumnIndex(Telephony.Sms.DATE_SENT)
                 var bestId: Long? = null
                 var bestDelta = Long.MAX_VALUE
                 while (cursor.moveToNext()) {
                     val address = cursor.getString(addrIdx) ?: continue
                     if (!addressesMatch(sender, address)) continue
-                    val delta = abs(cursor.getLong(dateIdx) - timestamp)
+                    val rowDate = cursor.getLong(dateIdx)
+                    val rowDateSent = if (dateSentIdx >= 0) cursor.getLong(dateSentIdx) else 0L
+                    val deltaDateReceive = abs(rowDate - receiveTime)
+                    val deltaDateSentFallback = abs(rowDate - timestamp)
+                    val deltaSent = if (rowDateSent > 0L) abs(rowDateSent - timestamp) else Long.MAX_VALUE
+                    val delta = minOf(deltaDateReceive, deltaDateSentFallback, deltaSent)
                     if (delta < bestDelta) {
                         bestDelta = delta
                         bestId = cursor.getLong(idIdx)

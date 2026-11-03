@@ -40,6 +40,8 @@ Because allowlist wins, a promotional message that also contains a real verifica
 
 Set Misga as your **default SMS app** so it can intercept messages in real time. Android only delivers incoming SMS to the default messaging app.
 
+> **Note:** Multimedia messages (MMS) are currently not supported.
+
 ## Install
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
@@ -77,6 +79,10 @@ JDK 17 and the Android SDK are required.
 
 The debug APK is written to `app/build/outputs/apk/debug/`.
 
+## License
+
+This project is licensed under the GNU General Public License v3.0 only (GPL-3.0-only) - see the [LICENSE](LICENSE) file for details.
+
 ---
 
 <a id="farsi"></a>
@@ -109,6 +115,8 @@ The debug APK is written to `app/build/outputs/apk/debug/`.
 چون لیست سفید اولویت دارد، حتی اگر پیام تبلیغاتی همزمان یک کد تأیید واقعی داشته باشد، آن پیام می‌رسد.
 
 میسگا را به‌عنوان **برنامهٔ پیامک پیش‌فرض** تنظیم کنید تا بتواند پیام‌ها را در لحظه رهگیری کند. اندروید پیامک ورودی را فقط به برنامهٔ پیام‌رسان پیش‌فرض می‌دهد.
+
+> **توجه:** پیام‌های چندرسانه‌ای (MMS) در حال حاضر پشتیبانی نمی‌شوند.
 
 ## نصب
 
@@ -146,5 +154,9 @@ JDK ۱۷ و Android SDK لازم است.
 ```
 
 APK دیباگ در مسیر `app/build/outputs/apk/debug/` ساخته می‌شود.
+
+## مجوز
+
+این پروژه تحت مجوز عمومی گنو نسخه ۳٫۰ (GPL-3.0-only) منتشر شده است - برای اطلاعات بیشتر به فایل [LICENSE](LICENSE) مراجعه کنید.
 
 </div>

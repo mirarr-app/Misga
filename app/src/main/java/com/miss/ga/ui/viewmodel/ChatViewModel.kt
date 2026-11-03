@@ -601,6 +601,7 @@ class ChatViewModel(
                 showShamsiDate = userPreferences.showShamsiDate,
                 enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
             )
+            repository.simRepository.refreshSims()
             loadContactDetails()
         }
     }
@@ -612,6 +613,14 @@ class ChatViewModel(
         _uiState.value = _uiState.value.copy(
             showShamsiDate = nextValue
         )
+    }
+
+    fun hasPhoneStatePermission(): Boolean = repository.simRepository.hasPhoneStatePermission()
+
+    fun isMultiSimSupported(): Boolean = repository.simRepository.isMultiSimSupported()
+
+    fun refreshSims() {
+        repository.simRepository.refreshSims()
     }
 
     fun loadTabs() {

@@ -19,4 +19,9 @@
     <string name="scheduled_sms_failed_text">Could not send scheduled message to %1$s. Tap to retry.</string>
     <string name="scheduled_sms_failed_banner_title">Failed to send (No signal or network)</string>
     <string name="scheduled_time_passed_error">Selected time has already passed. Please choose a future time.</string>
+    <string name="phone_state_permission_needed_sim">Phone permission is required to detect and manage multiple SIM cards.</string>
+    <string name="enable_dual_sim">Enable Dual SIM</string>
+    <string name="preferred_sim_card">Preferred SIM Card</string>
+    <string name="dual_sim_permission_prompt_title">Dual SIM detected</string>
+    <string name="dual_sim_permission_prompt_desc">Grant Phone permission to select and manage SIM cards for this conversation.</string>
 </resources>

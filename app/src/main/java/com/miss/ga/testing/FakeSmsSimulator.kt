@@ -143,6 +143,7 @@ object FakeSmsSimulator {
                 put(Telephony.Sms.ADDRESS, normalizedSender)
                 put(Telephony.Sms.BODY, body)
                 put(Telephony.Sms.DATE, now)
+                put(Telephony.Sms.DATE_SENT, now)
                 put(Telephony.Sms.READ, if (filterResult.action == FilterAction.SPAM) 1 else 0)
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
                 repository.putDefaultSmsSubscription(this)

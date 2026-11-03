@@ -47,6 +47,7 @@ fun CustomizationSheet(
     onToggleShowTabs: (Boolean) -> Unit,
     showSimFilter: Boolean,
     onToggleShowSimFilter: (Boolean) -> Unit,
+    hasPhoneStatePermission: Boolean = true,
     noSpamForContacts: Boolean,
     onToggleNoSpamForContacts: (Boolean) -> Unit,
     enableDateTapShamsiToggle: Boolean,
@@ -199,7 +200,11 @@ fun CustomizationSheet(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Show SIM card tabs above the inbox to filter conversations by SIM on multi-SIM devices",
+                                text = if (hasPhoneStatePermission) {
+                                    "Show SIM card tabs above the inbox to filter conversations by SIM on multi-SIM devices"
+                                } else {
+                                    "Show SIM card tabs above the inbox to filter conversations by SIM on multi-SIM devices (requires Phone permission)"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

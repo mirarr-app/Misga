@@ -1,5 +1,6 @@
 package com.miss.ga.ui.screens
 
+import android.Manifest
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
@@ -145,6 +146,17 @@ fun ConversationsScreen(
     ) {
         viewModel.refreshDefaultSmsStatus()
         viewModel.loadThreads(force = true)
+    }
+
+    val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.setShowSimFilterEnabled(true)
+            viewModel.refreshSims()
+        } else {
+            Toast.makeText(context, R.string.phone_state_permission_needed_sim, Toast.LENGTH_SHORT).show()
+        }
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -800,8 +812,13 @@ fun ConversationsScreen(
                 viewModel.setShowTabsEnabled(enabled)
             },
             showSimFilter = state.showSimFilter,
+            hasPhoneStatePermission = viewModel.hasPhoneStatePermission(),
             onToggleShowSimFilter = { enabled ->
-                viewModel.setShowSimFilterEnabled(enabled)
+                if (enabled && !viewModel.hasPhoneStatePermission()) {
+                    phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+                } else {
+                    viewModel.setShowSimFilterEnabled(enabled)
+                }
             },
             noSpamForContacts = state.noSpamForContacts,
             onToggleNoSpamForContacts = { enabled ->

@@ -1,0 +1,4 @@
+• Fix incoming message chronological order when carrier/SMSC clock differs from device time
+• Request phone state permission on-demand only when dual-SIM features are used
+• Documented GPL-3.0-only license and MMS limitations
+• Performance improvements and stability fixes

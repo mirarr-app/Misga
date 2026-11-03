@@ -1,6 +1,9 @@
 package com.miss.ga.ui.screens
 
+import android.Manifest
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +29,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.SimCard
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -86,6 +91,16 @@ fun ComposeScreen(
 
     val availableSims by repository.simRepository.observeActiveSims().collectAsStateWithLifecycle(initialValue = emptyList())
     var selectedSim by remember { mutableStateOf<SimInfo?>(null) }
+
+    val phonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            repository.simRepository.refreshSims()
+        } else {
+            Toast.makeText(context, R.string.phone_state_permission_needed_sim, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LaunchedEffect(availableSims) {
         if (selectedSim == null || availableSims.none { it.subscriptionId == selectedSim?.subscriptionId }) {
@@ -209,6 +224,17 @@ fun ComposeScreen(
                                 },
                                 modifier = Modifier.padding(end = 8.dp)
                             )
+                        } else if (repository.simRepository.isMultiSimSupported() && !repository.simRepository.hasPhoneStatePermission()) {
+                            IconButton(
+                                onClick = { phonePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE) },
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SimCard,
+                                    contentDescription = stringResource(R.string.enable_dual_sim),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
                         FilledIconButton(

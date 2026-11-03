@@ -7,14 +7,17 @@ import android.os.Build
 import android.telephony.SmsManager
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.miss.ga.data.model.PreferredSimMode
 import com.miss.ga.data.model.SimInfo
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.launch
 
 private const val TAG = "SimRepository"
 
@@ -34,6 +37,24 @@ class SimRepository(private val context: Context) {
             context,
             Manifest.permission.READ_PHONE_STATE
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Checks if the device hardware supports multiple SIMs/modems.
+     * Does not require READ_PHONE_STATE permission.
+     */
+    fun isMultiSimSupported(): Boolean {
+        return try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                tm.activeModemCount > 1
+            } else {
+                @Suppress("DEPRECATION")
+                tm.phoneCount > 1
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /**
@@ -174,34 +195,52 @@ class SimRepository(private val context: Context) {
             ?: activeSims.first().subscriptionId
     }
 
+    private val refreshTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    fun refreshSims() {
+        refreshTrigger.tryEmit(Unit)
+    }
+
     /**
      * Cold flow observing active subscriptions updates.
      */
     fun observeActiveSims(): Flow<List<SimInfo>> = callbackFlow {
-        trySend(getActiveSims())
-
+        var listener: SubscriptionManager.OnSubscriptionsChangedListener? = null
         val sm = subscriptionManager
-        if (sm == null || !hasPhoneStatePermission()) {
-            awaitClose { }
-            return@callbackFlow
+
+        fun registerListenerIfNeeded() {
+            if (listener == null && sm != null && hasPhoneStatePermission()) {
+                val l = object : SubscriptionManager.OnSubscriptionsChangedListener() {
+                    override fun onSubscriptionsChanged() {
+                        trySend(getActiveSims())
+                    }
+                }
+                try {
+                    sm.addOnSubscriptionsChangedListener(l)
+                    listener = l
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not register OnSubscriptionsChangedListener", e)
+                }
+            }
         }
 
-        val listener = object : SubscriptionManager.OnSubscriptionsChangedListener() {
-            override fun onSubscriptionsChanged() {
+        registerListenerIfNeeded()
+        trySend(getActiveSims())
+
+        val job = launch {
+            refreshTrigger.collect {
+                registerListenerIfNeeded()
                 trySend(getActiveSims())
             }
         }
 
-        try {
-            sm.addOnSubscriptionsChangedListener(listener)
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not register OnSubscriptionsChangedListener", e)
-        }
-
         awaitClose {
-            try {
-                sm.removeOnSubscriptionsChangedListener(listener)
-            } catch (_: Exception) {}
+            job.cancel()
+            listener?.let { l ->
+                try {
+                    sm?.removeOnSubscriptionsChangedListener(l)
+                } catch (_: Exception) {}
+            }
         }
     }.conflate()
 }
