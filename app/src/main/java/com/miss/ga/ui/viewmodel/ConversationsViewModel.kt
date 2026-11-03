@@ -105,6 +105,9 @@ class ConversationsViewModel(
             dbHelper.tabsChanged.collect { loadTabs() }
         }
         viewModelScope.launch {
+            dbHelper.draftsChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+        }
+        viewModelScope.launch {
             repository.simRepository.observeActiveSims().collect { sims ->
                 val current = _uiState.value
                 val validFilter = if (current.selectedSimFilterSubId != null && sims.any { it.subscriptionId == current.selectedSimFilterSubId }) {
@@ -561,6 +564,35 @@ class ConversationsViewModel(
             repository.markAllMessagesRead()
             loadThreads(silent = true, force = true)
             onComplete()
+        }
+    }
+
+    fun toggleThreadRead(thread: ConversationThread, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val wasUnread = thread.unreadCount > 0 || thread.isUnreadSpam
+            if (wasUnread) {
+                repository.markThreadRead(thread.threadId)
+            } else {
+                repository.markThreadUnread(thread.threadId)
+            }
+            loadThreads(silent = true, force = true)
+            onComplete(!wasUnread)
+        }
+    }
+
+    fun deleteSingleConversation(thread: ConversationThread, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val success = repository.deleteThread(thread.threadId)
+            if (success) {
+                val updatedThreads = _uiState.value.threads.filter { it.threadId != thread.threadId }
+                val updatedFiltered = _uiState.value.filteredThreads.filter { it.threadId != thread.threadId }
+                _uiState.value = _uiState.value.copy(
+                    threads = updatedThreads,
+                    filteredThreads = updatedFiltered
+                )
+                repository.saveCachedThreads(updatedThreads)
+                onComplete()
+            }
         }
     }
 

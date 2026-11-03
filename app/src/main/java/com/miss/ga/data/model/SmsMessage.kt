@@ -41,7 +41,9 @@ data class ConversationThread(
     val lastMessageAction: FilterAction = FilterAction.NORMAL,
     val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
     val photoUri: String? = null,
-    val contactLookupUri: String? = null
+    val contactLookupUri: String? = null,
+    val isMuted: Boolean = false,
+    val draft: String? = null
 ) {
     val isContact: Boolean get() = !contactName.isNullOrBlank()
     val isLastReceivedSpam: Boolean get() = lastMessageAction == FilterAction.SPAM

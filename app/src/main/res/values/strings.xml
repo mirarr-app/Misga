@@ -24,4 +24,13 @@
     <string name="preferred_sim_card">Preferred SIM Card</string>
     <string name="dual_sim_permission_prompt_title">Dual SIM detected</string>
     <string name="dual_sim_permission_prompt_desc">Grant Phone permission to select and manage SIM cards for this conversation.</string>
+    <string name="copy_card_button">Copy card %1$s</string>
+    <string name="card_copied_to_clipboard">Card number %1$s copied to clipboard</string>
+    <string name="copy_sheba_button">Copy Sheba %1$s</string>
+    <string name="sheba_copied_to_clipboard">Sheba %1$s copied to clipboard</string>
+    <string name="draft_prefix">Draft: </string>
+    <string name="swipe_mark_read">Mark read</string>
+    <string name="swipe_mark_unread">Mark unread</string>
+    <string name="swipe_delete">Delete</string>
+    <string name="delete_conversation_confirm">Delete this conversation?</string>
 </resources>

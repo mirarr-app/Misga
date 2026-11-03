@@ -242,6 +242,12 @@ fun SpamMessagePill(
                         OtpCopyButton(otpCode = otpCode)
                     }
 
+                    val financialDetails = remember(message.body) { com.miss.ga.engine.FinancialExtractor.extract(message.body) }
+                    if (financialDetails.bankCard != null || financialDetails.sheba != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        FinancialDetailsPills(financialDetails = financialDetails)
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(

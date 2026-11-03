@@ -207,6 +207,14 @@ private fun BubbleContent(
                 modifier = Modifier.padding(bottom = 2.dp)
             )
         }
+        val financialDetails = remember(message.body) { com.miss.ga.engine.FinancialExtractor.extract(message.body) }
+        if (financialDetails.bankCard != null || financialDetails.sheba != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            FinancialDetailsPills(
+                financialDetails = financialDetails,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+        }
         Spacer(modifier = Modifier.height(4.dp))
         Row(
             modifier = Modifier.align(Alignment.End),

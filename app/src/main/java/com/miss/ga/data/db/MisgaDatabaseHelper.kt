@@ -17,11 +17,14 @@ import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.ScheduledMessage
 import com.miss.ga.data.model.ScheduledMessageStatus
 import com.miss.ga.data.util.PhoneNumberKeys
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+
+private const val TAG = "MisgaDatabaseHelper"
 
 class MisgaDatabaseHelper private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
@@ -44,6 +47,14 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     fun notifyScheduledMessagesChanged() {
         _scheduledMessagesChanged.value = scheduledMessageChangeCounter.incrementAndGet()
+    }
+
+    private val _draftsChanged = MutableStateFlow(0L)
+    val draftsChanged: Flow<Long> = _draftsChanged.asStateFlow()
+    private val draftsChangeCounter = java.util.concurrent.atomic.AtomicLong(0L)
+
+    fun notifyDraftsChanged() {
+        _draftsChanged.value = draftsChangeCounter.incrementAndGet()
     }
 
     @Volatile
@@ -118,6 +129,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         createCachedThreadsTable(db)
         createSenderTabsTables(db)
         createScheduledMessagesTable(db)
+        createConversationDraftsTable(db)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_filter_rules_sender_target ON filter_rules(sender_target)"
@@ -173,6 +185,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             try {
                 createScheduledMessagesTable(db)
             } catch (e: Exception) {}
+        }
+        if (oldVersion < 7) {
+            try {
+                createConversationDraftsTable(db)
+            } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN is_muted INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN draft TEXT") } catch (e: Exception) {}
         }
 
     }
@@ -664,6 +683,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             val hasSpamIdx = it.getColumnIndexOrThrow("has_spam")
             val actionIdx = it.getColumnIndex("last_message_action")
             val subIdIdx = it.getColumnIndex("sub_id")
+            val mutedIdx = it.getColumnIndex("is_muted")
+            val draftIdx = it.getColumnIndex("draft")
             while (it.moveToNext()) {
                 val contactName = if (it.isNull(nameIdx)) null else it.getString(nameIdx)
                 val lastMessageAction = if (actionIdx >= 0 && !it.isNull(actionIdx)) {
@@ -680,6 +701,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 } else {
                     SubscriptionManager.INVALID_SUBSCRIPTION_ID
                 }
+                val isMuted = mutedIdx >= 0 && !it.isNull(mutedIdx) && it.getInt(mutedIdx) == 1
+                val draft = if (draftIdx >= 0 && !it.isNull(draftIdx)) it.getString(draftIdx) else null
                 threads.add(
                     ConversationThread(
                         threadId = it.getLong(idIdx),
@@ -692,7 +715,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         hasSpam = it.getInt(hasSpamIdx) == 1,
                         isUnreadSpam = it.getInt(spamIdx) == 1,
                         lastMessageAction = lastMessageAction,
-                        subId = subId
+                        subId = subId,
+                        isMuted = isMuted,
+                        draft = draft
                     )
                 )
             }
@@ -745,6 +770,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         put("has_spam", if (thread.hasSpam) 1 else 0)
                         put("last_message_action", thread.lastMessageAction.name)
                         put("sub_id", thread.subId)
+                        put("is_muted", if (thread.isMuted) 1 else 0)
+                        put("draft", thread.draft)
                     }
                     db.insertWithOnConflict(
                         "cached_threads",
@@ -1055,10 +1082,26 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 is_unread_spam INTEGER NOT NULL DEFAULT 0,
                 has_spam INTEGER NOT NULL DEFAULT 0,
                 last_message_action TEXT NOT NULL DEFAULT 'NORMAL',
-                sub_id INTEGER NOT NULL DEFAULT -1
+                sub_id INTEGER NOT NULL DEFAULT -1,
+                is_muted INTEGER NOT NULL DEFAULT 0,
+                draft TEXT
             )
             """.trimIndent()
         )
+    }
+
+    private fun createConversationDraftsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS conversation_drafts (
+                thread_id INTEGER PRIMARY KEY,
+                address TEXT NOT NULL,
+                body TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_drafts_address ON conversation_drafts(address)")
     }
 
     private fun createSenderTabsTables(db: SQLiteDatabase) {
@@ -1416,9 +1459,134 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         )
     }
 
+    // --- Drafts Operations ---
+
+    suspend fun getDraft(threadId: Long, address: String): String? = withContext(Dispatchers.IO) {
+        val db = readableDatabase
+        val canonical = PhoneNumberKeys.canonical(address)
+        try {
+            if (threadId > 0) {
+                db.query(
+                    "conversation_drafts",
+                    arrayOf("body"),
+                    "thread_id = ?",
+                    arrayOf(threadId.toString()),
+                    null, null, null
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) return@withContext cursor.getString(0)
+                }
+            }
+            if (canonical.isNotBlank()) {
+                val candidateKeys = PhoneNumberKeys.keys(address)
+                val placeholders = candidateKeys.joinToString(",") { "?" }
+                db.query(
+                    "conversation_drafts",
+                    arrayOf("body"),
+                    "address IN ($placeholders)",
+                    candidateKeys.toTypedArray(),
+                    null, null, "updated_at DESC", "1"
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) return@withContext cursor.getString(0)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting draft for thread $threadId, address $address", e)
+        }
+        null
+    }
+
+    suspend fun getAllDrafts(): Map<Long, String> = withContext(Dispatchers.IO) {
+        val map = mutableMapOf<Long, String>()
+        val db = readableDatabase
+        try {
+            db.query(
+                "conversation_drafts",
+                arrayOf("thread_id", "body"),
+                null, null, null, null, null
+            ).use { cursor ->
+                val idIdx = cursor.getColumnIndexOrThrow("thread_id")
+                val bodyIdx = cursor.getColumnIndexOrThrow("body")
+                while (cursor.moveToNext()) {
+                    val tId = cursor.getLong(idIdx)
+                    val body = cursor.getString(bodyIdx)
+                    if (tId > 0 && !body.isNullOrBlank()) {
+                        map[tId] = body
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying drafts", e)
+        }
+        map
+    }
+
+    suspend fun getAllDraftsByAddress(): Map<String, String> = withContext(Dispatchers.IO) {
+        val map = mutableMapOf<String, String>()
+        val db = readableDatabase
+        try {
+            db.query(
+                "conversation_drafts",
+                arrayOf("address", "body"),
+                null, null, null, null, null
+            ).use { cursor ->
+                val addrIdx = cursor.getColumnIndexOrThrow("address")
+                val bodyIdx = cursor.getColumnIndexOrThrow("body")
+                while (cursor.moveToNext()) {
+                    val addr = cursor.getString(addrIdx)
+                    val body = cursor.getString(bodyIdx)
+                    if (!addr.isNullOrBlank() && !body.isNullOrBlank()) {
+                        map[PhoneNumberKeys.canonical(addr)] = body
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying drafts by address", e)
+        }
+        map
+    }
+
+    suspend fun saveDraft(threadId: Long, address: String, text: String) = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        val db = writableDatabase
+        if (trimmed.isEmpty()) {
+            clearDraft(threadId, address)
+            return@withContext
+        }
+        try {
+            val cv = ContentValues().apply {
+                put("thread_id", threadId)
+                put("address", PhoneNumberKeys.canonical(address))
+                put("body", text)
+                put("updated_at", System.currentTimeMillis())
+            }
+            db.insertWithOnConflict("conversation_drafts", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            notifyDraftsChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving draft", e)
+        }
+    }
+
+    suspend fun clearDraft(threadId: Long, address: String) = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        val canonical = PhoneNumberKeys.canonical(address)
+        try {
+            if (threadId > 0) {
+                db.delete("conversation_drafts", "thread_id = ?", arrayOf(threadId.toString()))
+            }
+            if (canonical.isNotBlank()) {
+                val candidateKeys = PhoneNumberKeys.keys(address)
+                val placeholders = candidateKeys.joinToString(",") { "?" }
+                db.delete("conversation_drafts", "address IN ($placeholders)", candidateKeys.toTypedArray())
+            }
+            notifyDraftsChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing draft", e)
+        }
+    }
+
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 6
+        private const val DATABASE_VERSION = 7
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile

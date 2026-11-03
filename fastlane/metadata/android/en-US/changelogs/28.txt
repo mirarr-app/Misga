@@ -1,0 +1,4 @@
+• Swipe gestures on inbox conversations: swipe right to toggle read/unread, swipe left to delete
+• Unsent message drafts are now automatically preserved and highlighted in the conversation list
+• Subtle mute indicator on conversation rows for contacts set to silent notifications
+• Instant one-tap copy for 16-digit Iranian bank card numbers (Luhn-verified) and Sheba (IBAN) codes

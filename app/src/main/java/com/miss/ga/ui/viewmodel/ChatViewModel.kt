@@ -412,6 +412,7 @@ class ChatViewModel(
                 subId = subId
             )
             if (id > 0L) {
+                clearDraft()
                 val scheduledMsg = dbHelper.getScheduledMessage(id)
                 if (scheduledMsg != null) {
                     ScheduledSmsManager.schedule(getApplication(), scheduledMsg)
@@ -461,9 +462,30 @@ class ChatViewModel(
             val result = repository.sendSms(initialAddress, text, subIdToSend)
             _uiState.value = _uiState.value.copy(isSending = false)
             if (result.sent) {
+                clearDraft()
                 loadMessages()
             }
             onComplete(result)
+        }
+    }
+
+    suspend fun getSavedDraft(): String? {
+        return dbHelper.getDraft(initialThreadId, initialAddress)
+    }
+
+    fun saveDraft(text: String) {
+        viewModelScope.launch {
+            if (text.isBlank()) {
+                dbHelper.clearDraft(initialThreadId, initialAddress)
+            } else {
+                dbHelper.saveDraft(initialThreadId, initialAddress, text)
+            }
+        }
+    }
+
+    fun clearDraft() {
+        viewModelScope.launch {
+            dbHelper.clearDraft(initialThreadId, initialAddress)
         }
     }
 

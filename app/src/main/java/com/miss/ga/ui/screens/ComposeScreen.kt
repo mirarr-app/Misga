@@ -61,6 +61,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.miss.ga.ChatNav
 import com.miss.ga.R
@@ -137,6 +139,20 @@ fun ComposeScreen(
     LaunchedEffect(initialAddress) {
         if (initialAddress.isNotBlank() && selectedContactName == null) {
             selectedContactName = repository.resolveContactName(initialAddress)
+        }
+        if (initialAddress.isNotBlank() && messageBody.isBlank()) {
+            val draft = repository.getDraft(0L, initialAddress)
+            if (!draft.isNullOrBlank()) {
+                messageBody = draft
+            }
+        }
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (recipient.isNotBlank()) {
+            coroutineScope.launch {
+                repository.saveDraft(0L, recipient.trim(), messageBody)
+            }
         }
     }
 
@@ -255,6 +271,7 @@ fun ComposeScreen(
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         } else if (result.storedInProvider) {
+                                            repository.clearDraft(0L, recipient)
                                             val threadId = repository.getOrCreateThreadId(recipient)
                                             onNavigateToChat(
                                                 ChatNav(

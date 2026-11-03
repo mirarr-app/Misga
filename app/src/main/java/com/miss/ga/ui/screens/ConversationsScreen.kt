@@ -49,6 +49,8 @@ import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MarkChatRead
+import androidx.compose.material.icons.filled.MarkChatUnread
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Shield
@@ -68,11 +70,17 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -182,6 +190,7 @@ fun ConversationsScreen(
     var showAddToTabDialog by remember { mutableStateOf(false) }
     var activeProfileDialogInfo by remember { mutableStateOf<ProfileDialogData?>(null) }
     var showCustomizationSheet by remember { mutableStateOf(false) }
+    var threadPendingDelete by remember { mutableStateOf<ConversationThread?>(null) }
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
@@ -669,10 +678,57 @@ fun ConversationsScreen(
                             contactLookupUri = thread.contactLookupUri,
                             isContact = thread.isContact
                         )
+                    },
+                    onSwipeToggleRead = { thread ->
+                        viewModel.toggleThreadRead(thread) { isNowUnread ->
+                            val msg = if (isNowUnread) context.getString(R.string.swipe_mark_unread) else context.getString(R.string.swipe_mark_read)
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onSwipeDelete = { thread ->
+                        threadPendingDelete = thread
                     }
                 )
             }
         }
+    }
+
+    threadPendingDelete?.let { thread ->
+        val displayName = senderDisplayName(thread.contactName, thread.address)
+        AlertDialog(
+            onDismissRequest = { threadPendingDelete = null },
+            title = {
+                Text(
+                    text = stringResource(R.string.delete_conversation_confirm),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete this conversation with $displayName? All messages will be permanently removed.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val threadToDelete = thread
+                        threadPendingDelete = null
+                        viewModel.deleteSingleConversation(threadToDelete) {
+                            Toast.makeText(context, "Deleted conversation", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.swipe_delete), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { threadPendingDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showBatchDeleteDialog) {
@@ -1045,7 +1101,9 @@ private fun ConversationsInboxList(
     onOpenChat: (ChatNav) -> Unit,
     onToggleSelect: (Long) -> Unit,
     onEnterSelection: (Long) -> Unit,
-    onAvatarClick: (ConversationThread) -> Unit
+    onAvatarClick: (ConversationThread) -> Unit,
+    onSwipeToggleRead: (ConversationThread) -> Unit = {},
+    onSwipeDelete: (ConversationThread) -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1056,7 +1114,7 @@ private fun ConversationsInboxList(
             key = { it.threadId },
             contentType = { "thread" }
         ) { thread ->
-            ConversationItem(
+            SwipeableConversationItem(
                 thread = thread,
                 selectedIds = selectedIds,
                 isSelectionMode = isSelectionMode,
@@ -1083,13 +1141,144 @@ private fun ConversationsInboxList(
                 },
                 onAvatarClick = {
                     onAvatarClick(thread)
-                }
+                },
+                onSwipeToggleRead = onSwipeToggleRead,
+                onSwipeDelete = onSwipeDelete
             )
             HorizontalDivider(
                 modifier = Modifier.padding(start = AvatarDividerInset, end = 16.dp),
                 thickness = 0.5.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableConversationItem(
+    thread: ConversationThread,
+    selectedIds: Set<Long>,
+    isSelectionMode: Boolean,
+    simSlotNumber: Int?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onAvatarClick: () -> Unit,
+    onSwipeToggleRead: (ConversationThread) -> Unit,
+    onSwipeDelete: (ConversationThread) -> Unit
+) {
+    if (isSelectionMode) {
+        ConversationItem(
+            thread = thread,
+            selectedIds = selectedIds,
+            isSelectionMode = true,
+            simSlotNumber = simSlotNumber,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            onAvatarClick = onAvatarClick
+        )
+    } else {
+        val haptic = LocalHapticFeedback.current
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { dismissValue ->
+                when (dismissValue) {
+                    SwipeToDismissBoxValue.StartToEnd -> {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSwipeToggleRead(thread)
+                        false
+                    }
+                    SwipeToDismissBoxValue.EndToStart -> {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSwipeDelete(thread)
+                        false
+                    }
+                    SwipeToDismissBoxValue.Settled -> false
+                }
+            }
+        )
+
+        SwipeToDismissBox(
+            state = dismissState,
+            enableDismissFromStartToEnd = true,
+            enableDismissFromEndToStart = true,
+            backgroundContent = {
+                SwipeDismissBackground(
+                    dismissState = dismissState,
+                    isUnread = thread.unreadCount > 0 || thread.isUnreadSpam
+                )
+            }
+        ) {
+            ConversationItem(
+                thread = thread,
+                selectedIds = selectedIds,
+                isSelectionMode = false,
+                simSlotNumber = simSlotNumber,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onAvatarClick = onAvatarClick
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeDismissBackground(
+    dismissState: SwipeToDismissBoxState,
+    isUnread: Boolean
+) {
+    val direction = dismissState.dismissDirection
+    val isStartToEnd = direction == SwipeToDismissBoxValue.StartToEnd
+    val isEndToStart = direction == SwipeToDismissBoxValue.EndToStart
+
+    val color by animateColorAsState(
+        targetValue = when {
+            isStartToEnd -> MaterialTheme.colorScheme.primaryContainer
+            isEndToStart -> MaterialTheme.colorScheme.errorContainer
+            else -> Color.Transparent
+        },
+        label = "SwipeDismissBgColor"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(color)
+            .padding(horizontal = 24.dp),
+        contentAlignment = if (isStartToEnd) Alignment.CenterStart else Alignment.CenterEnd
+    ) {
+        if (isStartToEnd) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (isUnread) Icons.Default.MarkChatRead else Icons.Default.MarkChatUnread,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(if (isUnread) R.string.swipe_mark_read else R.string.swipe_mark_unread),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        } else if (isEndToStart) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.swipe_delete),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
@@ -1239,14 +1428,28 @@ private fun ConversationItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = displayName,
-                    style = MaterialTheme.typography.titleMedium.contentAware(),
-                    fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.ExtraBold else FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = displayName,
+                        style = MaterialTheme.typography.titleMedium.contentAware(),
+                        fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (thread.isMuted) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Icon(
+                            imageVector = Icons.Default.NotificationsOff,
+                            contentDescription = "Muted",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (simSlotNumber != null) {
                         SimBadge(slotNumber = simSlotNumber)
@@ -1268,15 +1471,36 @@ private fun ConversationItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = thread.snippet,
-                    style = MaterialTheme.typography.bodyMedium.contentAware(),
-                    color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.SemiBold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                if (!thread.draft.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.draft_prefix),
+                            style = MaterialTheme.typography.bodyMedium.contentAware(),
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = thread.draft,
+                            style = MaterialTheme.typography.bodyMedium.contentAware(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Text(
+                        text = thread.snippet,
+                        style = MaterialTheme.typography.bodyMedium.contentAware(),
+                        color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
 
                 if (thread.unreadCount > 0 && !isSelectionMode) {
                     Spacer(modifier = Modifier.width(8.dp))

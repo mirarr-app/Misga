@@ -25,4 +25,13 @@
     <string name="preferred_sim_card">سیم‌کارت پیش‌فرض</string>
     <string name="dual_sim_permission_prompt_title">دو سیم‌کارت شناسایی شد</string>
     <string name="dual_sim_permission_prompt_desc">برای انتخاب و مدیریت سیم‌کارت در این گفتگو، دسترسی وضعیت تلفن را فعال کنید.</string>
+    <string name="copy_card_button">کپی کارت %1$s</string>
+    <string name="card_copied_to_clipboard">شماره کارت %1$s در کلیپ‌بورد کپی شد</string>
+    <string name="copy_sheba_button">کپی شبا %1$s</string>
+    <string name="sheba_copied_to_clipboard">شماره شبا %1$s در کلیپ‌بورد کپی شد</string>
+    <string name="draft_prefix">پیش‌نویس: </string>
+    <string name="swipe_mark_read">خوانده شد</string>
+    <string name="swipe_mark_unread">خوانده نشده</string>
+    <string name="swipe_delete">حذف</string>
+    <string name="delete_conversation_confirm">این گفتگو حذف شود؟</string>
 </resources>

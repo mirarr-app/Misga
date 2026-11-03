@@ -311,6 +311,11 @@ class SmsRepository(
                 Log.e(TAG, "Error querying thread SIM subscriptions", e)
             }
 
+            val cache = FilterRulesCache.getInstance(dbHelper)
+            val allSenderPrefs = cache.senderPreferences()
+            val allDrafts = dbHelper.getAllDrafts()
+            val allDraftsByAddress = dbHelper.getAllDraftsByAddress()
+
             for (row in threadRows) {
                 val threadId = row.threadId
                 val address = resolveRecipientAddress(row.recipientIds, canonicalAddresses)
@@ -319,6 +324,11 @@ class SmsRepository(
                 val isContact = !contactName.isNullOrBlank()
                 val photoUri = contactDetail?.photoUri
                 val contactLookupUri = contactDetail?.lookupUri
+
+                val canonicalAddr = PhoneNumberKeys.canonical(address)
+                val senderPref = allSenderPrefs[canonicalAddr] ?: PhoneNumberKeys.lookupValue(allSenderPrefs, address)
+                val isMuted = senderPref?.defaultAction == FilterAction.SILENT
+                val draft = allDrafts[threadId] ?: allDraftsByAddress[canonicalAddr]
 
                 val unreadCount = unreadCounts[threadId] ?: 0
                 val lastInbox = latestInboxMessage[threadId]
@@ -351,7 +361,9 @@ class SmsRepository(
                         lastMessageAction = lastMessageAction,
                         subId = subId,
                         photoUri = photoUri,
-                        contactLookupUri = contactLookupUri
+                        contactLookupUri = contactLookupUri,
+                        isMuted = isMuted,
+                        draft = draft
                     )
                 )
             }
@@ -704,6 +716,48 @@ class SmsRepository(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to mark all messages read", e)
         }
+    }
+
+    suspend fun markThreadUnread(threadId: Long) = withContext(Dispatchers.IO) {
+        val values = ContentValues().apply {
+            put(Telephony.Sms.READ, 0)
+            put(Telephony.Sms.SEEN, 0)
+        }
+        try {
+            val projection = arrayOf(Telephony.Sms._ID)
+            val cursor = context.contentResolver.query(
+                Telephony.Sms.CONTENT_URI,
+                projection,
+                "${Telephony.Sms.THREAD_ID} = ?",
+                arrayOf(threadId.toString()),
+                "${Telephony.Sms.DATE} DESC"
+            )
+            val latestMsgId = cursor?.use {
+                if (it.moveToFirst()) it.getLong(0) else null
+            }
+            if (latestMsgId != null) {
+                context.contentResolver.update(
+                    Telephony.Sms.CONTENT_URI,
+                    values,
+                    "${Telephony.Sms._ID} = ?",
+                    arrayOf(latestMsgId.toString())
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to mark thread unread $threadId", e)
+        }
+    }
+
+    suspend fun saveDraft(threadId: Long, address: String, text: String) {
+        dbHelper.saveDraft(threadId, address, text)
+    }
+
+    suspend fun getDraft(threadId: Long, address: String): String? {
+        return dbHelper.getDraft(threadId, address)
+    }
+
+    suspend fun clearDraft(threadId: Long, address: String) {
+        dbHelper.clearDraft(threadId, address)
     }
 
     private fun readAndSeenValues(): ContentValues {

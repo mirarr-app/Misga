@@ -112,7 +112,9 @@ import com.miss.ga.ui.components.MessageBubble
 import com.miss.ga.ui.components.SimToggleButton
 import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.engine.OtpExtractor
+import com.miss.ga.engine.FinancialExtractor
 import com.miss.ga.ui.components.OtpCopyButton
+import com.miss.ga.ui.components.FinancialDetailsPills
 import com.miss.ga.ui.components.SpamMessagePill
 import com.miss.ga.ui.util.ContactUtils
 import com.miss.ga.ui.util.senderDisplayName
@@ -155,16 +157,26 @@ fun ChatScreen(
         }
     }
 
+    var inputText by remember(nav.threadId, nav.address) {
+        mutableStateOf(nav.initialBody.orEmpty())
+    }
+
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.setScreenResumed(true)
         viewModel.loadMessages()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         viewModel.setScreenResumed(false)
+        viewModel.saveDraft(inputText)
     }
 
-    var inputText by remember(nav.threadId, nav.address) {
-        mutableStateOf(nav.initialBody.orEmpty())
+    LaunchedEffect(nav.threadId, nav.address) {
+        if (inputText.isBlank()) {
+            val draft = viewModel.getSavedDraft()
+            if (!draft.isNullOrBlank()) {
+                inputText = draft
+            }
+        }
     }
     var showScheduleDialog by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
@@ -474,7 +486,10 @@ fun ChatScreen(
                     ) {
                         OutlinedTextField(
                             value = inputText,
-                            onValueChange = { inputText = it },
+                            onValueChange = {
+                                inputText = it
+                                viewModel.saveDraft(it)
+                            },
                             placeholder = {
                                 Text(
                                     "Text message (SMS)...",
@@ -768,6 +783,14 @@ fun ChatScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         OtpCopyButton(
                             otpCode = dialogOtp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    val dialogFinancial = remember(msg.body) { FinancialExtractor.extract(msg.body) }
+                    if (dialogFinancial.bankCard != null || dialogFinancial.sheba != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        FinancialDetailsPills(
+                            financialDetails = dialogFinancial,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
