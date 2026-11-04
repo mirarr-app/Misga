@@ -482,6 +482,79 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         saveSenderPreference(updated)
     }
 
+    suspend fun deleteSenderPreference(address: String): Boolean = withContext(Dispatchers.IO) {
+        val variants = addressLookupKeys(address)
+        val placeholders = variants.joinToString(",") { "?" }
+        val rows = writableDatabase.delete("sender_preferences", "address IN ($placeholders)", variants)
+        if (rows > 0) {
+            _prefsChanged.value = System.currentTimeMillis()
+        }
+        rows > 0
+    }
+
+    suspend fun getBlockedAndMutedSenderPreferences(): List<SenderPreference> = withContext(Dispatchers.IO) {
+        val all = getAllSenderPreferences().values
+        all.filter { it.isBlocked || it.defaultAction == FilterAction.SPAM || it.defaultAction == FilterAction.SILENT }
+            .sortedByDescending { it.updatedAt }
+    }
+
+    suspend fun unblockSender(address: String) = withContext(Dispatchers.IO) {
+        val existing = getSenderPreference(address)
+        if (existing != null) {
+            val updated = existing.copy(
+                isBlocked = false,
+                defaultAction = if (existing.defaultAction == FilterAction.SPAM) FilterAction.NORMAL else existing.defaultAction,
+                updatedAt = System.currentTimeMillis()
+            )
+            saveSenderPreference(updated)
+        }
+    }
+
+    suspend fun unmuteSender(address: String) = withContext(Dispatchers.IO) {
+        val existing = getSenderPreference(address)
+        if (existing != null) {
+            val updated = existing.copy(
+                defaultAction = FilterAction.NORMAL,
+                updatedAt = System.currentTimeMillis()
+            )
+            saveSenderPreference(updated)
+        }
+    }
+
+    suspend fun blockSender(address: String, displayName: String? = null) = withContext(Dispatchers.IO) {
+        val existing = getSenderPreference(address)
+        val updated = existing?.copy(
+            displayName = displayName ?: existing.displayName,
+            isBlocked = true,
+            defaultAction = FilterAction.SPAM,
+            updatedAt = System.currentTimeMillis()
+        ) ?: SenderPreference(
+            address = address,
+            displayName = displayName,
+            isBlocked = true,
+            defaultAction = FilterAction.SPAM,
+            updatedAt = System.currentTimeMillis()
+        )
+        saveSenderPreference(updated)
+    }
+
+    suspend fun muteSender(address: String, displayName: String? = null) = withContext(Dispatchers.IO) {
+        val existing = getSenderPreference(address)
+        val updated = existing?.copy(
+            displayName = displayName ?: existing.displayName,
+            isBlocked = false,
+            defaultAction = FilterAction.SILENT,
+            updatedAt = System.currentTimeMillis()
+        ) ?: SenderPreference(
+            address = address,
+            displayName = displayName,
+            isBlocked = false,
+            defaultAction = FilterAction.SILENT,
+            updatedAt = System.currentTimeMillis()
+        )
+        saveSenderPreference(updated)
+    }
+
     // --- Spam Metadata Operations ---
 
     suspend fun saveMessageFilterMeta(

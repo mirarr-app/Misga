@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import com.miss.ga.ui.screens.BlockedSendersScreen
 import com.miss.ga.ui.screens.ChatScreen
 import com.miss.ga.ui.screens.ComposeScreen
 import com.miss.ga.ui.screens.ConversationsScreen
@@ -55,6 +56,7 @@ fun MainNavigation(
                     onNavigateToFilterStudio = { backStack.add(FilterStudioNav) },
                     onNavigateToCompose = { backStack.add(ComposeNav()) },
                     onNavigateToTestLab = { backStack.add(TestLabNav) },
+                    onNavigateToBlockedSenders = { backStack.add(BlockedSendersNav) },
                     viewModel = conversationsViewModel,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -87,6 +89,13 @@ fun MainNavigation(
             entry<TestLabNav> {
                 com.miss.ga.testing.TestLabScreen(
                     onBackClick = { backStack.removeLastOrNull() },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            entry<BlockedSendersNav> {
+                BlockedSendersScreen(
+                    onBackClick = { backStack.removeLastOrNull() },
+                    onNavigateToChat = { chatNav -> backStack.add(chatNav) },
                     modifier = Modifier.fillMaxSize()
                 )
             }

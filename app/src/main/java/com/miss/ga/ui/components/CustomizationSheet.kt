@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Shield
@@ -54,6 +56,8 @@ fun CustomizationSheet(
     onToggleDateTapShamsi: (Boolean) -> Unit,
     showNotificationDeleteAction: Boolean,
     onToggleNotificationDeleteAction: (Boolean) -> Unit,
+    onNavigateToBlockedSenders: () -> Unit = {},
+    blockedMutedCount: Int = 0,
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 ) {
@@ -380,6 +384,67 @@ fun CustomizationSheet(
                         Switch(
                             checked = showNotificationDeleteAction,
                             onCheckedChange = onToggleNotificationDeleteAction
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
+
+                    // Option 6: Blocked numbers & muted senders
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToBlockedSenders() }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Block,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Blocked numbers & muted senders",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 15.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (blockedMutedCount > 0) {
+                                    "$blockedMutedCount configured • Tap to view and unblock/unmute"
+                                } else {
+                                    "Dedicated settings list with one-tap unblock/unmute"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Open",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }

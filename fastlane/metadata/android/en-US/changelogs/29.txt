@@ -1,0 +1,3 @@
+• Dedicated Blocked Numbers & Muted Senders management screen in the Customize section
+• One-tap unblock and unmute controls for any blocked or silenced phone number
+• Add, search, and filter blocked/muted senders even after deleting active conversation threads

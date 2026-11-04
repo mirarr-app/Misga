@@ -27,3 +27,6 @@ data class ComposeNav(
 @Serializable
 data object TestLabNav : NavKey
 
+@Serializable
+data object BlockedSendersNav : NavKey
+

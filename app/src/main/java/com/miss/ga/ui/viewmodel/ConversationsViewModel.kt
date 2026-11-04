@@ -53,7 +53,8 @@ data class ConversationsUiState(
     val showNotificationDeleteAction: Boolean = false,
     val showTabs: Boolean = true,
     val showSimFilter: Boolean = true,
-    val noSpamForContacts: Boolean = false
+    val noSpamForContacts: Boolean = false,
+    val blockedMutedCount: Int = 0
 )
 
 class ConversationsViewModel(
@@ -92,11 +93,15 @@ class ConversationsViewModel(
         registerSmsContentObserver()
         loadTabs()
         loadThreads()
+        loadBlockedMutedCount()
         viewModelScope.launch {
             dbHelper.rulesChanged.drop(1).collect { loadThreads(silent = true, force = true) }
         }
         viewModelScope.launch {
-            dbHelper.prefsChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+            dbHelper.prefsChanged.drop(1).collect {
+                loadThreads(silent = true, force = true)
+                loadBlockedMutedCount()
+            }
         }
         viewModelScope.launch {
             dbHelper.spamMetaChanged.drop(1).collect { loadThreads(silent = true, force = true) }
@@ -307,6 +312,13 @@ class ConversationsViewModel(
             smsContentObserver = null
         }
         super.onCleared()
+    }
+
+    private fun loadBlockedMutedCount() {
+        viewModelScope.launch {
+            val count = dbHelper.getBlockedAndMutedSenderPreferences().size
+            _uiState.value = _uiState.value.copy(blockedMutedCount = count)
+        }
     }
 
     private fun threadMatchesTab(thread: ConversationThread, tab: SenderTab): Boolean {

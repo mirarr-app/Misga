@@ -141,6 +141,7 @@ fun ConversationsScreen(
     onNavigateToFilterStudio: () -> Unit,
     onNavigateToCompose: () -> Unit,
     onNavigateToTestLab: () -> Unit = {},
+    onNavigateToBlockedSenders: () -> Unit = {},
     viewModel: ConversationsViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -888,6 +889,11 @@ fun ConversationsScreen(
             onToggleNotificationDeleteAction = { enabled ->
                 viewModel.setNotificationDeleteActionEnabled(enabled)
             },
+            onNavigateToBlockedSenders = {
+                showCustomizationSheet = false
+                onNavigateToBlockedSenders()
+            },
+            blockedMutedCount = state.blockedMutedCount,
             onDismiss = { showCustomizationSheet = false }
         )
     }
