@@ -74,10 +74,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -189,26 +185,6 @@ fun ChatScreen(
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showContactProfileDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(state.pendingDispatch?.id) {
-        val pending = state.pendingDispatch
-        if (pending != null) {
-            val result = snackbarHostState.showSnackbar(
-                message = "Sending message in ${pending.totalSeconds}s...",
-                actionLabel = "Undo",
-                duration = SnackbarDuration.Indefinite
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                val undone = viewModel.undoPendingDispatch()
-                if (!undone.isNullOrBlank()) {
-                    inputText = undone
-                }
-            }
-        } else {
-            snackbarHostState.currentSnackbarData?.dismiss()
-        }
-    }
 
     val textToolbar = LocalTextToolbar.current
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
@@ -481,12 +457,6 @@ fun ChatScreen(
                     )
                 )
             }
-        },
-        snackbarHost = {
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
         },
         bottomBar = {
             Surface(
