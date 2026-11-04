@@ -3,6 +3,7 @@ package com.miss.ga.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -25,6 +27,8 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleMediumShape
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,6 +61,10 @@ fun CustomizationSheet(
     onToggleDateTapShamsi: (Boolean) -> Unit,
     showNotificationDeleteAction: Boolean,
     onToggleNotificationDeleteAction: (Boolean) -> Unit,
+    undoSendEnabled: Boolean = false,
+    onToggleUndoSend: (Boolean) -> Unit = {},
+    undoSendDelaySeconds: Int = 4,
+    onChangeUndoSendDelay: (Int) -> Unit = {},
     onNavigateToBlockedSenders: () -> Unit = {},
     blockedMutedCount: Int = 0,
     onDismiss: () -> Unit,
@@ -385,6 +394,100 @@ fun CustomizationSheet(
                             checked = showNotificationDeleteAction,
                             onCheckedChange = onToggleNotificationDeleteAction
                         )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
+
+                    // Option: Undo Send (Delayed Dispatch Buffer)
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleUndoSend(!undoSendEnabled) }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Undo send",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 15.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Delayed dispatch buffer (3–5s) with an Undo snackbar to intercept accidental sends or typos",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Switch(
+                                checked = undoSendEnabled,
+                                onCheckedChange = onToggleUndoSend
+                            )
+                        }
+
+                        if (undoSendEnabled) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 70.dp, end = 16.dp, bottom = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Delay:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                listOf(3, 4, 5).forEach { sec ->
+                                    val isSelected = undoSendDelaySeconds == sec
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { onChangeUndoSendDelay(sec) },
+                                        label = {
+                                            Text(
+                                                "${sec}s",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        shape = PillShape,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        ),
+                                        modifier = Modifier.height(30.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     HorizontalDivider(

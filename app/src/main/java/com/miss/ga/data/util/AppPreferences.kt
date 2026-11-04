@@ -11,6 +11,8 @@ interface UserPreferences {
     var showTabs: Boolean
     var showSimFilter: Boolean
     var noSpamForContacts: Boolean
+    var undoSendEnabled: Boolean
+    var undoSendDelaySeconds: Int
 }
 
 class AppPreferences(
@@ -63,6 +65,18 @@ class AppPreferences(
             prefs.edit().putBoolean(KEY_NO_SPAM_FOR_CONTACTS, value).apply()
         }
 
+    override var undoSendEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UNDO_SEND_ENABLED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_UNDO_SEND_ENABLED, value).apply()
+        }
+
+    override var undoSendDelaySeconds: Int
+        get() = prefs.getInt(KEY_UNDO_SEND_DELAY_SECONDS, 4).coerceIn(3, 5)
+        set(value) {
+            prefs.edit().putInt(KEY_UNDO_SEND_DELAY_SECONDS, value.coerceIn(3, 5)).apply()
+        }
+
     companion object {
         const val PREFS_NAME = "misga_preferences"
         const val KEY_SHOW_CONTACTS_ONLY = "show_contacts_only"
@@ -72,5 +86,7 @@ class AppPreferences(
         const val KEY_SHOW_TABS = "show_tabs"
         const val KEY_SHOW_SIM_FILTER = "show_sim_filter"
         const val KEY_NO_SPAM_FOR_CONTACTS = "no_spam_for_contacts"
+        const val KEY_UNDO_SEND_ENABLED = "undo_send_enabled"
+        const val KEY_UNDO_SEND_DELAY_SECONDS = "undo_send_delay_seconds"
     }
 }

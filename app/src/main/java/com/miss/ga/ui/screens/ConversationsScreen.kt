@@ -173,7 +173,7 @@ fun ConversationsScreen(
     }
 
     val openChat: (ChatNav) -> Unit = { nav ->
-        viewModel.clearUnreadForThread(nav.threadId)
+        viewModel.clearUnreadForThread(nav.threadId, nav.address)
         onNavigateToChat(nav)
     }
 
@@ -233,7 +233,7 @@ fun ConversationsScreen(
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 },
                 onMarkAllRead = {
-                    val hasUnread = state.threads.any { it.unreadCount > 0 }
+                    val hasUnread = state.threads.any { it.unreadCount > 0 || it.isMarkedUnread }
                     if (hasUnread) {
                         viewModel.markAllConversationsRead {
                             Toast.makeText(context, "All conversations marked as read", Toast.LENGTH_SHORT).show()
@@ -889,6 +889,14 @@ fun ConversationsScreen(
             onToggleNotificationDeleteAction = { enabled ->
                 viewModel.setNotificationDeleteActionEnabled(enabled)
             },
+            undoSendEnabled = state.undoSendEnabled,
+            onToggleUndoSend = { enabled ->
+                viewModel.setUndoSendEnabled(enabled)
+            },
+            undoSendDelaySeconds = state.undoSendDelaySeconds,
+            onChangeUndoSendDelay = { seconds ->
+                viewModel.setUndoSendDelaySeconds(seconds)
+            },
             onNavigateToBlockedSenders = {
                 showCustomizationSheet = false
                 onNavigateToBlockedSenders()
@@ -1029,7 +1037,7 @@ private fun ConversationsTopBar(
                 }
 
                 if (threads.isNotEmpty()) {
-                    val hasUnread = threads.any { it.unreadCount > 0 }
+                    val hasUnread = threads.any { it.unreadCount > 0 || it.isMarkedUnread }
                     Surface(
                         shape = CircleShape,
                         color = if (hasUnread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1210,7 +1218,7 @@ private fun SwipeableConversationItem(
             backgroundContent = {
                 SwipeDismissBackground(
                     dismissState = dismissState,
-                    isUnread = thread.unreadCount > 0 || thread.isUnreadSpam
+                    isUnread = thread.unreadCount > 0 || thread.isUnreadSpam || thread.isMarkedUnread
                 )
             }
         ) {
@@ -1429,6 +1437,7 @@ private fun ConversationItem(
         Spacer(modifier = Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
+            val isUnread = (thread.unreadCount > 0 || thread.isMarkedUnread) && !thread.isUnreadSpam
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1441,7 +1450,7 @@ private fun ConversationItem(
                     Text(
                         text = displayName,
                         style = MaterialTheme.typography.titleMedium.contentAware(),
-                        fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        fontWeight = if (isUnread) FontWeight.ExtraBold else FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
@@ -1464,8 +1473,8 @@ private fun ConversationItem(
                     Text(
                         text = dateText,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.Bold else FontWeight.Normal,
-                        color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                     )
                 }
             }
@@ -1500,15 +1509,15 @@ private fun ConversationItem(
                     Text(
                         text = thread.snippet,
                         style = MaterialTheme.typography.bodyMedium.contentAware(),
-                        color = if (thread.unreadCount > 0 && !thread.isUnreadSpam) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (thread.unreadCount > 0 && !thread.isUnreadSpam) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
                 }
 
-                if (thread.unreadCount > 0 && !isSelectionMode) {
+                if ((thread.unreadCount > 0 || thread.isMarkedUnread) && !isSelectionMode) {
                     Spacer(modifier = Modifier.width(8.dp))
                     if (thread.isUnreadSpam) {
                         Surface(
@@ -1525,7 +1534,7 @@ private fun ConversationItem(
                                 fontSize = 10.sp
                             )
                         }
-                    } else {
+                    } else if (thread.unreadCount > 0) {
                         Badge(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -1537,6 +1546,13 @@ private fun ConversationItem(
                                 modifier = Modifier.padding(horizontal = 2.dp)
                             )
                         }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
                     }
                 }
             }

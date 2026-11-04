@@ -41,6 +41,14 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class PendingDispatch(
+    val id: Long = System.currentTimeMillis(),
+    val text: String,
+    val subId: Int?,
+    val totalSeconds: Int,
+    val remainingSeconds: Int
+)
+
 data class ChatUiState(
     val isLoading: Boolean = true,
     val threadId: Long = 0,
@@ -61,7 +69,10 @@ data class ChatUiState(
     val selectedSim: SimInfo? = null,
     val showShamsiDate: Boolean = false,
     val enableDateTapShamsiToggle: Boolean = true,
-    val scheduledMessages: List<ScheduledMessage> = emptyList()
+    val scheduledMessages: List<ScheduledMessage> = emptyList(),
+    val pendingDispatch: PendingDispatch? = null,
+    val undoSendEnabled: Boolean = false,
+    val undoSendDelaySeconds: Int = 4
 )
 
 class ChatViewModel(
@@ -77,13 +88,15 @@ class ChatViewModel(
     private val dbHelper = MisgaDatabaseHelper.getInstance(application)
     val selectedMessageIds = mutableStateSetOf<Long>()
     var isSelectionMode by mutableStateOf(false)
-        private set
+    private set
     var isDeletingSelection by mutableStateOf(false)
-        private set
+    private set
     private var messagesJob: Job? = null
     private var olderJob: Job? = null
     private var observerDebounceJob: Job? = null
     private var smsContentObserver: ContentObserver? = null
+    private var dispatchJob: Job? = null
+    private var pendingOnComplete: ((SendSmsResult) -> Unit)? = null
     @Volatile
     private var isScreenResumed = false
 
@@ -93,7 +106,9 @@ class ChatViewModel(
             address = initialAddress,
             contactName = initialContactName,
             showShamsiDate = userPreferences.showShamsiDate,
-            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
+            enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
+            undoSendEnabled = userPreferences.undoSendEnabled,
+            undoSendDelaySeconds = userPreferences.undoSendDelaySeconds
         )
     )
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -456,10 +471,69 @@ class ChatViewModel(
 
     fun sendMessage(text: String, onComplete: (SendSmsResult) -> Unit = {}) {
         if (text.isBlank()) return
+
+        val subIdToSend = _uiState.value.selectedSim?.subscriptionId
+
+        if (_uiState.value.pendingDispatch != null) {
+            sendPendingDispatchNow()
+        }
+
+        if (!userPreferences.undoSendEnabled) {
+            executeImmediateSend(text, subIdToSend, onComplete)
+            return
+        }
+
+        val delaySec = userPreferences.undoSendDelaySeconds.coerceIn(3, 5)
+        val pending = PendingDispatch(
+            text = text,
+            subId = subIdToSend,
+            totalSeconds = delaySec,
+            remainingSeconds = delaySec
+        )
+        _uiState.value = _uiState.value.copy(pendingDispatch = pending)
+        pendingOnComplete = onComplete
+        clearDraft()
+
+        dispatchJob = viewModelScope.launch {
+            for (sec in delaySec downTo 1) {
+                _uiState.value = _uiState.value.copy(
+                    pendingDispatch = _uiState.value.pendingDispatch?.copy(remainingSeconds = sec)
+                )
+                delay(1000L)
+            }
+            val currentPending = _uiState.value.pendingDispatch
+            if (currentPending != null) {
+                _uiState.value = _uiState.value.copy(pendingDispatch = null)
+                val callback = pendingOnComplete ?: onComplete
+                pendingOnComplete = null
+                executeImmediateSend(currentPending.text, currentPending.subId, callback)
+            }
+        }
+    }
+
+    fun undoPendingDispatch(): String? {
+        dispatchJob?.cancel()
+        dispatchJob = null
+        val undoneText = _uiState.value.pendingDispatch?.text
+        _uiState.value = _uiState.value.copy(pendingDispatch = null)
+        pendingOnComplete = null
+        return undoneText
+    }
+
+    fun sendPendingDispatchNow() {
+        dispatchJob?.cancel()
+        dispatchJob = null
+        val currentPending = _uiState.value.pendingDispatch ?: return
+        val callback = pendingOnComplete ?: {}
+        _uiState.value = _uiState.value.copy(pendingDispatch = null)
+        pendingOnComplete = null
+        executeImmediateSend(currentPending.text, currentPending.subId, callback)
+    }
+
+    private fun executeImmediateSend(text: String, subId: Int?, onComplete: (SendSmsResult) -> Unit) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true)
-            val subIdToSend = _uiState.value.selectedSim?.subscriptionId
-            val result = repository.sendSms(initialAddress, text, subIdToSend)
+            val result = repository.sendSms(initialAddress, text, subId)
             _uiState.value = _uiState.value.copy(isSending = false)
             if (result.sent) {
                 clearDraft()
@@ -621,7 +695,9 @@ class ChatViewModel(
         if (resumed) {
             _uiState.value = _uiState.value.copy(
                 showShamsiDate = userPreferences.showShamsiDate,
-                enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle
+                enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
+                undoSendEnabled = userPreferences.undoSendEnabled,
+                undoSendDelaySeconds = userPreferences.undoSendDelaySeconds
             )
             repository.simRepository.refreshSims()
             loadContactDetails()
@@ -708,6 +784,13 @@ class ChatViewModel(
     override fun onCleared() {
         observerDebounceJob?.cancel()
         scheduledMessageTimerJob?.cancel()
+        dispatchJob?.cancel()
+        val pending = _uiState.value.pendingDispatch
+        if (pending != null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                repository.sendSms(initialAddress, pending.text, pending.subId)
+            }
+        }
         val observer = smsContentObserver
         if (observer != null) {
             try {

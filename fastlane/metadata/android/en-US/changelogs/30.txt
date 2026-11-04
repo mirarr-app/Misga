@@ -1,0 +1,2 @@
+• Undo Send: Configurable 3–5 second delay buffer with an Undo banner to intercept accidental sends
+• Mark as unread: Swiping right marks a conversation with an unread dot, cleared upon opening or re-swiping

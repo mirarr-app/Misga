@@ -28,6 +28,11 @@ class AppPreferencesTest {
                     val defValue = args[1] as Boolean
                     storage[key] as? Boolean ?: defValue
                 }
+                "getInt" -> {
+                    val key = args!![0] as String
+                    val defValue = args[1] as Int
+                    storage[key] as? Int ?: defValue
+                }
                 "edit" -> createEditorProxy()
                 else -> throw UnsupportedOperationException("Method ${method.name} not implemented in test stub")
             }
@@ -41,6 +46,12 @@ class AppPreferencesTest {
                     "putBoolean" -> {
                         val key = editorArgs!![0] as String
                         val value = editorArgs[1] as Boolean
+                        pendingChanges[key] = value
+                        editorProxy
+                    }
+                    "putInt" -> {
+                        val key = editorArgs!![0] as String
+                        val value = editorArgs[1] as Int
                         pendingChanges[key] = value
                         editorProxy
                     }
@@ -275,5 +286,55 @@ class AppPreferencesTest {
 
         val appPreferences = AppPreferences(fakePrefs.proxy)
         assertTrue(appPreferences.noSpamForContacts)
+    }
+
+    @Test
+    fun defaultUndoSendEnabledIsFalse() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertFalse(appPreferences.undoSendEnabled)
+    }
+
+    @Test
+    fun undoSendEnabledPersistsWhenSet() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.undoSendEnabled = true
+        assertTrue(appPreferences.undoSendEnabled)
+        assertEquals(true, fakePrefs.storage[AppPreferences.KEY_UNDO_SEND_ENABLED])
+
+        appPreferences.undoSendEnabled = false
+        assertFalse(appPreferences.undoSendEnabled)
+        assertEquals(false, fakePrefs.storage[AppPreferences.KEY_UNDO_SEND_ENABLED])
+    }
+
+    @Test
+    fun defaultUndoSendDelaySecondsIsFour() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        assertEquals(4, appPreferences.undoSendDelaySeconds)
+    }
+
+    @Test
+    fun undoSendDelaySecondsClampsBetweenThreeAndFive() {
+        val fakePrefs = InMemorySharedPreferences()
+        val appPreferences = AppPreferences(fakePrefs.proxy)
+
+        appPreferences.undoSendDelaySeconds = 3
+        assertEquals(3, appPreferences.undoSendDelaySeconds)
+
+        appPreferences.undoSendDelaySeconds = 5
+        assertEquals(5, appPreferences.undoSendDelaySeconds)
+
+        // Lower bound clamp
+        appPreferences.undoSendDelaySeconds = 1
+        assertEquals(3, appPreferences.undoSendDelaySeconds)
+
+        // Upper bound clamp
+        appPreferences.undoSendDelaySeconds = 10
+        assertEquals(5, appPreferences.undoSendDelaySeconds)
     }
 }

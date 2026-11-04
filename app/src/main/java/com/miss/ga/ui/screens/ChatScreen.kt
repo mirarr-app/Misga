@@ -13,10 +13,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -72,6 +74,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,6 +112,7 @@ import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.theme.InputBarShape
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
+import com.miss.ga.theme.SquircleMediumShape
 import com.miss.ga.ui.components.ContactProfileDialog
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.MessageBubble
@@ -182,6 +189,26 @@ fun ChatScreen(
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showContactProfileDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.pendingDispatch?.id) {
+        val pending = state.pendingDispatch
+        if (pending != null) {
+            val result = snackbarHostState.showSnackbar(
+                message = "Sending message in ${pending.totalSeconds}s...",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Indefinite
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                val undone = viewModel.undoPendingDispatch()
+                if (!undone.isNullOrBlank()) {
+                    inputText = undone
+                }
+            }
+        } else {
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
 
     val textToolbar = LocalTextToolbar.current
     var selectedMessageForDialog by remember { mutableStateOf<SmsMessage?>(null) }
@@ -455,6 +482,12 @@ fun ChatScreen(
                 )
             }
         },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        },
         bottomBar = {
             Surface(
                 tonalElevation = 4.dp,
@@ -477,6 +510,73 @@ fun ChatScreen(
                             viewModel.cancelScheduledMessage(id)
                         }
                     )
+
+                    AnimatedVisibility(
+                        visible = state.pendingDispatch != null,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Surface(
+                            shape = SquircleMediumShape,
+                            color = MaterialTheme.colorScheme.inverseSurface,
+                            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    progress = {
+                                        val p = state.pendingDispatch
+                                        if (p != null && p.totalSeconds > 0) {
+                                            p.remainingSeconds.toFloat() / p.totalSeconds.toFloat()
+                                        } else 0f
+                                    },
+                                    modifier = Modifier.size(18.dp),
+                                    color = MaterialTheme.colorScheme.inversePrimary,
+                                    strokeWidth = 2.5.dp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Sending in ${state.pendingDispatch?.remainingSeconds ?: 0}s...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = {
+                                        val undone = viewModel.undoPendingDispatch()
+                                        if (!undone.isNullOrBlank()) {
+                                            inputText = undone
+                                        }
+                                    }
+                                ) {
+                                    Text(
+                                        text = "Undo",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.inversePrimary
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { viewModel.sendPendingDispatchNow() },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = "Send now",
+                                        tint = MaterialTheme.colorScheme.inversePrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     SmsSegmentCounter(text = inputText)
 

@@ -130,6 +130,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         createSenderTabsTables(db)
         createScheduledMessagesTable(db)
         createConversationDraftsTable(db)
+        createMarkedUnreadThreadsTable(db)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_filter_rules_sender_target ON filter_rules(sender_target)"
@@ -192,6 +193,12 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             } catch (e: Exception) {}
             try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN is_muted INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
             try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN draft TEXT") } catch (e: Exception) {}
+        }
+        if (oldVersion < 8) {
+            try {
+                createMarkedUnreadThreadsTable(db)
+            } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN is_marked_unread INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
         }
 
     }
@@ -758,6 +765,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             val subIdIdx = it.getColumnIndex("sub_id")
             val mutedIdx = it.getColumnIndex("is_muted")
             val draftIdx = it.getColumnIndex("draft")
+            val markedUnreadIdx = it.getColumnIndex("is_marked_unread")
             while (it.moveToNext()) {
                 val contactName = if (it.isNull(nameIdx)) null else it.getString(nameIdx)
                 val lastMessageAction = if (actionIdx >= 0 && !it.isNull(actionIdx)) {
@@ -776,6 +784,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 }
                 val isMuted = mutedIdx >= 0 && !it.isNull(mutedIdx) && it.getInt(mutedIdx) == 1
                 val draft = if (draftIdx >= 0 && !it.isNull(draftIdx)) it.getString(draftIdx) else null
+                val isMarkedUnread = markedUnreadIdx >= 0 && !it.isNull(markedUnreadIdx) && it.getInt(markedUnreadIdx) == 1
                 threads.add(
                     ConversationThread(
                         threadId = it.getLong(idIdx),
@@ -790,7 +799,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         lastMessageAction = lastMessageAction,
                         subId = subId,
                         isMuted = isMuted,
-                        draft = draft
+                        draft = draft,
+                        isMarkedUnread = isMarkedUnread
                     )
                 )
             }
@@ -845,6 +855,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         put("sub_id", thread.subId)
                         put("is_muted", if (thread.isMuted) 1 else 0)
                         put("draft", thread.draft)
+                        put("is_marked_unread", if (thread.isMarkedUnread) 1 else 0)
                     }
                     db.insertWithOnConflict(
                         "cached_threads",
@@ -1157,10 +1168,24 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 last_message_action TEXT NOT NULL DEFAULT 'NORMAL',
                 sub_id INTEGER NOT NULL DEFAULT -1,
                 is_muted INTEGER NOT NULL DEFAULT 0,
-                draft TEXT
+                draft TEXT,
+                is_marked_unread INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
+    }
+
+    private fun createMarkedUnreadThreadsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS marked_unread_threads (
+                thread_id INTEGER PRIMARY KEY,
+                address TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_marked_unread_address ON marked_unread_threads(address)")
     }
 
     private fun createConversationDraftsTable(db: SQLiteDatabase) {
@@ -1657,9 +1682,125 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
     }
 
+    suspend fun markThreadUnread(threadId: Long, address: String = "") = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        try {
+            val cv = ContentValues().apply {
+                put("thread_id", threadId)
+                put("address", PhoneNumberKeys.canonical(address))
+                put("updated_at", System.currentTimeMillis())
+            }
+            db.insertWithOnConflict("marked_unread_threads", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            if (threadId > 0) {
+                val threadCv = ContentValues().apply {
+                    put("is_marked_unread", 1)
+                }
+                db.update("cached_threads", threadCv, "thread_id = ?", arrayOf(threadId.toString()))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking thread unread in db", e)
+        }
+    }
+
+    suspend fun markThreadRead(threadId: Long, address: String = "") = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        val canonical = PhoneNumberKeys.canonical(address)
+        try {
+            if (threadId > 0) {
+                db.delete("marked_unread_threads", "thread_id = ?", arrayOf(threadId.toString()))
+                val threadCv = ContentValues().apply {
+                    put("is_marked_unread", 0)
+                }
+                db.update("cached_threads", threadCv, "thread_id = ?", arrayOf(threadId.toString()))
+            }
+            if (canonical.isNotBlank()) {
+                val candidateKeys = PhoneNumberKeys.keys(address)
+                val placeholders = candidateKeys.joinToString(",") { "?" }
+                db.delete("marked_unread_threads", "address IN ($placeholders)", candidateKeys.toTypedArray())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking thread read in db", e)
+        }
+    }
+
+    suspend fun markThreadsRead(threadIds: Collection<Long>) = withContext(Dispatchers.IO) {
+        if (threadIds.isEmpty()) return@withContext
+        val db = writableDatabase
+        try {
+            for (chunk in threadIds.distinct().chunked(SQLITE_IN_CHUNK_SIZE)) {
+                val placeholders = chunk.joinToString(",") { "?" }
+                val args = chunk.map { it.toString() }.toTypedArray()
+                db.delete("marked_unread_threads", "thread_id IN ($placeholders)", args)
+                val threadCv = ContentValues().apply {
+                    put("is_marked_unread", 0)
+                }
+                db.update("cached_threads", threadCv, "thread_id IN ($placeholders)", args)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking threads read in db", e)
+        }
+    }
+
+    suspend fun markAllThreadsRead() = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        try {
+            db.delete("marked_unread_threads", null, null)
+            val threadCv = ContentValues().apply {
+                put("is_marked_unread", 0)
+            }
+            db.update("cached_threads", threadCv, null, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking all threads read in db", e)
+        }
+    }
+
+    suspend fun getMarkedUnreadThreadIds(): Set<Long> = withContext(Dispatchers.IO) {
+        val set = mutableSetOf<Long>()
+        val db = readableDatabase
+        try {
+            db.query(
+                "marked_unread_threads",
+                arrayOf("thread_id"),
+                null, null, null, null, null
+            ).use { cursor ->
+                val idIdx = cursor.getColumnIndexOrThrow("thread_id")
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idIdx)
+                    if (id > 0) set.add(id)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying marked unread thread IDs", e)
+        }
+        set
+    }
+
+    suspend fun getMarkedUnreadAddresses(): Set<String> = withContext(Dispatchers.IO) {
+        val set = mutableSetOf<String>()
+        val db = readableDatabase
+        try {
+            db.query(
+                "marked_unread_threads",
+                arrayOf("address"),
+                null, null, null, null, null
+            ).use { cursor ->
+                val addrIdx = cursor.getColumnIndexOrThrow("address")
+                while (cursor.moveToNext()) {
+                    val addr = cursor.getString(addrIdx)
+                    if (!addr.isNullOrBlank()) {
+                        set.add(PhoneNumberKeys.canonical(addr))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying marked unread addresses", e)
+        }
+        set
+    }
+
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 7
+        private const val DATABASE_VERSION = 8
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile

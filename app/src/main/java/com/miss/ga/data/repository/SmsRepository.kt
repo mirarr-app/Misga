@@ -315,6 +315,8 @@ class SmsRepository(
             val allSenderPrefs = cache.senderPreferences()
             val allDrafts = dbHelper.getAllDrafts()
             val allDraftsByAddress = dbHelper.getAllDraftsByAddress()
+            val markedUnreadIds = dbHelper.getMarkedUnreadThreadIds()
+            val markedUnreadAddresses = dbHelper.getMarkedUnreadAddresses()
 
             for (row in threadRows) {
                 val threadId = row.threadId
@@ -329,6 +331,7 @@ class SmsRepository(
                 val senderPref = allSenderPrefs[canonicalAddr] ?: PhoneNumberKeys.lookupValue(allSenderPrefs, address)
                 val isMuted = senderPref?.defaultAction == FilterAction.SILENT
                 val draft = allDrafts[threadId] ?: allDraftsByAddress[canonicalAddr]
+                val isMarkedUnread = threadId in markedUnreadIds || (canonicalAddr.isNotBlank() && canonicalAddr in markedUnreadAddresses)
 
                 val unreadCount = unreadCounts[threadId] ?: 0
                 val lastInbox = latestInboxMessage[threadId]
@@ -363,7 +366,8 @@ class SmsRepository(
                         photoUri = photoUri,
                         contactLookupUri = contactLookupUri,
                         isMuted = isMuted,
-                        draft = draft
+                        draft = draft,
+                        isMarkedUnread = isMarkedUnread
                     )
                 )
             }
@@ -670,13 +674,15 @@ class SmsRepository(
         SendSmsResult(sent = confirmed, storedInProvider = storedInProvider)
     }
 
-    suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
+    suspend fun markThreadRead(threadId: Long, address: String = "") = withContext(Dispatchers.IO) {
+        dbHelper.markThreadRead(threadId, address)
         markThreadsRead(listOf(threadId))
     }
 
     suspend fun markThreadsRead(threadIds: Collection<Long>) = withContext(Dispatchers.IO) {
         if (threadIds.isEmpty()) return@withContext
         val ids = threadIds.distinct()
+        dbHelper.markThreadsRead(ids)
         val values = readAndSeenValues()
         for (threadId in ids) {
             try {
@@ -706,6 +712,7 @@ class SmsRepository(
     }
 
     suspend fun markAllMessagesRead() = withContext(Dispatchers.IO) {
+        dbHelper.markAllThreadsRead()
         try {
             context.contentResolver.update(
                 Telephony.Sms.CONTENT_URI,
@@ -718,7 +725,8 @@ class SmsRepository(
         }
     }
 
-    suspend fun markThreadUnread(threadId: Long) = withContext(Dispatchers.IO) {
+    suspend fun markThreadUnread(threadId: Long, address: String = "") = withContext(Dispatchers.IO) {
+        dbHelper.markThreadUnread(threadId, address)
         val values = ContentValues().apply {
             put(Telephony.Sms.READ, 0)
             put(Telephony.Sms.SEEN, 0)
@@ -913,6 +921,7 @@ class SmsRepository(
     suspend fun deleteThreads(threadIds: Collection<Long>): Boolean = withContext(Dispatchers.IO) {
         if (threadIds.isEmpty()) return@withContext false
         val ids = threadIds.distinct()
+        dbHelper.markThreadsRead(ids)
         val cachedAddresses = dbHelper.getCachedThreadAddresses(ids)
         val addresses = LinkedHashSet<String>()
         for (id in ids) {

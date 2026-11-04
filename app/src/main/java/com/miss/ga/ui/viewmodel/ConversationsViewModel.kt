@@ -54,7 +54,9 @@ data class ConversationsUiState(
     val showTabs: Boolean = true,
     val showSimFilter: Boolean = true,
     val noSpamForContacts: Boolean = false,
-    val blockedMutedCount: Int = 0
+    val blockedMutedCount: Int = 0,
+    val undoSendEnabled: Boolean = false,
+    val undoSendDelaySeconds: Int = 4
 )
 
 class ConversationsViewModel(
@@ -80,7 +82,9 @@ class ConversationsViewModel(
             showNotificationDeleteAction = userPreferences.showNotificationDeleteAction,
             showTabs = userPreferences.showTabs,
             showSimFilter = userPreferences.showSimFilter,
-            noSpamForContacts = userPreferences.noSpamForContacts
+            noSpamForContacts = userPreferences.noSpamForContacts,
+            undoSendEnabled = userPreferences.undoSendEnabled,
+            undoSendDelaySeconds = userPreferences.undoSendDelaySeconds
         )
     )
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
@@ -141,7 +145,9 @@ class ConversationsViewModel(
             showNotificationDeleteAction = userPreferences.showNotificationDeleteAction,
             showTabs = userPreferences.showTabs,
             showSimFilter = userPreferences.showSimFilter,
-            noSpamForContacts = userPreferences.noSpamForContacts
+            noSpamForContacts = userPreferences.noSpamForContacts,
+            undoSendEnabled = userPreferences.undoSendEnabled,
+            undoSendDelaySeconds = userPreferences.undoSendDelaySeconds
         )
         repository.invalidateLookupCaches()
         repository.simRepository.refreshSims()
@@ -150,11 +156,15 @@ class ConversationsViewModel(
         loadThreads(silent = true, force = true)
     }
 
-    fun clearUnreadForThread(threadId: Long) {
+    fun clearUnreadForThread(threadId: Long, address: String = "") {
         val current = _uiState.value
+        fun matches(thread: ConversationThread): Boolean {
+            return (threadId > 0 && thread.threadId == threadId) ||
+                (address.isNotBlank() && PhoneNumberKeys.canonical(thread.address) == PhoneNumberKeys.canonical(address))
+        }
         val updatedThreads = current.threads.map { thread ->
-            if (thread.threadId == threadId && (thread.unreadCount > 0 || thread.isUnreadSpam)) {
-                thread.copy(unreadCount = 0, isUnreadSpam = false)
+            if (matches(thread) && (thread.unreadCount > 0 || thread.isUnreadSpam || thread.isMarkedUnread)) {
+                thread.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
             } else {
                 thread
             }
@@ -163,8 +173,8 @@ class ConversationsViewModel(
             _uiState.value = current.copy(
                 threads = updatedThreads,
                 filteredThreads = current.filteredThreads.map { thread ->
-                    if (thread.threadId == threadId && (thread.unreadCount > 0 || thread.isUnreadSpam)) {
-                        thread.copy(unreadCount = 0, isUnreadSpam = false)
+                    if (matches(thread) && (thread.unreadCount > 0 || thread.isUnreadSpam || thread.isMarkedUnread)) {
+                        thread.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
                     } else {
                         thread
                     }
@@ -172,7 +182,7 @@ class ConversationsViewModel(
             )
         }
         viewModelScope.launch {
-            repository.markThreadRead(threadId)
+            repository.markThreadRead(threadId, address)
             if (updatedThreads != current.threads) {
                 repository.saveCachedThreads(updatedThreads)
             }
@@ -475,6 +485,17 @@ class ConversationsViewModel(
         loadThreads(silent = true, force = true)
     }
 
+    fun setUndoSendEnabled(enabled: Boolean) {
+        userPreferences.undoSendEnabled = enabled
+        _uiState.value = _uiState.value.copy(undoSendEnabled = enabled)
+    }
+
+    fun setUndoSendDelaySeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(3, 5)
+        userPreferences.undoSendDelaySeconds = clamped
+        _uiState.value = _uiState.value.copy(undoSendDelaySeconds = clamped)
+    }
+
     fun checkDefaultSmsStatus() {
         _uiState.value = _uiState.value.copy(isDefaultSmsApp = repository.isDefaultSmsApp())
     }
@@ -564,6 +585,23 @@ class ConversationsViewModel(
 
         viewModelScope.launch {
             val count = targetIds.size
+            val updatedThreads = _uiState.value.threads.map {
+                if (it.threadId in targetIds) {
+                    it.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
+                } else {
+                    it
+                }
+            }
+            _uiState.value = _uiState.value.copy(
+                threads = updatedThreads,
+                filteredThreads = _uiState.value.filteredThreads.map {
+                    if (it.threadId in targetIds) {
+                        it.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
+                    } else {
+                        it
+                    }
+                }
+            )
             repository.markThreadsRead(targetIds)
             clearSelection()
             loadThreads(silent = true, force = true)
@@ -573,6 +611,15 @@ class ConversationsViewModel(
 
     fun markAllConversationsRead(onComplete: () -> Unit = {}) {
         viewModelScope.launch {
+            val updatedThreads = _uiState.value.threads.map {
+                it.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
+            }
+            _uiState.value = _uiState.value.copy(
+                threads = updatedThreads,
+                filteredThreads = _uiState.value.filteredThreads.map {
+                    it.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
+                }
+            )
             repository.markAllMessagesRead()
             loadThreads(silent = true, force = true)
             onComplete()
@@ -581,11 +628,39 @@ class ConversationsViewModel(
 
     fun toggleThreadRead(thread: ConversationThread, onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val wasUnread = thread.unreadCount > 0 || thread.isUnreadSpam
+            val wasUnread = thread.unreadCount > 0 || thread.isUnreadSpam || thread.isMarkedUnread
+            val updatedThreads = _uiState.value.threads.map {
+                if (it.threadId == thread.threadId) {
+                    if (wasUnread) {
+                        it.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
+                    } else {
+                        it.copy(isMarkedUnread = true)
+                    }
+                } else {
+                    it
+                }
+            }
+            _uiState.value = _uiState.value.copy(
+                threads = updatedThreads,
+                filteredThreads = _uiState.value.filteredThreads.map {
+                    if (it.threadId == thread.threadId) {
+                        if (wasUnread) {
+                            it.copy(unreadCount = 0, isUnreadSpam = false, isMarkedUnread = false)
+                        } else {
+                            it.copy(isMarkedUnread = true)
+                        }
+                    } else {
+                        it
+                    }
+                }
+            )
             if (wasUnread) {
-                repository.markThreadRead(thread.threadId)
+                repository.markThreadRead(thread.threadId, thread.address)
             } else {
-                repository.markThreadUnread(thread.threadId)
+                repository.markThreadUnread(thread.threadId, thread.address)
+            }
+            if (updatedThreads != _uiState.value.threads) {
+                repository.saveCachedThreads(updatedThreads)
             }
             loadThreads(silent = true, force = true)
             onComplete(!wasUnread)
