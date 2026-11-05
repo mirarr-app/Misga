@@ -81,11 +81,17 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -1193,28 +1199,32 @@ private fun SwipeableConversationItem(
         )
     } else {
         val haptic = LocalHapticFeedback.current
-        val dismissState = rememberSwipeToDismissBoxState(
-            confirmValueChange = { dismissValue ->
-                when (dismissValue) {
-                    SwipeToDismissBoxValue.StartToEnd -> {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onSwipeToggleRead(thread)
-                        false
+        val scope = rememberCoroutineScope()
+        val dismissState = rememberSwipeToDismissBoxState()
+        val currentThread by rememberUpdatedState(thread)
+
+        LaunchedEffect(dismissState) {
+            snapshotFlow { dismissState.targetValue }
+                .drop(1)
+                .collect { target ->
+                    if (target != SwipeToDismissBoxValue.Settled) {
+                        haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                     }
-                    SwipeToDismissBoxValue.EndToStart -> {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onSwipeDelete(thread)
-                        false
-                    }
-                    SwipeToDismissBoxValue.Settled -> false
                 }
-            }
-        )
+        }
 
         SwipeToDismissBox(
             state = dismissState,
             enableDismissFromStartToEnd = true,
             enableDismissFromEndToStart = true,
+            onDismiss = { direction ->
+                when (direction) {
+                    SwipeToDismissBoxValue.StartToEnd -> onSwipeToggleRead(currentThread)
+                    SwipeToDismissBoxValue.EndToStart -> onSwipeDelete(currentThread)
+                    SwipeToDismissBoxValue.Settled -> Unit
+                }
+                scope.launch { dismissState.reset() }
+            },
             backgroundContent = {
                 SwipeDismissBackground(
                     dismissState = dismissState,

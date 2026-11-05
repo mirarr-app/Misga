@@ -43,14 +43,18 @@ class SimRepository(private val context: Context) {
      * Checks if the device hardware supports multiple SIMs/modems.
      * Does not require READ_PHONE_STATE permission.
      */
-    fun isMultiSimSupported(): Boolean {
-        return try {
-            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                tm.activeModemCount > 1
-            } else {
-                @Suppress("DEPRECATION")
-                tm.phoneCount > 1
+    fun isMultiSimSupported(): Boolean = multiSimSupported
+
+    private val multiSimSupported: Boolean by lazy {
+        try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            when {
+                tm == null -> false
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> tm.activeModemCount > 1
+                else -> {
+                    @Suppress("DEPRECATION")
+                    tm.phoneCount > 1
+                }
             }
         } catch (_: Exception) {
             false

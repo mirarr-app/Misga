@@ -6,10 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.miss.ga.data.db.MisgaDatabaseHelper
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.SenderPreference
+import com.miss.ga.data.repository.ContactDetail
 import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.PhoneNumberKeys
+import java.util.Collections
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,6 +59,9 @@ class BlockedSendersViewModel(application: Application) : AndroidViewModel(appli
     private val _uiState = MutableStateFlow(BlockedSendersUiState())
     val uiState: StateFlow<BlockedSendersUiState> = _uiState.asStateFlow()
 
+    private var loadJob: Job? = null
+    private val contactCache: MutableMap<String, ContactDetail?> = Collections.synchronizedMap(HashMap())
+
     init {
         loadSenders()
         viewModelScope.launch {
@@ -66,12 +72,16 @@ class BlockedSendersViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun loadSenders() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val prefs = dbHelper.getBlockedAndMutedSenderPreferences()
             val items = withContext(Dispatchers.IO) {
                 prefs.map { pref ->
-                    val contactDetail = repository.resolveContactDetail(pref.address)
+                    val contactDetail = if (contactCache.containsKey(pref.address)) {
+                        contactCache[pref.address]
+                    } else {
+                        repository.resolveContactDetail(pref.address).also { contactCache[pref.address] = it }
+                    }
                     val type = if (pref.isBlocked || pref.defaultAction == FilterAction.SPAM) {
                         SenderBlockType.BLOCKED
                     } else {

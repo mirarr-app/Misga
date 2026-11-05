@@ -31,6 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
@@ -114,7 +115,10 @@ class ConversationsViewModel(
             dbHelper.tabsChanged.collect { loadTabs() }
         }
         viewModelScope.launch {
-            dbHelper.draftsChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+            dbHelper.draftsChanged.drop(1).collectLatest {
+                delay(DRAFTS_REFRESH_DEBOUNCE_MS)
+                refreshDrafts()
+            }
         }
         viewModelScope.launch {
             repository.simRepository.observeActiveSims().collect { sims ->
@@ -322,6 +326,25 @@ class ConversationsViewModel(
             smsContentObserver = null
         }
         super.onCleared()
+    }
+
+    /** Patches draft previews in place; a full [loadThreads] is far too heavy for this. */
+    private suspend fun refreshDrafts() {
+        val draftsById = dbHelper.getAllDrafts()
+        val draftsByAddress = dbHelper.getAllDraftsByAddress()
+        val current = _uiState.value
+        val withDraft: (ConversationThread) -> ConversationThread = { thread ->
+            val draft = draftsById[thread.threadId]
+                ?: draftsByAddress[PhoneNumberKeys.canonical(thread.address)]
+            if (draft == thread.draft) thread else thread.copy(draft = draft)
+        }
+        val updatedThreads = current.threads.map(withDraft)
+        if (updatedThreads == current.threads) return
+        _uiState.value = current.copy(
+            threads = updatedThreads,
+            filteredThreads = current.filteredThreads.map(withDraft)
+        )
+        repository.saveCachedThreads(updatedThreads)
     }
 
     private fun loadBlockedMutedCount() {
@@ -801,6 +824,7 @@ class ConversationsViewModel(
 }
 
 private const val SMS_OBSERVER_DEBOUNCE_MS = 400L
+private const val DRAFTS_REFRESH_DEBOUNCE_MS = 250L
 private const val SILENT_LOAD_MIN_INTERVAL_MS = 3_000L
 private const val SEARCH_MIN_QUERY_LENGTH = 2
 private const val SMS_PERMISSION_ERROR = "SMS permission required"

@@ -1,0 +1,5 @@
+• Faster typing in chats: drafts are saved efficiently instead of on every keystroke
+• Fixed "Mark unread" being undone for conversations opened earlier in the session
+• Fixed swipe-to-toggle read state going the wrong way on repeated swipes
+• Drafts for new recipients no longer overwrite each other and are kept when leaving the compose screen
+• Smoother undo-send countdown, compact bank card/Sheba copy buttons, and blocked senders list polish

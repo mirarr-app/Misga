@@ -47,11 +47,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +77,8 @@ import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.components.SimToggleButton
 import com.miss.ga.ui.components.SmsSegmentCounter
 import com.miss.ga.ui.util.contentAware
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -94,9 +98,18 @@ fun ComposeScreen(
     val availableSims by repository.simRepository.observeActiveSims().collectAsStateWithLifecycle(initialValue = emptyList())
     var selectedSim by remember { mutableStateOf<SimInfo?>(null) }
 
+    val isMultiSimSupported = remember { repository.simRepository.isMultiSimSupported() }
+    var hasPhoneStatePermission by remember {
+        mutableStateOf(repository.simRepository.hasPhoneStatePermission())
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        hasPhoneStatePermission = repository.simRepository.hasPhoneStatePermission()
+    }
+
     val phonePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
+        hasPhoneStatePermission = isGranted
         if (isGranted) {
             repository.simRepository.refreshSims()
         } else {
@@ -148,12 +161,20 @@ fun ComposeScreen(
         }
     }
 
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        if (recipient.isNotBlank()) {
-            coroutineScope.launch {
-                repository.saveDraft(0L, recipient.trim(), messageBody)
+    // Not tied to the composition scope: it must still run while the screen is being disposed.
+    val persistDraft = {
+        val address = recipient.trim()
+        val body = messageBody
+        if (address.isNotBlank()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                repository.saveDraft(0L, address, body)
             }
         }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { persistDraft() }
+    val currentPersistDraft by rememberUpdatedState(persistDraft)
+    DisposableEffect(Unit) {
+        onDispose { currentPersistDraft() }
     }
 
     var contactSuggestions by remember { mutableStateOf<List<ContactItem>>(emptyList()) }
@@ -240,7 +261,7 @@ fun ComposeScreen(
                                 },
                                 modifier = Modifier.padding(end = 8.dp)
                             )
-                        } else if (repository.simRepository.isMultiSimSupported() && !repository.simRepository.hasPhoneStatePermission()) {
+                        } else if (isMultiSimSupported && !hasPhoneStatePermission) {
                             IconButton(
                                 onClick = { phonePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE) },
                                 modifier = Modifier.padding(end = 8.dp)
@@ -264,6 +285,9 @@ fun ComposeScreen(
                                             subscriptionId = selectedSim?.subscriptionId
                                         )
                                         isSending = false
+                                        if (result.sent) {
+                                            messageBody = ""
+                                        }
                                         if (!result.sent) {
                                             Toast.makeText(
                                                 context,

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -241,10 +240,10 @@ fun FinancialDetailsPills(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         financialDetails.bankCard?.let { card ->
-            BankCardCopyButton(bankCard = card, modifier = Modifier.fillMaxWidth())
+            BankCardCopyButton(bankCard = card)
         }
         financialDetails.sheba?.let { sheba ->
-            ShebaCopyButton(sheba = sheba, modifier = Modifier.fillMaxWidth())
+            ShebaCopyButton(sheba = sheba)
         }
     }
 }

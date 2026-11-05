@@ -734,7 +734,7 @@ class SmsRepository(
         try {
             val projection = arrayOf(Telephony.Sms._ID)
             val cursor = context.contentResolver.query(
-                Telephony.Sms.CONTENT_URI,
+                Telephony.Sms.Inbox.CONTENT_URI,
                 projection,
                 "${Telephony.Sms.THREAD_ID} = ?",
                 arrayOf(threadId.toString()),

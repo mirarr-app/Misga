@@ -1575,13 +1575,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 }
             }
             if (canonical.isNotBlank()) {
-                val candidateKeys = PhoneNumberKeys.keys(address)
+                val candidateKeys = addressLookupKeys(address)
                 val placeholders = candidateKeys.joinToString(",") { "?" }
                 db.query(
                     "conversation_drafts",
                     arrayOf("body"),
                     "address IN ($placeholders)",
-                    candidateKeys.toTypedArray(),
+                    candidateKeys,
                     null, null, "updated_at DESC", "1"
                 ).use { cursor ->
                     if (cursor.moveToFirst()) return@withContext cursor.getString(0)
@@ -1650,14 +1650,37 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             clearDraft(threadId, address)
             return@withContext
         }
+        val canonical = PhoneNumberKeys.canonical(address)
+        // thread_id is the primary key; drafts for not-yet-created threads get a negative
+        // per-address key so they don't overwrite each other under thread_id = 0.
+        val key = when {
+            threadId > 0 -> threadId
+            canonical.isNotBlank() -> -1L - (canonical.hashCode().toLong() and 0xFFFFFFFFL)
+            else -> return@withContext
+        }
         try {
             val cv = ContentValues().apply {
-                put("thread_id", threadId)
-                put("address", PhoneNumberKeys.canonical(address))
+                put("thread_id", key)
+                put("address", canonical)
                 put("body", text)
                 put("updated_at", System.currentTimeMillis())
             }
-            db.insertWithOnConflict("conversation_drafts", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            db.beginTransaction()
+            try {
+                if (canonical.isNotBlank()) {
+                    val candidateKeys = addressLookupKeys(address)
+                    val placeholders = candidateKeys.joinToString(",") { "?" }
+                    db.delete(
+                        "conversation_drafts",
+                        "address IN ($placeholders) AND thread_id != ?",
+                        candidateKeys + key.toString()
+                    )
+                }
+                db.insertWithOnConflict("conversation_drafts", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
             notifyDraftsChanged()
         } catch (e: Exception) {
             Log.e(TAG, "Error saving draft", e)
@@ -1668,15 +1691,16 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         val db = writableDatabase
         val canonical = PhoneNumberKeys.canonical(address)
         try {
+            var deleted = 0
             if (threadId > 0) {
-                db.delete("conversation_drafts", "thread_id = ?", arrayOf(threadId.toString()))
+                deleted += db.delete("conversation_drafts", "thread_id = ?", arrayOf(threadId.toString()))
             }
             if (canonical.isNotBlank()) {
-                val candidateKeys = PhoneNumberKeys.keys(address)
+                val candidateKeys = addressLookupKeys(address)
                 val placeholders = candidateKeys.joinToString(",") { "?" }
-                db.delete("conversation_drafts", "address IN ($placeholders)", candidateKeys.toTypedArray())
+                deleted += db.delete("conversation_drafts", "address IN ($placeholders)", candidateKeys)
             }
-            notifyDraftsChanged()
+            if (deleted > 0) notifyDraftsChanged()
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing draft", e)
         }
@@ -1714,9 +1738,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 db.update("cached_threads", threadCv, "thread_id = ?", arrayOf(threadId.toString()))
             }
             if (canonical.isNotBlank()) {
-                val candidateKeys = PhoneNumberKeys.keys(address)
+                val candidateKeys = addressLookupKeys(address)
                 val placeholders = candidateKeys.joinToString(",") { "?" }
-                db.delete("marked_unread_threads", "address IN ($placeholders)", candidateKeys.toTypedArray())
+                db.delete("marked_unread_threads", "address IN ($placeholders)", candidateKeys)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error marking thread read in db", e)

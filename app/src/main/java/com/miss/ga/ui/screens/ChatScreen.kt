@@ -11,8 +11,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -124,6 +127,7 @@ import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.util.contentAware
 import com.miss.ga.ui.util.SmsDateFormats
 import com.miss.ga.ui.viewmodel.ChatViewModel
+import com.miss.ga.ui.viewmodel.PendingDispatch
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,9 +154,13 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    val isMultiSimSupported = remember { viewModel.isMultiSimSupported() }
+    var hasPhoneStatePermission by remember { mutableStateOf(viewModel.hasPhoneStatePermission()) }
+
     val phonePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
+        hasPhoneStatePermission = isGranted
         if (isGranted) {
             viewModel.refreshSims()
         } else {
@@ -165,18 +173,19 @@ fun ChatScreen(
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        hasPhoneStatePermission = viewModel.hasPhoneStatePermission()
         viewModel.setScreenResumed(true)
         viewModel.loadMessages()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         viewModel.setScreenResumed(false)
-        viewModel.saveDraft(inputText)
+        viewModel.saveDraft(inputText, immediate = true)
     }
 
     LaunchedEffect(nav.threadId, nav.address) {
         if (inputText.isBlank()) {
             val draft = viewModel.getSavedDraft()
-            if (!draft.isNullOrBlank()) {
+            if (!draft.isNullOrBlank() && inputText.isBlank()) {
                 inputText = draft
             }
         }
@@ -481,70 +490,25 @@ fun ChatScreen(
                         }
                     )
 
+                    // Keep the last value so the banner doesn't blank out while animating away.
+                    var lastPendingDispatch by remember { mutableStateOf(state.pendingDispatch) }
+                    state.pendingDispatch?.let { lastPendingDispatch = it }
                     AnimatedVisibility(
                         visible = state.pendingDispatch != null,
                         enter = expandVertically() + fadeIn(),
                         exit = shrinkVertically() + fadeOut()
                     ) {
-                        Surface(
-                            shape = SquircleMediumShape,
-                            color = MaterialTheme.colorScheme.inverseSurface,
-                            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(
-                                    progress = {
-                                        val p = state.pendingDispatch
-                                        if (p != null && p.totalSeconds > 0) {
-                                            p.remainingSeconds.toFloat() / p.totalSeconds.toFloat()
-                                        } else 0f
-                                    },
-                                    modifier = Modifier.size(18.dp),
-                                    color = MaterialTheme.colorScheme.inversePrimary,
-                                    strokeWidth = 2.5.dp
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "Sending in ${state.pendingDispatch?.remainingSeconds ?: 0}s...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(
-                                    onClick = {
-                                        val undone = viewModel.undoPendingDispatch()
-                                        if (!undone.isNullOrBlank()) {
-                                            inputText = undone
-                                        }
+                        lastPendingDispatch?.let { pending ->
+                            UndoSendBanner(
+                                pending = pending,
+                                onUndo = {
+                                    val undone = viewModel.undoPendingDispatch()
+                                    if (!undone.isNullOrBlank()) {
+                                        inputText = undone
                                     }
-                                ) {
-                                    Text(
-                                        text = "Undo",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.inversePrimary
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { viewModel.sendPendingDispatchNow() },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Send,
-                                        contentDescription = "Send now",
-                                        tint = MaterialTheme.colorScheme.inversePrimary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
+                                },
+                                onSendNow = { viewModel.sendPendingDispatchNow() }
+                            )
                         }
                     }
 
@@ -589,7 +553,7 @@ fun ChatScreen(
                                 onSelectSim = { viewModel.selectSim(it) },
                                 modifier = Modifier.padding(end = 8.dp)
                             )
-                        } else if (viewModel.isMultiSimSupported() && !viewModel.hasPhoneStatePermission()) {
+                        } else if (isMultiSimSupported && !hasPhoneStatePermission) {
                             IconButton(
                                 onClick = { phonePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE) },
                                 modifier = Modifier.padding(end = 8.dp)
@@ -798,8 +762,8 @@ fun ChatScreen(
             availableTabs = state.availableTabs,
             senderTabIds = state.senderTabIds,
             availableSims = state.availableSims,
-            isMultiSimSupported = viewModel.isMultiSimSupported(),
-            hasPhoneStatePermission = viewModel.hasPhoneStatePermission(),
+            isMultiSimSupported = isMultiSimSupported,
+            hasPhoneStatePermission = hasPhoneStatePermission,
             onRequestPhoneStatePermission = { phonePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE) },
             onDismiss = { showSettingsSheet = false },
             onUpdateAction = { action ->
@@ -1123,6 +1087,71 @@ private fun ChatMessageList(
                         strokeWidth = 2.dp
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UndoSendBanner(
+    pending: PendingDispatch,
+    onUndo: () -> Unit,
+    onSendNow: () -> Unit
+) {
+    val progress = remember(pending.id) { Animatable(1f) }
+    LaunchedEffect(pending.id) {
+        progress.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(
+                durationMillis = pending.totalSeconds * 1000,
+                easing = LinearEasing
+            )
+        )
+    }
+
+    Surface(
+        shape = SquircleMediumShape,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(
+                progress = { progress.value },
+                modifier = Modifier.size(18.dp),
+                color = MaterialTheme.colorScheme.inversePrimary,
+                trackColor = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.2f),
+                strokeWidth = 2.5.dp
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Sending in ${pending.remainingSeconds}s…",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onUndo) {
+                Text(
+                    text = "Undo",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.inversePrimary
+                )
+            }
+            IconButton(onClick = onSendNow) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send now",
+                    tint = MaterialTheme.colorScheme.inversePrimary,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

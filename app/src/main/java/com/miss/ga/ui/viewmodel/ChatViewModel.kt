@@ -31,6 +31,7 @@ import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.UserPreferences
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -39,6 +40,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class PendingDispatch(
@@ -97,6 +100,11 @@ class ChatViewModel(
     private var smsContentObserver: ContentObserver? = null
     private var dispatchJob: Job? = null
     private var pendingOnComplete: ((SendSmsResult) -> Unit)? = null
+    private var draftJob: Job? = null
+    private val draftMutex = Mutex()
+    private var persistedDraft: String? = null
+    @Volatile
+    private var unsavedDraft: String? = null
     @Volatile
     private var isScreenResumed = false
 
@@ -544,22 +552,40 @@ class ChatViewModel(
     }
 
     suspend fun getSavedDraft(): String? {
-        return dbHelper.getDraft(initialThreadId, initialAddress)
+        val draft = dbHelper.getDraft(initialThreadId, initialAddress)
+        draftMutex.withLock { persistedDraft = draft.orEmpty() }
+        return draft
     }
 
-    fun saveDraft(text: String) {
-        viewModelScope.launch {
-            if (text.isBlank()) {
-                dbHelper.clearDraft(initialThreadId, initialAddress)
-            } else {
-                dbHelper.saveDraft(initialThreadId, initialAddress, text)
-            }
+    /**
+     * Debounced so typing doesn't hit SQLite (and trigger an inbox refresh) on every keystroke.
+     * Pass [immediate] when the screen is going away.
+     */
+    fun saveDraft(text: String, immediate: Boolean = false) {
+        unsavedDraft = text
+        draftJob?.cancel()
+        draftJob = viewModelScope.launch {
+            if (!immediate) delay(DRAFT_SAVE_DEBOUNCE_MS)
+            persistDraft(text)
         }
     }
 
-    fun clearDraft() {
-        viewModelScope.launch {
-            dbHelper.clearDraft(initialThreadId, initialAddress)
+    fun clearDraft() = saveDraft("", immediate = true)
+
+    private suspend fun persistDraft(text: String) {
+        draftMutex.withLock {
+            val normalized = if (text.isBlank()) "" else text
+            if (normalized == persistedDraft) {
+                if (unsavedDraft == text) unsavedDraft = null
+                return
+            }
+            if (normalized.isEmpty()) {
+                dbHelper.clearDraft(initialThreadId, initialAddress)
+            } else {
+                dbHelper.saveDraft(initialThreadId, initialAddress, normalized)
+            }
+            persistedDraft = normalized
+            if (unsavedDraft == text) unsavedDraft = null
         }
     }
 
@@ -786,9 +812,11 @@ class ChatViewModel(
         scheduledMessageTimerJob?.cancel()
         dispatchJob?.cancel()
         val pending = _uiState.value.pendingDispatch
-        if (pending != null) {
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                repository.sendSms(initialAddress, pending.text, pending.subId)
+        val unsaved = unsavedDraft
+        if (pending != null || unsaved != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                if (unsaved != null) persistDraft(unsaved)
+                if (pending != null) repository.sendSms(initialAddress, pending.text, pending.subId)
             }
         }
         val observer = smsContentObserver
@@ -807,5 +835,6 @@ class ChatViewModel(
         private const val MESSAGE_PAGE_SIZE = 100
         private const val MAX_TARGET_PAGES = 20
         private const val SMS_OBSERVER_DEBOUNCE_MS = 400L
+        private const val DRAFT_SAVE_DEBOUNCE_MS = 600L
     }
 }

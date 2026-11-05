@@ -113,6 +113,9 @@ object FinancialExtractor {
      */
     fun extract(rawText: String?): FinancialDetails {
         if (rawText.isNullOrBlank()) return FinancialDetails()
+        // Runs per chat bubble during composition: skip the regexes for the vast majority
+        // of messages that can't contain a 16-digit card number.
+        if (rawText.count { it.isDigit() } < 16) return FinancialDetails()
         val text = OtpExtractor.normalizeDigits(rawText)
 
         val card = extractBankCard(text)

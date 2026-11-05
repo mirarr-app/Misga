@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -77,6 +78,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -113,6 +116,16 @@ fun BlockedSendersScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var isSearchActive by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+
+    BackHandler(enabled = isSearchActive) {
+        isSearchActive = false
+        viewModel.setSearchQuery("")
+    }
+
+    LaunchedEffect(isSearchActive) {
+        if (isSearchActive) searchFocusRequester.requestFocus()
+    }
 
     LaunchedEffect(uiState.snackbarMessage) {
         val message = uiState.snackbarMessage
@@ -152,7 +165,9 @@ fun BlockedSendersScreen(
                             onValueChange = { viewModel.setSearchQuery(it) },
                             placeholder = { Text("Search by number or name...") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocusRequester),
                             trailingIcon = {
                                 if (uiState.searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { viewModel.setSearchQuery("") }) {
