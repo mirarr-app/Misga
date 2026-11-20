@@ -158,6 +158,28 @@ object SmsDateFormats {
         }
     }
 
+    fun isSameDay(t1: Long, t2: Long): Boolean {
+        val d1 = Instant.ofEpochMilli(t1).atZone(zone).toLocalDate()
+        val d2 = Instant.ofEpochMilli(t2).atZone(zone).toLocalDate()
+        return d1 == d2
+    }
+
+    fun formatChatDateHeader(
+        timestamp: Long,
+        useShamsi: Boolean,
+        todayStr: String,
+        yesterdayStr: String,
+        now: Long = System.currentTimeMillis()
+    ): String {
+        val messageDate = Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        return when (messageDate) {
+            today -> todayStr
+            today.minusDays(1) -> yesterdayStr
+            else -> formatDate(timestamp, useShamsi, now)
+        }
+    }
+
     fun formatDateTimeWithYear(timestamp: Long, useShamsi: Boolean = false): String {
         return if (useShamsi) {
             val messageDate = Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()

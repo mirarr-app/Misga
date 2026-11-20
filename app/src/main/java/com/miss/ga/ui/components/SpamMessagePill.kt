@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -279,6 +280,15 @@ fun SpamMessagePill(
                                 color = textColor.copy(alpha = 0.7f),
                                 fontWeight = FontWeight.Medium
                             )
+                            if (message.isStarred) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = "Starred",
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
                             if (simSlotNumber != null) {
                                 Spacer(modifier = Modifier.width(6.dp))
                                 SimBadge(slotNumber = simSlotNumber)

@@ -22,6 +22,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,6 +47,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
@@ -57,12 +59,17 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SimCard
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.ui.res.stringResource
+import com.miss.ga.ComposeNav
 import com.miss.ga.R
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -138,6 +145,7 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
     nav: ChatNav,
     onBackClick: () -> Unit,
+    onNavigateToCompose: (ComposeNav) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -210,8 +218,39 @@ fun ChatScreen(
         mutableStateOf(nav.initialMessageId)
     }
 
-    BackHandler(enabled = isSelectionMode) {
-        viewModel.clearSelection()
+    var isSearchMode by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var currentMatchIndex by remember { mutableStateOf(0) }
+
+    val matchingMessageIds = remember(searchQuery, state.messages) {
+        val q = searchQuery.trim()
+        if (q.isEmpty()) {
+            emptyList()
+        } else {
+            state.messages.filter { it.body.contains(q, ignoreCase = true) }.map { it.id }.reversed()
+        }
+    }
+
+    LaunchedEffect(matchingMessageIds, currentMatchIndex, isSearchMode) {
+        if (isSearchMode && matchingMessageIds.isNotEmpty() && currentMatchIndex in matchingMessageIds.indices) {
+            val targetId = matchingMessageIds[currentMatchIndex]
+            highlightedMessageId = targetId
+            val chronologicalIndex = state.messages.indexOfFirst { it.id == targetId }
+            if (chronologicalIndex >= 0) {
+                val listIndex = state.messages.lastIndex - chronologicalIndex
+                listState.animateScrollToItem(listIndex)
+            }
+        }
+    }
+
+    BackHandler(enabled = isSelectionMode || isSearchMode) {
+        if (isSelectionMode) {
+            viewModel.clearSelection()
+        } else if (isSearchMode) {
+            isSearchMode = false
+            searchQuery = ""
+            highlightedMessageId = null
+        }
     }
 
     LaunchedEffect(highlightedMessageId, hasInitiallyScrolled) {
@@ -369,6 +408,54 @@ fun ChatScreen(
                             }
                         }
 
+                        val anySelectedUnstarred = remember(selectedMessageIds, state.messages) {
+                            state.messages.filter { it.id in selectedMessageIds }.any { !it.isStarred }
+                        }
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            IconButton(onClick = {
+                                viewModel.toggleStarSelectedMessages { starred, count ->
+                                    val msg = if (starred) {
+                                        if (count == 1) context.getString(R.string.message_starred) else context.getString(R.string.messages_starred, count)
+                                    } else {
+                                        if (count == 1) context.getString(R.string.message_unstarred) else context.getString(R.string.messages_unstarred, count)
+                                    }
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = if (anySelectedUnstarred) Icons.Default.Star else Icons.Default.StarOutline,
+                                    contentDescription = stringResource(if (anySelectedUnstarred) R.string.star_message else R.string.unstar_message),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            IconButton(onClick = {
+                                val selectedMsgs = state.messages.filter { it.id in selectedMessageIds }
+                                    .sortedBy { it.date }
+                                val forwardBody = selectedMsgs.joinToString("\n\n") { it.body }
+                                if (forwardBody.isNotBlank()) {
+                                    viewModel.clearSelection()
+                                    onNavigateToCompose(ComposeNav(address = "", body = forwardBody))
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Forward,
+                                    contentDescription = stringResource(R.string.forward_message),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -458,6 +545,87 @@ fun ChatScreen(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
+            } else if (isSearchMode) {
+                TopAppBar(
+                    title = {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = {
+                                searchQuery = it
+                                currentMatchIndex = 0
+                            },
+                            placeholder = {
+                                Text(
+                                    text = stringResource(R.string.search_in_chat),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        searchQuery = ""
+                                        currentMatchIndex = 0
+                                    }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                                    }
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                                unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent
+                            )
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            isSearchMode = false
+                            searchQuery = ""
+                            highlightedMessageId = null
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.close_search))
+                        }
+                    },
+                    actions = {
+                        if (searchQuery.isNotBlank()) {
+                            Text(
+                                text = if (matchingMessageIds.isNotEmpty()) {
+                                    "${currentMatchIndex + 1} / ${matchingMessageIds.size}"
+                                } else {
+                                    "0 / 0"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                            IconButton(
+                                onClick = {
+                                    if (matchingMessageIds.isNotEmpty()) {
+                                        currentMatchIndex = (currentMatchIndex + 1) % matchingMessageIds.size
+                                    }
+                                },
+                                enabled = matchingMessageIds.size > 1
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.search_previous))
+                            }
+                            IconButton(
+                                onClick = {
+                                    if (matchingMessageIds.isNotEmpty()) {
+                                        currentMatchIndex = if (currentMatchIndex > 0) currentMatchIndex - 1 else matchingMessageIds.lastIndex
+                                    }
+                                },
+                                enabled = matchingMessageIds.size > 1
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.search_next))
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
             } else {
                 TopAppBar(
                     title = {
@@ -524,6 +692,20 @@ fun ChatScreen(
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            IconButton(onClick = { isSearchMode = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = stringResource(R.string.search_in_chat),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
 
@@ -967,19 +1149,48 @@ fun ChatScreen(
                 }
             },
             confirmButton = {
-                FilledTonalButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("SMS Message", msg.body))
-                        Toast.makeText(context, context.getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
-                        viewModel.clearSelection()
-                        selectedMessageForDialog = null
-                    },
-                    shape = PillShape
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.action_copy), modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(stringResource(R.string.action_copy), fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val isCurrentMsgStarred = state.messages.find { it.id == msg.id }?.isStarred ?: msg.isStarred
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.toggleStarMessage(msg.id)
+                            val willBeStarred = !isCurrentMsgStarred
+                            val toastStr = if (willBeStarred) {
+                                context.getString(R.string.message_starred)
+                            } else {
+                                context.getString(R.string.message_unstarred)
+                            }
+                            Toast.makeText(context, toastStr, Toast.LENGTH_SHORT).show()
+                            selectedMessageForDialog = null
+                            viewModel.clearSelection()
+                        },
+                        shape = PillShape
+                    ) {
+                        Icon(
+                            imageVector = if (isCurrentMsgStarred) Icons.Default.StarOutline else Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            stringResource(if (isCurrentMsgStarred) R.string.unstar_message else R.string.star_message),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("SMS Message", msg.body))
+                            Toast.makeText(context, context.getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
+                            viewModel.clearSelection()
+                            selectedMessageForDialog = null
+                        },
+                        shape = PillShape
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.action_copy), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.action_copy), fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
@@ -1116,41 +1327,59 @@ private fun ChatMessageList(
                 }
             }
         ) { index ->
-            val message = messages[messages.lastIndex - index]
+            val chronologicalIndex = messages.lastIndex - index
+            val message = messages[chronologicalIndex]
             val isHighlighted = message.id == highlightedMessageId
             val simSlotNumber = if (hasMultipleSims) simSlotMap[message.subId] else null
-            if (message.isSpam) {
-                SpamMessagePill(
-                    message = message,
-                    isHighlighted = isHighlighted,
-                    simSlotNumber = simSlotNumber,
-                    useShamsi = showShamsiDate,
-                    onToggleDateFormat = onDateTapAction,
-                    onRevealToggle = { revealed -> onRevealToggle(message.id, revealed) },
-                    onMarkNotSpam = { onMarkNotSpam(message.id) },
-                    onDelete = { onDelete(message.id) },
-                    isSelectionMode = isSelectionMode,
-                    isSelected = message.id in selectedMessageIds,
-                    onLongClick = { onLongClick(message) },
-                    onToggleSelect = { onTapMessage(message) }
-                )
-            } else {
-                val isTargetOfReset = (activeTextBubbleId == message.id)
-                val bubbleResetKey = if (isTargetOfReset) selectionResetTick else 0
-                MessageBubble(
-                    message = message,
-                    isHighlighted = isHighlighted,
-                    simSlotNumber = simSlotNumber,
-                    useShamsi = showShamsiDate,
-                    onToggleDateFormat = onDateTapAction,
-                    onLongClick = { onLongClick(message) },
-                    isSelectionMode = isSelectionMode,
-                    isSelected = message.id in selectedMessageIds,
-                    onToggleSelect = { onTapMessage(message) },
-                    selectionResetKey = bubbleResetKey,
-                    onBubbleTouched = { onBubbleTouched(message.id) },
-                    onOutsideTap = onOutsideTap
-                )
+            val isFirstMessageOfDay = chronologicalIndex == 0 ||
+                !SmsDateFormats.isSameDay(messages[chronologicalIndex - 1].date, message.date)
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (isFirstMessageOfDay) {
+                    val dateHeaderStr = SmsDateFormats.formatChatDateHeader(
+                        timestamp = message.date,
+                        useShamsi = showShamsiDate,
+                        todayStr = stringResource(R.string.date_today),
+                        yesterdayStr = stringResource(R.string.date_yesterday)
+                    )
+                    ChatDateHeaderPill(
+                        text = dateHeaderStr,
+                        onClick = onDateTapAction
+                    )
+                }
+                if (message.isSpam) {
+                    SpamMessagePill(
+                        message = message,
+                        isHighlighted = isHighlighted,
+                        simSlotNumber = simSlotNumber,
+                        useShamsi = showShamsiDate,
+                        onToggleDateFormat = onDateTapAction,
+                        onRevealToggle = { revealed -> onRevealToggle(message.id, revealed) },
+                        onMarkNotSpam = { onMarkNotSpam(message.id) },
+                        onDelete = { onDelete(message.id) },
+                        isSelectionMode = isSelectionMode,
+                        isSelected = message.id in selectedMessageIds,
+                        onLongClick = { onLongClick(message) },
+                        onToggleSelect = { onTapMessage(message) }
+                    )
+                } else {
+                    val isTargetOfReset = (activeTextBubbleId == message.id)
+                    val bubbleResetKey = if (isTargetOfReset) selectionResetTick else 0
+                    MessageBubble(
+                        message = message,
+                        isHighlighted = isHighlighted,
+                        simSlotNumber = simSlotNumber,
+                        useShamsi = showShamsiDate,
+                        onToggleDateFormat = onDateTapAction,
+                        onLongClick = { onLongClick(message) },
+                        isSelectionMode = isSelectionMode,
+                        isSelected = message.id in selectedMessageIds,
+                        onToggleSelect = { onTapMessage(message) },
+                        selectionResetKey = bubbleResetKey,
+                        onBubbleTouched = { onBubbleTouched(message.id) },
+                        onOutsideTap = onOutsideTap
+                    )
+                }
             }
         }
         if (isLoadingOlder) {
@@ -1168,6 +1397,34 @@ private fun ChatMessageList(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChatDateHeaderPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = PillShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+            modifier = if (onClick != null) Modifier.clip(PillShape).clickable(onClick = onClick) else Modifier
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+            )
         }
     }
 }

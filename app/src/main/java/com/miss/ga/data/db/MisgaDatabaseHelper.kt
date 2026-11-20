@@ -65,6 +65,14 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         _pinnedChanged.value = pinnedChangeCounter.incrementAndGet()
     }
 
+    private val _starredChanged = MutableStateFlow(0L)
+    val starredChanged: Flow<Long> = _starredChanged.asStateFlow()
+    private val starredChangeCounter = java.util.concurrent.atomic.AtomicLong(0L)
+
+    fun notifyStarredChanged() {
+        _starredChanged.value = starredChangeCounter.incrementAndGet()
+    }
+
     @Volatile
     private var predefinedRulesSeeded = false
 
@@ -140,6 +148,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         createConversationDraftsTable(db)
         createMarkedUnreadThreadsTable(db)
         createPinnedThreadsTable(db)
+        createStarredMessagesTable(db)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_filter_rules_sender_target ON filter_rules(sender_target)"
@@ -214,6 +223,11 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 createPinnedThreadsTable(db)
             } catch (e: Exception) {}
             try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
+        }
+        if (oldVersion < 10) {
+            try {
+                createStarredMessagesTable(db)
+            } catch (e: Exception) {}
         }
 
     }
@@ -1208,6 +1222,21 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_pinned_threads_address ON pinned_threads(address)")
     }
 
+    private fun createStarredMessagesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS starred_messages (
+                message_id INTEGER PRIMARY KEY,
+                thread_id INTEGER NOT NULL DEFAULT 0,
+                address TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_starred_messages_thread ON starred_messages(thread_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_starred_messages_address ON starred_messages(address)")
+    }
+
     private fun createMarkedUnreadThreadsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -2012,9 +2041,171 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         false
     }
 
+    suspend fun starMessage(messageId: Long, threadId: Long = 0, address: String = ""): Boolean = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        try {
+            val cv = ContentValues().apply {
+                put("message_id", messageId)
+                put("thread_id", threadId)
+                put("address", address)
+                put("created_at", System.currentTimeMillis())
+            }
+            db.insertWithOnConflict("starred_messages", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            notifyStarredChanged()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starring message $messageId", e)
+            false
+        }
+    }
+
+    suspend fun unstarMessage(messageId: Long): Boolean = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        try {
+            val rows = db.delete("starred_messages", "message_id = ?", arrayOf(messageId.toString()))
+            if (rows > 0) {
+                notifyStarredChanged()
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unstarring message $messageId", e)
+            false
+        }
+    }
+
+    suspend fun setMessagesStarred(
+        messageIds: Collection<Long>,
+        threadId: Long = 0,
+        address: String = "",
+        starred: Boolean
+    ) = withContext(Dispatchers.IO) {
+        if (messageIds.isEmpty()) return@withContext
+        val db = writableDatabase
+        try {
+            db.beginTransaction()
+            try {
+                if (starred) {
+                    val now = System.currentTimeMillis()
+                    for (id in messageIds) {
+                        val cv = ContentValues().apply {
+                            put("message_id", id)
+                            put("thread_id", threadId)
+                            put("address", address)
+                            put("created_at", now)
+                        }
+                        db.insertWithOnConflict("starred_messages", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+                    }
+                } else {
+                    for (chunk in messageIds.chunked(SQLITE_IN_CHUNK_SIZE)) {
+                        val placeholders = chunk.joinToString(",") { "?" }
+                        val args = chunk.map { it.toString() }.toTypedArray()
+                        db.delete("starred_messages", "message_id IN ($placeholders)", args)
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            notifyStarredChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error batch updating starred messages", e)
+        }
+    }
+
+    suspend fun getStarredMessageIds(): Set<Long> = withContext(Dispatchers.IO) {
+        val set = mutableSetOf<Long>()
+        val db = readableDatabase
+        try {
+            db.query("starred_messages", arrayOf("message_id"), null, null, null, null, null).use { cursor ->
+                val idIdx = cursor.getColumnIndexOrThrow("message_id")
+                while (cursor.moveToNext()) {
+                    set.add(cursor.getLong(idIdx))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting starred message IDs", e)
+        }
+        set
+    }
+
+    suspend fun getStarredMessageIdsForThread(threadId: Long, address: String = ""): Set<Long> = withContext(Dispatchers.IO) {
+        val set = mutableSetOf<Long>()
+        val db = readableDatabase
+        try {
+            val candidateKeys = if (address.isNotBlank()) addressLookupKeys(address) else emptyArray()
+            val selection: String
+            val args: Array<String>
+            if (threadId > 0 && candidateKeys.isNotEmpty()) {
+                val placeholders = candidateKeys.joinToString(",") { "?" }
+                selection = "thread_id = ? OR address IN ($placeholders)"
+                args = arrayOf(threadId.toString(), *candidateKeys)
+            } else if (threadId > 0) {
+                selection = "thread_id = ?"
+                args = arrayOf(threadId.toString())
+            } else if (candidateKeys.isNotEmpty()) {
+                val placeholders = candidateKeys.joinToString(",") { "?" }
+                selection = "address IN ($placeholders)"
+                args = candidateKeys
+            } else {
+                selection = "1=1"
+                args = emptyArray()
+            }
+
+            db.query("starred_messages", arrayOf("message_id"), selection, args, null, null, null).use { cursor ->
+                val idIdx = cursor.getColumnIndexOrThrow("message_id")
+                while (cursor.moveToNext()) {
+                    set.add(cursor.getLong(idIdx))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting starred IDs for thread $threadId", e)
+        }
+        set
+    }
+
+    suspend fun isMessageStarred(messageId: Long): Boolean = withContext(Dispatchers.IO) {
+        val db = readableDatabase
+        try {
+            db.query("starred_messages", arrayOf("message_id"), "message_id = ?", arrayOf(messageId.toString()), null, null, null).use { cursor ->
+                return@withContext cursor.moveToFirst()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking if message $messageId is starred", e)
+        }
+        false
+    }
+
+    suspend fun getStarredMessageRecords(): List<StarredMessageRecord> = withContext(Dispatchers.IO) {
+        val records = mutableListOf<StarredMessageRecord>()
+        val db = readableDatabase
+        try {
+            db.query("starred_messages", arrayOf("message_id", "thread_id", "address", "created_at"), null, null, null, null, "created_at DESC").use { cursor ->
+                val idIdx = cursor.getColumnIndexOrThrow("message_id")
+                val tIdIdx = cursor.getColumnIndexOrThrow("thread_id")
+                val addrIdx = cursor.getColumnIndexOrThrow("address")
+                val timeIdx = cursor.getColumnIndexOrThrow("created_at")
+                while (cursor.moveToNext()) {
+                    records.add(
+                        StarredMessageRecord(
+                            messageId = cursor.getLong(idIdx),
+                            threadId = cursor.getLong(tIdIdx),
+                            address = cursor.getString(addrIdx),
+                            createdAt = cursor.getLong(timeIdx)
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying starred message records", e)
+        }
+        records
+    }
+
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 9
+        private const val DATABASE_VERSION = 10
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile
@@ -2027,6 +2218,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
     }
 }
+
+data class StarredMessageRecord(
+    val messageId: Long,
+    val threadId: Long,
+    val address: String,
+    val createdAt: Long
+)
 
 data class SpamMetaWrite(
     val messageId: Long,

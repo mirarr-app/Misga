@@ -17,7 +17,8 @@ data class SmsMessage(
     val matchedRuleName: String? = null,
     val isRevealed: Boolean = false,
     val status: Int = Telephony.Sms.STATUS_NONE,
-    val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+    val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
+    val isStarred: Boolean = false
 ) {
     val isInbox: Boolean get() = type == 1
     val isSent: Boolean get() = type == 2

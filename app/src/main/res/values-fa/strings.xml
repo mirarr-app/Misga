@@ -55,4 +55,20 @@
     <string name="action_cancel">انصراف</string>
     <string name="action_delete">حذف</string>
     <string name="action_copy">کپی</string>
+    <string name="star_message">ستاره‌دار کردن</string>
+    <string name="unstar_message">حذف ستاره</string>
+    <string name="starred_messages">پیام‌های ستاره‌دار</string>
+    <string name="starred_messages_empty_title">پیام ستاره‌داری وجود ندارد</string>
+    <string name="starred_messages_empty_desc">پیام‌های مهم گفتگوها را ستاره‌دار کنید تا به راحتی در اینجا پیدا شوند.</string>
+    <string name="messages_starred">%1$d پیام ستاره‌دار شد</string>
+    <string name="messages_unstarred">ستاره %1$d پیام برداشته شد</string>
+    <string name="message_starred">پیام ستاره‌دار شد</string>
+    <string name="message_unstarred">ستاره پیام برداشته شد</string>
+    <string name="search_in_chat">جستجو در گفتگو</string>
+    <string name="search_no_matches">موردی یافت نشد</string>
+    <string name="search_previous">مورد قبلی</string>
+    <string name="search_next">مورد بعدی</string>
+    <string name="close_search">بستن جستجو</string>
+    <string name="date_today">امروز</string>
+    <string name="date_yesterday">دیروز</string>
 </resources>

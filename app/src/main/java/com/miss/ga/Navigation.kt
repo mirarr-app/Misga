@@ -71,6 +71,7 @@ fun MainNavigation(
                 ChatScreen(
                     nav = nav,
                     onBackClick = { backStack.removeLastOrNull() },
+                    onNavigateToCompose = { composeNav -> backStack.add(composeNav) },
                     modifier = Modifier.fillMaxSize()
                 )
             }

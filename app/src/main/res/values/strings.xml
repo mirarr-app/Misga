@@ -54,4 +54,20 @@
     <string name="action_cancel">Cancel</string>
     <string name="action_delete">Delete</string>
     <string name="action_copy">Copy</string>
+    <string name="star_message">Star</string>
+    <string name="unstar_message">Unstar</string>
+    <string name="starred_messages">Starred messages</string>
+    <string name="starred_messages_empty_title">No starred messages</string>
+    <string name="starred_messages_empty_desc">Star important messages in a conversation to quickly find them here.</string>
+    <string name="messages_starred">%1$d messages starred</string>
+    <string name="messages_unstarred">%1$d messages unstarred</string>
+    <string name="message_starred">Message starred</string>
+    <string name="message_unstarred">Message unstarred</string>
+    <string name="search_in_chat">Search in chat</string>
+    <string name="search_no_matches">No matches</string>
+    <string name="search_previous">Previous match</string>
+    <string name="search_next">Next match</string>
+    <string name="close_search">Close search</string>
+    <string name="date_today">Today</string>
+    <string name="date_yesterday">Yesterday</string>
 </resources>

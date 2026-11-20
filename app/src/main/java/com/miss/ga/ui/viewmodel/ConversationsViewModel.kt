@@ -22,6 +22,7 @@ import com.miss.ga.data.model.SearchMessageResult
 import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.repository.SmsRepository
+import com.miss.ga.data.repository.StarredMessageItem
 import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.data.util.PhoneNumberKeys
 import com.miss.ga.data.util.UserPreferences
@@ -90,6 +91,9 @@ class ConversationsViewModel(
     )
     val uiState: StateFlow<ConversationsUiState> = _uiState.asStateFlow()
 
+    private val _starredMessages = MutableStateFlow<List<StarredMessageItem>>(emptyList())
+    val starredMessages: StateFlow<List<StarredMessageItem>> = _starredMessages.asStateFlow()
+
     val selectedThreadIds = mutableStateSetOf<Long>()
     var isSelectionMode by mutableStateOf(false)
         private set
@@ -99,6 +103,7 @@ class ConversationsViewModel(
         loadTabs()
         loadThreads()
         loadBlockedMutedCount()
+        loadStarredMessages()
         viewModelScope.launch {
             dbHelper.rulesChanged.drop(1).collect { loadThreads(silent = true, force = true) }
         }
@@ -118,6 +123,11 @@ class ConversationsViewModel(
             dbHelper.pinnedChanged.drop(1).collectLatest {
                 delay(150)
                 loadThreads(silent = true, force = true)
+            }
+        }
+        viewModelScope.launch {
+            dbHelper.starredChanged.collect {
+                loadStarredMessages()
             }
         }
         viewModelScope.launch {
@@ -887,6 +897,24 @@ class ConversationsViewModel(
 
     fun refreshSims() {
         repository.simRepository.refreshSims()
+    }
+
+    fun loadStarredMessages() {
+        viewModelScope.launch {
+            try {
+                val list = repository.getStarredMessages()
+                _starredMessages.value = list
+            } catch (e: Exception) {
+                Log.e("ConversationsViewModel", "Error loading starred messages", e)
+            }
+        }
+    }
+
+    fun unstarMessage(messageId: Long) {
+        viewModelScope.launch {
+            repository.starMessage(messageId = messageId, starred = false)
+            _starredMessages.value = _starredMessages.value.filter { it.message.id != messageId }
+        }
     }
 }
 

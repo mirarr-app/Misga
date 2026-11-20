@@ -156,6 +156,17 @@ class ChatViewModel(
             }
         }
         viewModelScope.launch {
+            dbHelper.starredChanged.collect {
+                val current = _uiState.value
+                val starredIds = dbHelper.getStarredMessageIdsForThread(current.threadId, current.address)
+                val updated = current.messages.map { msg ->
+                    val starred = starredIds.contains(msg.id)
+                    if (msg.isStarred != starred) msg.copy(isStarred = starred) else msg
+                }
+                _uiState.value = current.copy(messages = updated)
+            }
+        }
+        viewModelScope.launch {
             repository.simRepository.observeActiveSims().collect { sims ->
                 val current = _uiState.value
                 val resolved = resolveSelectedSim(
@@ -672,6 +683,45 @@ class ChatViewModel(
             } finally {
                 isDeletingSelection = false
             }
+        }
+    }
+
+    fun toggleStarMessage(messageId: Long) {
+        val msg = _uiState.value.messages.find { it.id == messageId } ?: return
+        val newStarred = !msg.isStarred
+        viewModelScope.launch {
+            repository.starMessage(
+                messageId = messageId,
+                threadId = msg.threadId,
+                address = msg.address,
+                starred = newStarred
+            )
+            val updated = _uiState.value.messages.map {
+                if (it.id == messageId) it.copy(isStarred = newStarred) else it
+            }
+            _uiState.value = _uiState.value.copy(messages = updated)
+        }
+    }
+
+    fun toggleStarSelectedMessages(onComplete: (Boolean, Int) -> Unit = { _, _ -> }) {
+        val targetIds = selectedMessageIds.toSet()
+        if (targetIds.isEmpty()) return
+        val currentMsgs = _uiState.value.messages.filter { it.id in targetIds }
+        val allStarred = currentMsgs.isNotEmpty() && currentMsgs.all { it.isStarred }
+        val newStarredState = !allStarred
+        viewModelScope.launch {
+            repository.setMessagesStarred(
+                messageIds = targetIds,
+                threadId = _uiState.value.threadId,
+                address = _uiState.value.address,
+                starred = newStarredState
+            )
+            val updated = _uiState.value.messages.map { msg ->
+                if (msg.id in targetIds) msg.copy(isStarred = newStarredState) else msg
+            }
+            _uiState.value = _uiState.value.copy(messages = updated)
+            clearSelection()
+            onComplete(newStarredState, targetIds.size)
         }
     }
 

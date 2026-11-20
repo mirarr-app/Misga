@@ -55,7 +55,9 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tune
+import com.miss.ga.ui.components.StarredMessagesDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
@@ -198,6 +200,7 @@ fun ConversationsScreen(
     var showAddToTabDialog by remember { mutableStateOf(false) }
     var activeProfileDialogInfo by remember { mutableStateOf<ProfileDialogData?>(null) }
     var showCustomizationSheet by remember { mutableStateOf(false) }
+    var showStarredDialog by remember { mutableStateOf(false) }
     var threadPendingDelete by remember { mutableStateOf<ConversationThread?>(null) }
 
     BackHandler(enabled = isSelectionMode) {
@@ -269,6 +272,7 @@ fun ConversationsScreen(
                 },
                 onNavigateToTestLab = onNavigateToTestLab,
                 onNavigateToFilterStudio = onNavigateToFilterStudio,
+                onOpenStarred = { showStarredDialog = true },
                 onOpenCustomization = { showCustomizationSheet = true }
             )
         },
@@ -927,7 +931,19 @@ fun ConversationsScreen(
                 onNavigateToBlockedSenders()
             },
             blockedMutedCount = state.blockedMutedCount,
+            onOpenStarred = {
+                showCustomizationSheet = false
+                showStarredDialog = true
+            },
             onDismiss = { showCustomizationSheet = false }
+        )
+    }
+
+    if (showStarredDialog) {
+        StarredMessagesDialog(
+            onDismiss = { showStarredDialog = false },
+            onNavigateToChat = onNavigateToChat,
+            viewModel = viewModel
         )
     }
 }
@@ -953,6 +969,7 @@ private fun ConversationsTopBar(
     onMarkAllRead: () -> Unit,
     onNavigateToTestLab: () -> Unit,
     onNavigateToFilterStudio: () -> Unit,
+    onOpenStarred: () -> Unit = {},
     onOpenCustomization: () -> Unit
 ) {
     if (isSelectionMode) {
@@ -1113,6 +1130,20 @@ private fun ConversationsTopBar(
                         Icon(
                             imageVector = Icons.Default.FilterAlt,
                             contentDescription = "Filter Studio",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.padding(end = 6.dp)
+                ) {
+                    IconButton(onClick = onOpenStarred) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = stringResource(R.string.starred_messages),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }

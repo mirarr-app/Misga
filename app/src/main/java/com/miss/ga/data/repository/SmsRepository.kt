@@ -454,6 +454,7 @@ class SmsRepository(
             )
 
             val spamMeta = dbHelper.getSpamMetaMapForThread(address)
+            val starredIds = dbHelper.getStarredMessageIdsForThread(effectiveThreadId, address)
             val cache = FilterRulesCache.getInstance(dbHelper)
             val preparedRules = cache.preparedRules()
             val senderPref = cache.senderPreference(address)
@@ -542,7 +543,8 @@ class SmsRepository(
                             matchedRuleName = matchedRule,
                             isRevealed = isRevealed,
                             status = status,
-                            subId = subId
+                            subId = subId,
+                            isStarred = starredIds.contains(msgId)
                         )
                     )
                 }
@@ -781,6 +783,129 @@ class SmsRepository(
         dbHelper.unpinThreads(threadIds)
     }
 
+    suspend fun starMessage(messageId: Long, threadId: Long = 0L, address: String = "", starred: Boolean): Boolean {
+        return if (starred) {
+            dbHelper.starMessage(messageId, threadId, address)
+        } else {
+            dbHelper.unstarMessage(messageId)
+        }
+    }
+
+    suspend fun setMessagesStarred(
+        messageIds: Collection<Long>,
+        threadId: Long = 0L,
+        address: String = "",
+        starred: Boolean
+    ) {
+        dbHelper.setMessagesStarred(messageIds, threadId, address, starred)
+    }
+
+    suspend fun isMessageStarred(messageId: Long): Boolean {
+        return dbHelper.isMessageStarred(messageId)
+    }
+
+    suspend fun getStarredMessages(): List<StarredMessageItem> = withContext(Dispatchers.IO) {
+        val records = dbHelper.getStarredMessageRecords()
+        if (records.isEmpty()) return@withContext emptyList()
+
+        val recordMap = records.associateBy { it.messageId }
+        val recordIds = records.map { it.messageId }
+        val messages = mutableListOf<SmsMessage>()
+        val contentResolver = context.contentResolver
+
+        val projection = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.THREAD_ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+            Telephony.Sms.TYPE,
+            Telephony.Sms.READ,
+            Telephony.Sms.STATUS,
+            Telephony.Sms.SUBSCRIPTION_ID
+        )
+
+        for (chunk in recordIds.chunked(SQLITE_IN_CHUNK_SIZE)) {
+            val placeholders = chunk.joinToString(",") { "?" }
+            val selection = "${Telephony.Sms._ID} IN ($placeholders)"
+            val args = chunk.map { it.toString() }.toTypedArray()
+
+            try {
+                contentResolver.query(
+                    Telephony.Sms.CONTENT_URI,
+                    projection,
+                    selection,
+                    args,
+                    "${Telephony.Sms.DATE} DESC"
+                )?.use { cursor ->
+                    val idIdx = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
+                    val threadIdIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+                    val addrIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                    val bodyIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                    val dateIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+                    val typeIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
+                    val readIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.READ)
+                    val statusIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.STATUS)
+                    val subIdIdx = cursor.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
+
+                    while (cursor.moveToNext()) {
+                        val msgId = cursor.getLong(idIdx)
+                        val rec = recordMap[msgId]
+                        val tId = cursor.getLong(threadIdIdx).let { if (it > 0) it else rec?.threadId ?: 0L }
+                        val addr = cursor.getString(addrIdx) ?: rec?.address.orEmpty()
+                        val body = cursor.getString(bodyIdx) ?: ""
+                        val date = cursor.getLong(dateIdx)
+                        val type = cursor.getInt(typeIdx)
+                        val read = cursor.getInt(readIdx) == 1
+                        val status = cursor.getInt(statusIdx)
+                        val subId = if (subIdIdx >= 0 && !cursor.isNull(subIdIdx)) {
+                            cursor.getInt(subIdIdx)
+                        } else {
+                            SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                        }
+
+                        messages.add(
+                            SmsMessage(
+                                id = msgId,
+                                threadId = tId,
+                                address = addr,
+                                body = body,
+                                date = date,
+                                type = type,
+                                read = read,
+                                isSpam = false,
+                                status = status,
+                                subId = subId,
+                                isStarred = true
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching starred messages from SMS provider", e)
+            }
+        }
+
+        // Clean up any deleted messages from DB
+        val foundIds = messages.map { it.id }.toSet()
+        val missingIds = recordIds.filter { it !in foundIds }
+        if (missingIds.isNotEmpty()) {
+            dbHelper.setMessagesStarred(missingIds, starred = false)
+        }
+
+        messages.sortByDescending { it.date }
+
+        messages.map { msg ->
+            val contactName = resolveContactName(msg.address)
+            val starredAt = recordMap[msg.id]?.createdAt ?: msg.date
+            StarredMessageItem(
+                message = msg,
+                contactName = contactName,
+                starredAt = starredAt
+            )
+        }
+    }
+
     suspend fun saveDraft(threadId: Long, address: String, text: String) {
         dbHelper.saveDraft(threadId, address, text)
     }
@@ -806,6 +931,7 @@ class SmsRepository(
             val rows = context.contentResolver.delete(uri, null, null)
             if (rows > 0) {
                 dbHelper.deleteSpamMetaForMessageIds(listOf(messageId))
+                dbHelper.unstarMessage(messageId)
                 true
             } else {
                 false
@@ -1548,4 +1674,10 @@ private var canonicalCache: CachedLookupMap<String>? = null
 
 @Volatile
 private var contactDetailCache: CachedLookupMap<ContactDetail>? = null
+
+data class StarredMessageItem(
+    val message: SmsMessage,
+    val contactName: String?,
+    val starredAt: Long
+)
 

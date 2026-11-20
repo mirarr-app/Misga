@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -232,6 +233,15 @@ private fun BubbleContent(
                     isSent = isSent
                 )
                 Spacer(modifier = Modifier.width(5.dp))
+            }
+            if (message.isStarred) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = "Starred",
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
             }
             Text(
                 text = dateText,
