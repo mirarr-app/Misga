@@ -68,4 +68,54 @@ class PinnedConversationsTest {
         assertTrue(afterPinList[0].isPinned)
         assertFalse(afterPinList[1].isPinned)
     }
+
+    @Test
+    fun batchPinMultipleThreads() {
+        val threads = listOf(
+            createThread(1L, 1000L, isPinned = false),
+            createThread(2L, 2000L, isPinned = false),
+            createThread(3L, 3000L, isPinned = false),
+            createThread(4L, 4000L, isPinned = false)
+        )
+        val toPin = setOf(1L, 3L)
+        val updated = threads.map {
+            if (it.threadId in toPin) it.copy(isPinned = true) else it
+        }.sortedWith(
+            compareByDescending<ConversationThread> { it.isPinned }
+                .thenByDescending { it.date }
+        )
+
+        // Pinned threads (3, 1) first by date desc
+        assertEquals(3L, updated[0].threadId)
+        assertEquals(1L, updated[1].threadId)
+        assertTrue(updated[0].isPinned)
+        assertTrue(updated[1].isPinned)
+
+        // Unpinned threads (4, 2) next by date desc
+        assertEquals(4L, updated[2].threadId)
+        assertEquals(2L, updated[3].threadId)
+        assertFalse(updated[2].isPinned)
+        assertFalse(updated[3].isPinned)
+    }
+
+    @Test
+    fun batchUnpinMultipleThreads() {
+        val threads = listOf(
+            createThread(1L, 1000L, isPinned = true),
+            createThread(2L, 2000L, isPinned = true),
+            createThread(3L, 3000L, isPinned = true)
+        )
+        val toUnpin = setOf(1L, 2L, 3L)
+        val updated = threads.map {
+            if (it.threadId in toUnpin) it.copy(isPinned = false) else it
+        }.sortedWith(
+            compareByDescending<ConversationThread> { it.isPinned }
+                .thenByDescending { it.date }
+        )
+
+        assertEquals(3L, updated[0].threadId)
+        assertEquals(2L, updated[1].threadId)
+        assertEquals(1L, updated[2].threadId)
+        assertTrue(updated.none { it.isPinned })
+    }
 }

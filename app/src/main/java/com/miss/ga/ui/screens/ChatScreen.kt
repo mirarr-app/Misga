@@ -448,7 +448,7 @@ fun ChatScreen(
                             IconButton(onClick = { showBatchDeleteConfirmDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete selected",
+                                    contentDescription = stringResource(R.string.action_delete),
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -971,15 +971,15 @@ fun ChatScreen(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("SMS Message", msg.body))
-                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
                         viewModel.clearSelection()
                         selectedMessageForDialog = null
                     },
                     shape = PillShape
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.action_copy), modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Copy", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.action_copy), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -990,9 +990,9 @@ fun ChatScreen(
                         selectedMessageForDialog = null
                     }
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -1006,14 +1006,14 @@ fun ChatScreen(
             shape = SquircleCardShape,
             title = {
                 Text(
-                    text = "Delete Messages?",
+                    text = stringResource(R.string.delete_messages_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "Are you sure you want to delete $count selected message${if (count > 1) "s" else ""}? This action cannot be undone.",
+                    text = stringResource(R.string.delete_messages_confirm, count),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1027,13 +1027,13 @@ fun ChatScreen(
                 ) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "Delete",
+                        contentDescription = stringResource(R.string.action_delete),
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        "Delete",
+                        stringResource(R.string.action_delete),
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold
                     )
@@ -1041,7 +1041,7 @@ fun ChatScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showBatchDeleteConfirmDialog = false }) {
-                    Text("Cancel", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.action_cancel), fontWeight = FontWeight.SemiBold)
                 }
             }
         )

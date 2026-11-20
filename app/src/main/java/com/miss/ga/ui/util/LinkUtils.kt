@@ -37,10 +37,25 @@ object LinkUtils {
         RegexOption.IGNORE_CASE
     )
 
-    // Iranian mobile (09... or +989...), landline (021... or +9821...), USSD (*...#), international +...
+    // Iranian mobile (09... or +989...), landline (all Iranian province codes 01x-08x or +981x-+988x), USSD (*...#), international +...
     private val PHONE_OR_USSD_REGEX = Regex(
-        "(?:(?<=^|[^0-9a-zA-Z+*#])(?:(?:\\+98|0)9\\d{2}[- ]?\\d{3}[- ]?\\d{4}|(?:\\+98|0)21[- ]?\\d{4}[- ]?\\d{4}|\\*[0-9]+(?:[*#][0-9]+)*#|\\+[1-9]\\d{1,3}[- ]?\\d{3,4}[- ]?\\d{4})(?=[^0-9a-zA-Z*#]|$))"
+        "(?:(?<=^|[^0-9a-zA-Z+*#])(?:(?:\\+98|0)9\\d{2}[- ]?\\d{3}[- ]?\\d{4}|(?:\\+98|0)[1-8]\\d{1,2}[- ]?\\d{3,4}[- ]?\\d{4}|\\*[0-9]+(?:[*#][0-9]+)*#|\\+[1-9]\\d{1,3}[- ]?\\d{3,4}[- ]?\\d{4})(?=[^0-9a-zA-Z*#]|$))"
     )
+
+    private val EMAIL_REGEX = Regex(
+        "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+        RegexOption.IGNORE_CASE
+    )
+
+    fun extractEmailLinks(text: String): List<LinkMatch> {
+        if (text.isBlank()) return emptyList()
+        val matches = mutableListOf<LinkMatch>()
+        for (match in EMAIL_REGEX.findAll(text)) {
+            val email = match.value
+            matches.add(LinkMatch(email, "mailto:$email", match.range.first, match.range.last + 1))
+        }
+        return matches
+    }
 
     fun extractPhoneLinks(text: String): List<LinkMatch> {
         if (text.isBlank()) return emptyList()
@@ -114,10 +129,12 @@ object LinkUtils {
     fun extractAllInteractiveLinks(text: String): List<LinkMatch> {
         val urlLinks = extractLinks(text)
         val phoneLinks = extractPhoneLinks(text)
-        if (phoneLinks.isEmpty()) return urlLinks
-        if (urlLinks.isEmpty()) return phoneLinks
+        val emailLinks = extractEmailLinks(text)
+        if (phoneLinks.isEmpty() && emailLinks.isEmpty()) return urlLinks
+        if (urlLinks.isEmpty() && emailLinks.isEmpty()) return phoneLinks
+        if (urlLinks.isEmpty() && phoneLinks.isEmpty()) return emailLinks
 
-        val combined = (urlLinks + phoneLinks).sortedBy { it.start }
+        val combined = (urlLinks + phoneLinks + emailLinks).sortedBy { it.start }
         val result = mutableListOf<LinkMatch>()
         var lastEnd = 0
         for (link in combined) {

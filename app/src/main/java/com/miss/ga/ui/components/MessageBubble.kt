@@ -139,9 +139,8 @@ fun MessageBubble(
                             }
                         }
                     }
-                    .pointerInput(onLongClick, onOutsideTap) {
+                    .pointerInput(onLongClick) {
                         detectTapGestures(
-                            onTap = { onOutsideTap() },
                             onLongPress = { onLongClick() }
                         )
                     }

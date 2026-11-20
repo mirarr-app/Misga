@@ -764,7 +764,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             "cached_threads",
             null,
             null, null, null, null,
-            "date DESC"
+            "is_pinned DESC, date DESC"
         )
         cursor.use {
             val idIdx = it.getColumnIndexOrThrow("thread_id")
@@ -1857,25 +1857,39 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     // --- Pinned Threads Operations ---
 
-    suspend fun pinThread(threadId: Long, address: String) = withContext(Dispatchers.IO) {
+    suspend fun pinThreads(threads: Collection<Pair<Long, String>>) = withContext(Dispatchers.IO) {
+        if (threads.isEmpty()) return@withContext
         val db = writableDatabase
         try {
-            val cv = ContentValues().apply {
-                put("thread_id", threadId)
-                put("address", PhoneNumberKeys.canonical(address))
-                put("pinned_at", System.currentTimeMillis())
-            }
-            db.insertWithOnConflict("pinned_threads", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
-            if (threadId > 0) {
-                val threadCv = ContentValues().apply {
-                    put("is_pinned", 1)
+            db.beginTransaction()
+            try {
+                val now = System.currentTimeMillis()
+                for ((threadId, address) in threads) {
+                    val cv = ContentValues().apply {
+                        put("thread_id", threadId)
+                        put("address", PhoneNumberKeys.canonical(address))
+                        put("pinned_at", now)
+                    }
+                    db.insertWithOnConflict("pinned_threads", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+                    if (threadId > 0) {
+                        val threadCv = ContentValues().apply {
+                            put("is_pinned", 1)
+                        }
+                        db.update("cached_threads", threadCv, "thread_id = ?", arrayOf(threadId.toString()))
+                    }
                 }
-                db.update("cached_threads", threadCv, "thread_id = ?", arrayOf(threadId.toString()))
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
             }
             notifyPinnedChanged()
         } catch (e: Exception) {
-            Log.e(TAG, "Error pinning thread in db", e)
+            Log.e(TAG, "Error batch pinning threads in db", e)
         }
+    }
+
+    suspend fun pinThread(threadId: Long, address: String) = withContext(Dispatchers.IO) {
+        pinThreads(listOf(threadId to address))
     }
 
     suspend fun unpinThread(threadId: Long, address: String = "") = withContext(Dispatchers.IO) {
@@ -1904,14 +1918,20 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         if (threadIds.isEmpty()) return@withContext
         val db = writableDatabase
         try {
-            for (chunk in threadIds.distinct().chunked(SQLITE_IN_CHUNK_SIZE)) {
-                val placeholders = chunk.joinToString(",") { "?" }
-                val args = chunk.map { it.toString() }.toTypedArray()
-                db.delete("pinned_threads", "thread_id IN ($placeholders)", args)
-                val threadCv = ContentValues().apply {
-                    put("is_pinned", 0)
+            db.beginTransaction()
+            try {
+                for (chunk in threadIds.distinct().chunked(SQLITE_IN_CHUNK_SIZE)) {
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    val args = chunk.map { it.toString() }.toTypedArray()
+                    db.delete("pinned_threads", "thread_id IN ($placeholders)", args)
+                    val threadCv = ContentValues().apply {
+                        put("is_pinned", 0)
+                    }
+                    db.update("cached_threads", threadCv, "thread_id IN ($placeholders)", args)
                 }
-                db.update("cached_threads", threadCv, "thread_id IN ($placeholders)", args)
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
             }
             notifyPinnedChanged()
         } catch (e: Exception) {

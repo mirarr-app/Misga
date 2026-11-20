@@ -66,4 +66,31 @@ class SmsDateFormatsTest {
         assertEquals("22 Shahrivar", shamsi)
         assertTrue(gregorian.contains("13") || gregorian.contains("Sep"))
     }
+
+    @Test
+    fun conversationListPersianLocalization() {
+        val originalLocale = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("fa-IR"))
+            val now = 1_700_000_000_000L
+            val oneHourAgo = now - 3600 * 1000L
+            val formattedToday = SmsDateFormats.conversationList(oneHourAgo, now)
+            // Should contain Persian digits
+            assertTrue(
+                "Today timestamp in Persian should contain Persian digits: $formattedToday",
+                formattedToday.any { it in '۰'..'۹' }
+            )
+
+            val tenDaysAgo = now - 10 * 24 * 3600 * 1000L
+            val formattedOlder = SmsDateFormats.conversationList(tenDaysAgo, now)
+            // Should contain Persian month name
+            assertTrue(
+                "Older timestamp in Persian should contain Persian Shamsi month: $formattedOlder",
+                SmsDateFormats.toPersianDigits("1").any { formattedOlder.contains(it) } ||
+                        formattedOlder.any { it in '۰'..'۹' }
+            )
+        } finally {
+            java.util.Locale.setDefault(originalLocale)
+        }
+    }
 }

@@ -228,11 +228,13 @@ fun ConversationsScreen(
                 onTogglePinSelected = {
                     if (areAllSelectedPinned) {
                         viewModel.unpinSelectedConversations { count ->
-                            Toast.makeText(context, "Unpinned $count conversation${if (count > 1) "s" else ""}", Toast.LENGTH_SHORT).show()
+                            val msg = if (count <= 1) context.getString(R.string.unpinned_single) else context.getString(R.string.unpinned_count, count)
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         viewModel.pinSelectedConversations { count ->
-                            Toast.makeText(context, "Pinned $count conversation${if (count > 1) "s" else ""} to top", Toast.LENGTH_SHORT).show()
+                            val msg = if (count <= 1) context.getString(R.string.pinned_single) else context.getString(R.string.pinned_count, count)
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
                     }
                 },

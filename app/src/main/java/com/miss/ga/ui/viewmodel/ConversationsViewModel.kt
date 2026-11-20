@@ -115,7 +115,10 @@ class ConversationsViewModel(
             dbHelper.tabsChanged.collect { loadTabs() }
         }
         viewModelScope.launch {
-            dbHelper.pinnedChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+            dbHelper.pinnedChanged.drop(1).collectLatest {
+                delay(150)
+                loadThreads(silent = true, force = true)
+            }
         }
         viewModelScope.launch {
             dbHelper.draftsChanged.drop(1).collectLatest {
@@ -640,10 +643,10 @@ class ConversationsViewModel(
         if (targetIds.isEmpty()) return
         viewModelScope.launch {
             val count = targetIds.size
-            for (id in targetIds) {
-                val addr = _uiState.value.threads.find { it.threadId == id }?.address.orEmpty()
-                repository.pinConversation(id, addr)
+            val toPin = targetIds.map { id ->
+                id to _uiState.value.threads.find { it.threadId == id }?.address.orEmpty()
             }
+            repository.pinConversations(toPin)
             val updated = _uiState.value.threads.map {
                 if (it.threadId in targetIds) it.copy(isPinned = true) else it
             }.sortedWith(compareByDescending<ConversationThread> { it.isPinned }.thenByDescending { it.date })
@@ -662,10 +665,7 @@ class ConversationsViewModel(
         if (targetIds.isEmpty()) return
         viewModelScope.launch {
             val count = targetIds.size
-            for (id in targetIds) {
-                val addr = _uiState.value.threads.find { it.threadId == id }?.address.orEmpty()
-                repository.unpinConversation(id, addr)
-            }
+            repository.unpinConversations(targetIds)
             val updated = _uiState.value.threads.map {
                 if (it.threadId in targetIds) it.copy(isPinned = false) else it
             }.sortedWith(compareByDescending<ConversationThread> { it.isPinned }.thenByDescending { it.date })

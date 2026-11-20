@@ -769,6 +769,10 @@ class SmsRepository(
         dbHelper.pinThread(threadId, address)
     }
 
+    suspend fun pinConversations(threads: Collection<Pair<Long, String>>) {
+        dbHelper.pinThreads(threads)
+    }
+
     suspend fun unpinConversation(threadId: Long, address: String = "") {
         dbHelper.unpinThread(threadId, address)
     }
@@ -943,6 +947,10 @@ class SmsRepository(
         if (threadIds.isEmpty()) return@withContext false
         val ids = threadIds.distinct()
         dbHelper.markThreadsRead(ids)
+        dbHelper.unpinThreads(ids)
+        for (id in ids) {
+            dbHelper.clearDraft(id, "")
+        }
         val cachedAddresses = dbHelper.getCachedThreadAddresses(ids)
         val addresses = LinkedHashSet<String>()
         for (id in ids) {

@@ -108,4 +108,52 @@ class SmsSegmentCounterTest {
         assertEquals(2, result.segmentCount)
         assertTrue(result.isUnicode)
     }
+
+    @Test
+    fun testGsm7SpecialCharactersNotForcedToUnicode() {
+        // 'é' and '£' are standard GSM-7 basic characters!
+        val text = "Café costs 5£"
+        val result = SmsCounterUtils.calculate(text)
+        assertFalse("Gsm7 characters like 'é' and '£' should remain GSM-7", result.isUnicode)
+        assertEquals(1, result.segmentCount)
+        assertEquals(160, result.maxInSegment)
+    }
+
+    @Test
+    fun testGsm7ExtensionCharactersCostTwoSeptets() {
+        // '{' and '}' are GSM-7 extension characters (2 septets each)
+        val text = "{test}"
+        val result = SmsCounterUtils.calculate(text)
+        assertFalse(result.isUnicode)
+        // 4 basic chars ('t','e','s','t') + 2 extension chars * 2 = 8 septets.
+        // Remaining in segment = 160 - 8 = 152.
+        assertEquals(152, result.remainingInSegment)
+        assertEquals(1, result.segmentCount)
+    }
+
+    @Test
+    fun testGsm7ExtensionAtBoundary() {
+        // 159 basic characters + 1 extension character (2 septets) = 161 septets total.
+        // Cannot fit in single 160-septet message.
+        // In multipart (153 max):
+        // Segment 1 fits 153 basic chars.
+        // Remaining 6 basic chars + 1 extension char (2 septets) = 8 septets in segment 2.
+        // Remaining in segment 2 = 153 - 8 = 145.
+        val text = "A".repeat(159) + "^"
+        val result = SmsCounterUtils.calculate(text)
+        assertFalse(result.isUnicode)
+        assertEquals(2, result.segmentCount)
+        assertEquals(145, result.remainingInSegment)
+    }
+
+    @Test
+    fun testUnicodeEmojiSurrogatePairs() {
+        // Emoji like 😃 is a surrogate pair (2 chars in Java/Kotlin UTF-16)
+        val text = "Hi 😃"
+        val result = SmsCounterUtils.calculate(text)
+        assertTrue(result.isUnicode)
+        assertEquals(text.length, result.charCount)
+        assertEquals(70 - text.length, result.remainingInSegment)
+        assertEquals(1, result.segmentCount)
+    }
 }

@@ -188,14 +188,36 @@ object SmsDateFormats {
     fun monthDayClock(timestamp: Long): String =
         Instant.ofEpochMilli(timestamp).atZone(zone).format(monthDayClock)
 
-    fun conversationList(timestamp: Long, now: Long = System.currentTimeMillis()): String {
+    fun conversationList(timestamp: Long, now: Long = System.currentTimeMillis(), useShamsi: Boolean = false): String {
+        val isPersian = Locale.getDefault().language == "fa" || useShamsi
         val diff = now - timestamp
         val oneDay = 24 * 60 * 60 * 1000L
         val local = Instant.ofEpochMilli(timestamp).atZone(zone)
-        return when {
-            diff < oneDay -> local.toLocalTime().format(clock)
-            diff < 7 * oneDay -> local.toLocalDate().format(weekday)
-            else -> local.toLocalDate().format(monthDay)
+        return if (isPersian) {
+            when {
+                diff < oneDay -> toPersianDigits(local.toLocalTime().format(clock))
+                diff < 7 * oneDay -> local.toLocalDate().format(weekday)
+                else -> {
+                    val messageDate = local.toLocalDate()
+                    val currentDate = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+                    val jDate = toJalali(messageDate.year, messageDate.monthValue, messageDate.dayOfMonth)
+                    val nowJDate = toJalali(currentDate.year, currentDate.monthValue, currentDate.dayOfMonth)
+                    val monthName = SHAMSI_MONTH_NAMES_FA.getOrElse(jDate.month - 1) { "" }
+                    val dayStr = toPersianDigits(jDate.day)
+                    if (jDate.year == nowJDate.year) {
+                        "$dayStr $monthName"
+                    } else {
+                        val yearStr = toPersianDigits(jDate.year)
+                        "$dayStr $monthName $yearStr"
+                    }
+                }
+            }
+        } else {
+            when {
+                diff < oneDay -> local.toLocalTime().format(clock)
+                diff < 7 * oneDay -> local.toLocalDate().format(weekday)
+                else -> local.toLocalDate().format(monthDay)
+            }
         }
     }
 }

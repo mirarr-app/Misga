@@ -158,4 +158,49 @@ class LinkUtilsTest {
         assertEquals("*100#", allLinks[2].text)
         assertEquals("tel:*100%23", allLinks[2].url)
     }
+
+    @Test
+    fun testIranianProvincialLandlinesExtraction() {
+        val input = "دفتر اصفهان: 03133334444، کرج: 02634567890، شیراز: +987132221111"
+        val links = LinkUtils.extractPhoneLinks(input)
+        assertEquals(3, links.size)
+
+        assertEquals("03133334444", links[0].text)
+        assertEquals("tel:03133334444", links[0].url)
+
+        assertEquals("02634567890", links[1].text)
+        assertEquals("tel:02634567890", links[1].url)
+
+        assertEquals("+987132221111", links[2].text)
+        assertEquals("tel:+987132221111", links[2].url)
+    }
+
+    @Test
+    fun testEmailLinkExtraction() {
+        val input = "For support write to support@misga.ir or contact team.info@example.com."
+        val links = LinkUtils.extractEmailLinks(input)
+        assertEquals(2, links.size)
+
+        assertEquals("support@misga.ir", links[0].text)
+        assertEquals("mailto:support@misga.ir", links[0].url)
+
+        assertEquals("team.info@example.com", links[1].text)
+        assertEquals("mailto:team.info@example.com", links[1].url)
+    }
+
+    @Test
+    fun testCombinedAllLinksWithEmail() {
+        val input = "Contact support@misga.ir or 09121112233 or visit https://misga.ir"
+        val all = LinkUtils.extractAllInteractiveLinks(input)
+        assertEquals(3, all.size)
+
+        assertEquals("support@misga.ir", all[0].text)
+        assertEquals("mailto:support@misga.ir", all[0].url)
+
+        assertEquals("09121112233", all[1].text)
+        assertEquals("tel:09121112233", all[1].url)
+
+        assertEquals("https://misga.ir", all[2].text)
+        assertEquals("https://misga.ir", all[2].url)
+    }
 }

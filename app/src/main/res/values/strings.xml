@@ -45,4 +45,13 @@
     <string name="message_copied">Message copied to clipboard</string>
     <string name="messages_copied">%1$d messages copied to clipboard</string>
     <string name="forward_message">Forward</string>
+    <string name="pinned_count">%1$d conversations pinned to top</string>
+    <string name="unpinned_count">%1$d conversations unpinned</string>
+    <string name="pinned_single">Conversation pinned to top</string>
+    <string name="unpinned_single">Conversation unpinned</string>
+    <string name="delete_messages_title">Delete Messages?</string>
+    <string name="delete_messages_confirm">Are you sure you want to delete %1$d selected message(s)? This action cannot be undone.</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_copy">Copy</string>
 </resources>

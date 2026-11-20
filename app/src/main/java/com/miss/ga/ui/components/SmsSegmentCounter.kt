@@ -24,6 +24,27 @@ object SmsCounterUtils {
         val isUnicode: Boolean
     )
 
+    private val GSM_BASIC_CHARS: Set<Char> = setOf(
+        '@', '£', '$', '¥', 'è', 'é', 'ù', 'ì', 'ò', 'Ç', '\n', 'Ø', 'ø', '\r',
+        'Å', 'å', 'Δ', '_', 'Φ', 'Γ', 'Λ', 'Ω', 'Π', 'Ψ', 'Σ', 'Θ', 'Ξ',
+        'Æ', 'æ', 'ß', 'É', ' ', '!', '"', '#', '¤', '%', '&', '\'', '(', ')',
+        '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '¡',
+        'Ä', 'Ö', 'Ñ', 'Ü', '§', '¿', 'ä', 'ö', 'ñ', 'ü', 'à'
+    ).plus('0'..'9').plus('A'..'Z').plus('a'..'z')
+
+    private val GSM_EXT_CHARS: Set<Char> = setOf(
+        '^', '{', '}', '\\', '[', '~', ']', '|', '€'
+    )
+
+    fun isGsm7(text: String): Boolean {
+        for (ch in text) {
+            if (ch !in GSM_BASIC_CHARS && ch !in GSM_EXT_CHARS) {
+                return false
+            }
+        }
+        return true
+    }
+
     fun calculate(text: String): SmsCount {
         if (text.isEmpty()) {
             return SmsCount(
@@ -34,31 +55,78 @@ object SmsCounterUtils {
                 isUnicode = false
             )
         }
-        val isUnicode = text.any { it.code > 127 }
-        val count = text.length
-        val maxSingle = if (isUnicode) 70 else 160
-        val maxConcat = if (isUnicode) 67 else 153
 
-        if (count <= maxSingle) {
+        val isGsm = isGsm7(text)
+        if (isGsm) {
+            var totalSeptets = 0
+            for (ch in text) {
+                totalSeptets += if (ch in GSM_EXT_CHARS) 2 else 1
+            }
+
+            if (totalSeptets <= 160) {
+                return SmsCount(
+                    charCount = text.length,
+                    remainingInSegment = 160 - totalSeptets,
+                    maxInSegment = 160,
+                    segmentCount = 1,
+                    isUnicode = false
+                )
+            }
+
+            var segments = 1
+            var currentInSegment = 0
+            for (ch in text) {
+                val charCost = if (ch in GSM_EXT_CHARS) 2 else 1
+                if (currentInSegment + charCost > 153) {
+                    segments++
+                    currentInSegment = charCost
+                } else {
+                    currentInSegment += charCost
+                }
+            }
+            val remaining = 153 - currentInSegment
             return SmsCount(
-                charCount = count,
-                remainingInSegment = maxSingle - count,
-                maxInSegment = maxSingle,
-                segmentCount = 1,
-                isUnicode = isUnicode
+                charCount = text.length,
+                remainingInSegment = remaining,
+                maxInSegment = 153,
+                segmentCount = segments,
+                isUnicode = false
+            )
+        } else {
+            val codeUnits = text.length
+            if (codeUnits <= 70) {
+                return SmsCount(
+                    charCount = text.length,
+                    remainingInSegment = 70 - codeUnits,
+                    maxInSegment = 70,
+                    segmentCount = 1,
+                    isUnicode = true
+                )
+            }
+
+            var segments = 1
+            var currentInSegment = 0
+            var i = 0
+            while (i < text.length) {
+                val isSurrogate = Character.isSurrogate(text[i])
+                val charCost = if (isSurrogate && i + 1 < text.length && Character.isSurrogatePair(text[i], text[i + 1])) 2 else 1
+                if (currentInSegment + charCost > 67) {
+                    segments++
+                    currentInSegment = charCost
+                } else {
+                    currentInSegment += charCost
+                }
+                i += charCost
+            }
+            val remaining = 67 - currentInSegment
+            return SmsCount(
+                charCount = text.length,
+                remainingInSegment = remaining,
+                maxInSegment = 67,
+                segmentCount = segments,
+                isUnicode = true
             )
         }
-
-        val segments = (count + maxConcat - 1) / maxConcat
-        val totalCapacity = segments * maxConcat
-        val remaining = totalCapacity - count
-        return SmsCount(
-            charCount = count,
-            remainingInSegment = remaining,
-            maxInSegment = maxConcat,
-            segmentCount = segments,
-            isUnicode = isUnicode
-        )
     }
 }
 

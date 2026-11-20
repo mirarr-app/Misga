@@ -46,4 +46,13 @@
     <string name="message_copied">پیام در کلیپ‌بورد کپی شد</string>
     <string name="messages_copied">%1$d پیام در کلیپ‌بورد کپی شد</string>
     <string name="forward_message">ارسال به دیگران</string>
+    <string name="pinned_count">%1$d گفتگو به بالا سنجاق شد</string>
+    <string name="unpinned_count">سنجاق %1$d گفتگو برداشته شد</string>
+    <string name="pinned_single">گفتگو به بالا سنجاق شد</string>
+    <string name="unpinned_single">سنجاق گفتگو برداشته شد</string>
+    <string name="delete_messages_title">حذف پیام‌ها؟</string>
+    <string name="delete_messages_confirm">آیا از حذف %1$d پیام انتخاب شده اطمینان دارید؟ این عمل غیرقابل بازگشت است.</string>
+    <string name="action_cancel">انصراف</string>
+    <string name="action_delete">حذف</string>
+    <string name="action_copy">کپی</string>
 </resources>
