@@ -48,8 +48,8 @@ object PredefinedRules {
             // ==========================================
             FilterRule(
                 id = -1,
-                name = "Commercial Shortcodes (1000/2000/3000/5000/9000)",
-                pattern = "^(\\+98|0)?(1000|2000|3000|5000|9000)\\d+$",
+                name = "Commercial Shortcodes (1000/2000/3000/3333/5000/9000)",
+                pattern = "^(\\+98|0)?(1000|2000|3000|3333|5000|9000)\\d*$",
                 isRegex = true,
                 action = FilterAction.SPAM,
                 listType = RuleListType.BLOCKLIST,
@@ -369,6 +369,18 @@ object PredefinedRules {
                 isPredefined = true,
                 category = RuleCategory.SPAM_KEYWORD,
                 description = "Blocks Irancell marathon promotional SMS where 'ماراتن' and 'irancell' (or 'ایرانسل') appear anywhere in the text (including in URLs)"
+            ),
+            FilterRule(
+                id = -28,
+                name = "Numberland Spam Links (nmbr.ir)",
+                pattern = "(?i)(https?://)?([a-z0-9-]+\\.)*nmbr\\.ir",
+                isRegex = true,
+                action = FilterAction.SPAM,
+                listType = RuleListType.BLOCKLIST,
+                isEnabled = true,
+                isPredefined = true,
+                category = RuleCategory.SPAM_KEYWORD,
+                description = "Blocks nmbr.ir links in any casing, with or without https and any subdomain: nmbr.ir, sh.nmbr.ir/FvJfqA, www.nmbr.ir/..."
             ),
 
             // ==========================================
