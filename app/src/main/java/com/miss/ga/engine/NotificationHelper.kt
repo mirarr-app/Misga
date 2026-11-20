@@ -322,6 +322,43 @@ class NotificationHelper private constructor(
                 copyPendingIntent
             ).build()
             actions.add(copyAction)
+        } else {
+            val financial = FinancialExtractor.extract(body)
+            if (financial.bankCard != null) {
+                val cardFormatted = financial.bankCard.formatted
+                val copyIntent = actionIntent(NotificationActions.ACTION_COPY_CARD).apply {
+                    putExtra(NotificationActions.EXTRA_CARD_NUMBER, financial.bankCard.number)
+                }
+                val copyPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    copyCardRequestCode(threadId),
+                    copyIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val cardAction = NotificationCompat.Action.Builder(
+                    android.R.drawable.ic_menu_save,
+                    context.getString(R.string.notification_action_copy_card, cardFormatted),
+                    copyPendingIntent
+                ).build()
+                actions.add(cardAction)
+            } else if (financial.sheba != null) {
+                val shebaFormatted = financial.sheba.formatted
+                val copyIntent = actionIntent(NotificationActions.ACTION_COPY_SHEBA).apply {
+                    putExtra(NotificationActions.EXTRA_SHEBA_NUMBER, financial.sheba.iban)
+                }
+                val copyPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    copyShebaRequestCode(threadId),
+                    copyIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val shebaAction = NotificationCompat.Action.Builder(
+                    android.R.drawable.ic_menu_save,
+                    context.getString(R.string.notification_action_copy_sheba, shebaFormatted),
+                    copyPendingIntent
+                ).build()
+                actions.add(shebaAction)
+            }
         }
 
         // RemoteInput results are injected into the intent, so it must stay mutable.
@@ -376,6 +413,8 @@ class NotificationHelper private constructor(
     }
 
     private fun copyOtpRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x43505900
+    private fun copyCardRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x43415244
+    private fun copyShebaRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x53484542
     private fun replyRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt()
     private fun markReadRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x4D524400
     private fun deleteRequestCode(threadId: Long): Int = (threadId xor (threadId ushr 32)).toInt() xor 0x44454C00

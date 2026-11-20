@@ -20,13 +20,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeMute
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -184,7 +184,7 @@ fun TestLabScreen(
                                     Icon(
                                         imageVector = when (result.action) {
                                             FilterAction.SPAM -> Icons.Default.Shield
-                                            FilterAction.SILENT -> Icons.Default.VolumeMute
+                                            FilterAction.SILENT -> Icons.AutoMirrored.Filled.VolumeMute
                                             FilterAction.NORMAL -> Icons.Default.Notifications
                                         },
                                         contentDescription = null,

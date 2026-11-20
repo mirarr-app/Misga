@@ -15,6 +15,53 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.miss.ga.theme.PillShape
 
+object SmsCounterUtils {
+    data class SmsCount(
+        val charCount: Int,
+        val remainingInSegment: Int,
+        val maxInSegment: Int,
+        val segmentCount: Int,
+        val isUnicode: Boolean
+    )
+
+    fun calculate(text: String): SmsCount {
+        if (text.isEmpty()) {
+            return SmsCount(
+                charCount = 0,
+                remainingInSegment = 160,
+                maxInSegment = 160,
+                segmentCount = 1,
+                isUnicode = false
+            )
+        }
+        val isUnicode = text.any { it.code > 127 }
+        val count = text.length
+        val maxSingle = if (isUnicode) 70 else 160
+        val maxConcat = if (isUnicode) 67 else 153
+
+        if (count <= maxSingle) {
+            return SmsCount(
+                charCount = count,
+                remainingInSegment = maxSingle - count,
+                maxInSegment = maxSingle,
+                segmentCount = 1,
+                isUnicode = isUnicode
+            )
+        }
+
+        val segments = (count + maxConcat - 1) / maxConcat
+        val totalCapacity = segments * maxConcat
+        val remaining = totalCapacity - count
+        return SmsCount(
+            charCount = count,
+            remainingInSegment = remaining,
+            maxInSegment = maxConcat,
+            segmentCount = segments,
+            isUnicode = isUnicode
+        )
+    }
+}
+
 @Composable
 fun SmsSegmentCounter(
     text: String,
@@ -22,10 +69,8 @@ fun SmsSegmentCounter(
 ) {
     if (text.isEmpty()) return
 
-    val isUnicode = text.any { it.code > 127 }
-    val maxPerSegment = if (isUnicode) 70 else 160
-    val count = text.length
-    val segments = if (count == 0) 1 else (count + maxPerSegment - 1) / maxPerSegment
+    val info = SmsCounterUtils.calculate(text)
+    val encodingName = if (info.isUnicode) "Unicode" else "GSM-7"
 
     Row(
         modifier = modifier
@@ -36,7 +81,7 @@ fun SmsSegmentCounter(
     ) {
         Surface(
             shape = PillShape,
-            color = if (segments > 1) {
+            color = if (info.segmentCount > 1) {
                 MaterialTheme.colorScheme.tertiaryContainer
             } else {
                 MaterialTheme.colorScheme.surfaceContainerHighest
@@ -44,9 +89,9 @@ fun SmsSegmentCounter(
             modifier = Modifier.padding(bottom = 4.dp)
         ) {
             Text(
-                text = "$count/$maxPerSegment • $segments SMS (${if (isUnicode) "Persian/Unicode" else "GSM-7"})",
+                text = "${info.charCount}/${info.maxInSegment} (${info.remainingInSegment}) • ${info.segmentCount} SMS ($encodingName)",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (segments > 1) {
+                color = if (info.segmentCount > 1) {
                     MaterialTheme.colorScheme.onTertiaryContainer
                 } else {
                     MaterialTheme.colorScheme.outline

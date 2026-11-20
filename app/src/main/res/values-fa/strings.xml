@@ -34,4 +34,16 @@
     <string name="swipe_mark_unread">خوانده نشده</string>
     <string name="swipe_delete">حذف</string>
     <string name="delete_conversation_confirm">این گفتگو حذف شود؟</string>
+    <string name="notification_action_copy_card">کپی کارت %1$s</string>
+    <string name="notification_action_copy_sheba">کپی شبا %1$s</string>
+    <string name="pin_conversation">سنجاق کردن به بالا</string>
+    <string name="unpin_conversation">برداشتن سنجاق</string>
+    <string name="pinned_badge">سنجاق شده</string>
+    <string name="action_copy_message">کپی</string>
+    <string name="action_share_message">اشتراک‌گذاری</string>
+    <string name="action_select_all">انتخاب همه</string>
+    <string name="action_deselect_all">لغو انتخاب همه</string>
+    <string name="message_copied">پیام در کلیپ‌بورد کپی شد</string>
+    <string name="messages_copied">%1$d پیام در کلیپ‌بورد کپی شد</string>
+    <string name="forward_message">ارسال به دیگران</string>
 </resources>

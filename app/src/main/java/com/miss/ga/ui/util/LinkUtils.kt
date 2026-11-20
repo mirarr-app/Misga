@@ -16,6 +16,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
+import com.miss.ga.engine.OtpExtractor
 
 data class LinkMatch(
     val text: String,
@@ -35,6 +36,28 @@ object LinkUtils {
         "(?:$SCHEME_URL)|(?:$WWW_URL)|(?:$DOMAIN_TLD_URL)",
         RegexOption.IGNORE_CASE
     )
+
+    // Iranian mobile (09... or +989...), landline (021... or +9821...), USSD (*...#), international +...
+    private val PHONE_OR_USSD_REGEX = Regex(
+        "(?:(?<=^|[^0-9a-zA-Z+*#])(?:(?:\\+98|0)9\\d{2}[- ]?\\d{3}[- ]?\\d{4}|(?:\\+98|0)21[- ]?\\d{4}[- ]?\\d{4}|\\*[0-9]+(?:[*#][0-9]+)*#|\\+[1-9]\\d{1,3}[- ]?\\d{3,4}[- ]?\\d{4})(?=[^0-9a-zA-Z*#]|$))"
+    )
+
+    fun extractPhoneLinks(text: String): List<LinkMatch> {
+        if (text.isBlank()) return emptyList()
+        val normalized = OtpExtractor.normalizeDigits(text)
+        val matches = mutableListOf<LinkMatch>()
+        for (match in PHONE_OR_USSD_REGEX.findAll(normalized)) {
+            val raw = text.substring(match.range.first, match.range.last + 1)
+            val cleanDigitsOrUssd = match.value.replace(" ", "").replace("-", "")
+            val targetUrl = if (cleanDigitsOrUssd.startsWith("*") && cleanDigitsOrUssd.endsWith("#")) {
+                "tel:" + cleanDigitsOrUssd.replace("#", "%23")
+            } else {
+                "tel:$cleanDigitsOrUssd"
+            }
+            matches.add(LinkMatch(raw, targetUrl, match.range.first, match.range.last + 1))
+        }
+        return matches
+    }
 
     fun extractLinks(text: String): List<LinkMatch> {
         if (text.isBlank()) return emptyList()
@@ -88,13 +111,31 @@ object LinkUtils {
         return matches
     }
 
+    fun extractAllInteractiveLinks(text: String): List<LinkMatch> {
+        val urlLinks = extractLinks(text)
+        val phoneLinks = extractPhoneLinks(text)
+        if (phoneLinks.isEmpty()) return urlLinks
+        if (urlLinks.isEmpty()) return phoneLinks
+
+        val combined = (urlLinks + phoneLinks).sortedBy { it.start }
+        val result = mutableListOf<LinkMatch>()
+        var lastEnd = 0
+        for (link in combined) {
+            if (link.start >= lastEnd) {
+                result.add(link)
+                lastEnd = link.end
+            }
+        }
+        return result
+    }
+
     fun buildLinkedText(
         text: String,
         linkColor: Color,
         enableLinks: Boolean = true,
         onLinkClick: ((String) -> Unit)? = null
     ): AnnotatedString {
-        val links = extractLinks(text)
+        val links = extractAllInteractiveLinks(text)
         if (links.isEmpty()) {
             return AnnotatedString(text)
         }
@@ -147,8 +188,7 @@ object LinkUtils {
 }
 
 /**
- * Creates a rememberable link click callback that attempts to open the URL with Compose's
- * UriHandler first, falls back to Android's ACTION_VIEW Intent, and catches any error with a Toast.
+ * Creates a rememberable link click callback that handles tel:, mailto:, and http/https URLs.
  */
 @Composable
 fun rememberLinkClickHandler(): (String) -> Unit {
@@ -157,16 +197,28 @@ fun rememberLinkClickHandler(): (String) -> Unit {
     return remember(context, uriHandler) {
         { url ->
             try {
-                uriHandler.openUri(url)
-            } catch (e: Exception) {
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                if (url.startsWith("tel:", ignoreCase = true)) {
+                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse(url)).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     context.startActivity(intent)
-                } catch (e2: Exception) {
-                    Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
+                } else if (url.startsWith("mailto:", ignoreCase = true)) {
+                    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse(url)).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                } else {
+                    try {
+                        uriHandler.openUri(url)
+                    } catch (_: Exception) {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
+                    }
                 }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
             }
         }
     }

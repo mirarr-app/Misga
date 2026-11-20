@@ -57,6 +57,14 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         _draftsChanged.value = draftsChangeCounter.incrementAndGet()
     }
 
+    private val _pinnedChanged = MutableStateFlow(0L)
+    val pinnedChanged: Flow<Long> = _pinnedChanged.asStateFlow()
+    private val pinnedChangeCounter = java.util.concurrent.atomic.AtomicLong(0L)
+
+    fun notifyPinnedChanged() {
+        _pinnedChanged.value = pinnedChangeCounter.incrementAndGet()
+    }
+
     @Volatile
     private var predefinedRulesSeeded = false
 
@@ -131,6 +139,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         createScheduledMessagesTable(db)
         createConversationDraftsTable(db)
         createMarkedUnreadThreadsTable(db)
+        createPinnedThreadsTable(db)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_spam_meta_address ON spam_message_meta(address)")
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_filter_rules_sender_target ON filter_rules(sender_target)"
@@ -199,6 +208,12 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 createMarkedUnreadThreadsTable(db)
             } catch (e: Exception) {}
             try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN is_marked_unread INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
+        }
+        if (oldVersion < 9) {
+            try {
+                createPinnedThreadsTable(db)
+            } catch (e: Exception) {}
+            try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
         }
 
     }
@@ -766,6 +781,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             val mutedIdx = it.getColumnIndex("is_muted")
             val draftIdx = it.getColumnIndex("draft")
             val markedUnreadIdx = it.getColumnIndex("is_marked_unread")
+            val pinnedIdx = it.getColumnIndex("is_pinned")
             while (it.moveToNext()) {
                 val contactName = if (it.isNull(nameIdx)) null else it.getString(nameIdx)
                 val lastMessageAction = if (actionIdx >= 0 && !it.isNull(actionIdx)) {
@@ -785,6 +801,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 val isMuted = mutedIdx >= 0 && !it.isNull(mutedIdx) && it.getInt(mutedIdx) == 1
                 val draft = if (draftIdx >= 0 && !it.isNull(draftIdx)) it.getString(draftIdx) else null
                 val isMarkedUnread = markedUnreadIdx >= 0 && !it.isNull(markedUnreadIdx) && it.getInt(markedUnreadIdx) == 1
+                val isPinned = pinnedIdx >= 0 && !it.isNull(pinnedIdx) && it.getInt(pinnedIdx) == 1
                 threads.add(
                     ConversationThread(
                         threadId = it.getLong(idIdx),
@@ -800,7 +817,8 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         subId = subId,
                         isMuted = isMuted,
                         draft = draft,
-                        isMarkedUnread = isMarkedUnread
+                        isMarkedUnread = isMarkedUnread,
+                        isPinned = isPinned
                     )
                 )
             }
@@ -856,6 +874,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                         put("is_muted", if (thread.isMuted) 1 else 0)
                         put("draft", thread.draft)
                         put("is_marked_unread", if (thread.isMarkedUnread) 1 else 0)
+                        put("is_pinned", if (thread.isPinned) 1 else 0)
                     }
                     db.insertWithOnConflict(
                         "cached_threads",
@@ -1169,10 +1188,24 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 sub_id INTEGER NOT NULL DEFAULT -1,
                 is_muted INTEGER NOT NULL DEFAULT 0,
                 draft TEXT,
-                is_marked_unread INTEGER NOT NULL DEFAULT 0
+                is_marked_unread INTEGER NOT NULL DEFAULT 0,
+                is_pinned INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
+    }
+
+    private fun createPinnedThreadsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS pinned_threads (
+                thread_id INTEGER PRIMARY KEY,
+                address TEXT NOT NULL,
+                pinned_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_pinned_threads_address ON pinned_threads(address)")
     }
 
     private fun createMarkedUnreadThreadsTable(db: SQLiteDatabase) {
@@ -1822,9 +1855,146 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         set
     }
 
+    // --- Pinned Threads Operations ---
+
+    suspend fun pinThread(threadId: Long, address: String) = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        try {
+            val cv = ContentValues().apply {
+                put("thread_id", threadId)
+                put("address", PhoneNumberKeys.canonical(address))
+                put("pinned_at", System.currentTimeMillis())
+            }
+            db.insertWithOnConflict("pinned_threads", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            if (threadId > 0) {
+                val threadCv = ContentValues().apply {
+                    put("is_pinned", 1)
+                }
+                db.update("cached_threads", threadCv, "thread_id = ?", arrayOf(threadId.toString()))
+            }
+            notifyPinnedChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pinning thread in db", e)
+        }
+    }
+
+    suspend fun unpinThread(threadId: Long, address: String = "") = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+        val canonical = PhoneNumberKeys.canonical(address)
+        try {
+            if (threadId > 0) {
+                db.delete("pinned_threads", "thread_id = ?", arrayOf(threadId.toString()))
+                val threadCv = ContentValues().apply {
+                    put("is_pinned", 0)
+                }
+                db.update("cached_threads", threadCv, "thread_id = ?", arrayOf(threadId.toString()))
+            }
+            if (canonical.isNotBlank()) {
+                val candidateKeys = addressLookupKeys(address)
+                val placeholders = candidateKeys.joinToString(",") { "?" }
+                db.delete("pinned_threads", "address IN ($placeholders)", candidateKeys)
+            }
+            notifyPinnedChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unpinning thread in db", e)
+        }
+    }
+
+    suspend fun unpinThreads(threadIds: Collection<Long>) = withContext(Dispatchers.IO) {
+        if (threadIds.isEmpty()) return@withContext
+        val db = writableDatabase
+        try {
+            for (chunk in threadIds.distinct().chunked(SQLITE_IN_CHUNK_SIZE)) {
+                val placeholders = chunk.joinToString(",") { "?" }
+                val args = chunk.map { it.toString() }.toTypedArray()
+                db.delete("pinned_threads", "thread_id IN ($placeholders)", args)
+                val threadCv = ContentValues().apply {
+                    put("is_pinned", 0)
+                }
+                db.update("cached_threads", threadCv, "thread_id IN ($placeholders)", args)
+            }
+            notifyPinnedChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unpinning threads in db", e)
+        }
+    }
+
+    suspend fun getPinnedThreadIds(): Set<Long> = withContext(Dispatchers.IO) {
+        val set = mutableSetOf<Long>()
+        val db = readableDatabase
+        try {
+            db.query(
+                "pinned_threads",
+                arrayOf("thread_id"),
+                null, null, null, null, null
+            ).use { cursor ->
+                val idIdx = cursor.getColumnIndexOrThrow("thread_id")
+                while (cursor.moveToNext()) {
+                    set.add(cursor.getLong(idIdx))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying pinned thread IDs", e)
+        }
+        set
+    }
+
+    suspend fun getPinnedAddresses(): Set<String> = withContext(Dispatchers.IO) {
+        val set = mutableSetOf<String>()
+        val db = readableDatabase
+        try {
+            db.query(
+                "pinned_threads",
+                arrayOf("address"),
+                null, null, null, null, null
+            ).use { cursor ->
+                val addrIdx = cursor.getColumnIndexOrThrow("address")
+                while (cursor.moveToNext()) {
+                    val addr = cursor.getString(addrIdx)
+                    if (!addr.isNullOrBlank()) {
+                        set.add(PhoneNumberKeys.canonical(addr))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying pinned addresses", e)
+        }
+        set
+    }
+
+    suspend fun isThreadPinned(threadId: Long, address: String = ""): Boolean = withContext(Dispatchers.IO) {
+        val canonical = PhoneNumberKeys.canonical(address)
+        val db = readableDatabase
+        try {
+            if (threadId > 0) {
+                db.query(
+                    "pinned_threads",
+                    arrayOf("thread_id"),
+                    "thread_id = ?",
+                    arrayOf(threadId.toString()),
+                    null, null, null
+                ).use { if (it.moveToFirst()) return@withContext true }
+            }
+            if (canonical.isNotBlank()) {
+                val candidateKeys = addressLookupKeys(address)
+                val placeholders = candidateKeys.joinToString(",") { "?" }
+                db.query(
+                    "pinned_threads",
+                    arrayOf("address"),
+                    "address IN ($placeholders)",
+                    candidateKeys,
+                    null, null, null
+                ).use { if (it.moveToFirst()) return@withContext true }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking if thread is pinned", e)
+        }
+        false
+    }
+
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 8
+        private const val DATABASE_VERSION = 9
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile

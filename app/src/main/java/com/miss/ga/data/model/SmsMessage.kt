@@ -44,7 +44,8 @@ data class ConversationThread(
     val contactLookupUri: String? = null,
     val isMuted: Boolean = false,
     val draft: String? = null,
-    val isMarkedUnread: Boolean = false
+    val isMarkedUnread: Boolean = false,
+    val isPinned: Boolean = false
 ) {
     val isContact: Boolean get() = !contactName.isNullOrBlank()
     val isLastReceivedSpam: Boolean get() = lastMessageAction == FilterAction.SPAM

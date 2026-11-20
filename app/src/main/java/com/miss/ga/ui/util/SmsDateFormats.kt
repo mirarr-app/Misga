@@ -41,6 +41,21 @@ object SmsDateFormats {
         "Esfand"
     )
 
+    private val SHAMSI_MONTH_NAMES_FA = arrayOf(
+        "فروردین",
+        "اردیبهشت",
+        "خرداد",
+        "تیر",
+        "مرداد",
+        "شهریور",
+        "مهر",
+        "آبان",
+        "آذر",
+        "دی",
+        "بهمن",
+        "اسفند"
+    )
+
     data class JalaliDate(val year: Int, val month: Int, val day: Int)
 
     fun toJalali(gy: Int, gm: Int, gd: Int): JalaliDate {
@@ -119,12 +134,19 @@ object SmsDateFormats {
         val jDate = toJalali(messageDate.year, messageDate.monthValue, messageDate.dayOfMonth)
         val nowJDate = toJalali(currentDate.year, currentDate.monthValue, currentDate.dayOfMonth)
 
-        val monthName = SHAMSI_MONTH_NAMES.getOrElse(jDate.month - 1) { "" }
+        val isPersian = Locale.getDefault().language == "fa"
+        val monthName = if (isPersian) {
+            SHAMSI_MONTH_NAMES_FA.getOrElse(jDate.month - 1) { "" }
+        } else {
+            SHAMSI_MONTH_NAMES.getOrElse(jDate.month - 1) { "" }
+        }
+        val dayStr = if (isPersian) toPersianDigits(jDate.day) else jDate.day.toString()
+        val yearStr = if (isPersian) toPersianDigits(jDate.year) else jDate.year.toString()
 
         return if (jDate.year == nowJDate.year) {
-            "${jDate.day} $monthName"
+            "$dayStr $monthName"
         } else {
-            "${jDate.day} $monthName ${jDate.year}"
+            "$dayStr $monthName $yearStr"
         }
     }
 
@@ -140,9 +162,21 @@ object SmsDateFormats {
         return if (useShamsi) {
             val messageDate = Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()
             val jDate = toJalali(messageDate.year, messageDate.monthValue, messageDate.dayOfMonth)
-            val monthName = SHAMSI_MONTH_NAMES.getOrElse(jDate.month - 1) { "" }
+            val isPersian = Locale.getDefault().language == "fa"
+            val monthName = if (isPersian) {
+                SHAMSI_MONTH_NAMES_FA.getOrElse(jDate.month - 1) { "" }
+            } else {
+                SHAMSI_MONTH_NAMES.getOrElse(jDate.month - 1) { "" }
+            }
             val timePart = clock(timestamp)
-            "${jDate.year} $monthName ${jDate.day}, $timePart"
+            val dayStr = if (isPersian) toPersianDigits(jDate.day) else jDate.day.toString()
+            val yearStr = if (isPersian) toPersianDigits(jDate.year) else jDate.year.toString()
+            val timeStr = if (isPersian) toPersianDigits(timePart) else timePart
+            if (isPersian) {
+                "$dayStr $monthName $yearStr، $timeStr"
+            } else {
+                "$yearStr $monthName $dayStr, $timeStr"
+            }
         } else {
             Instant.ofEpochMilli(timestamp).atZone(zone).format(yearMonthDayClock)
         }

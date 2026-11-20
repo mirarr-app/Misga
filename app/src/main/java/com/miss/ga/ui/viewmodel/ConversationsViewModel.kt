@@ -115,6 +115,9 @@ class ConversationsViewModel(
             dbHelper.tabsChanged.collect { loadTabs() }
         }
         viewModelScope.launch {
+            dbHelper.pinnedChanged.drop(1).collect { loadThreads(silent = true, force = true) }
+        }
+        viewModelScope.launch {
             dbHelper.draftsChanged.drop(1).collectLatest {
                 delay(DRAFTS_REFRESH_DEBOUNCE_MS)
                 refreshDrafts()
@@ -629,6 +632,70 @@ class ConversationsViewModel(
             clearSelection()
             loadThreads(silent = true, force = true)
             onComplete(count)
+        }
+    }
+
+    fun pinSelectedConversations(onComplete: (Int) -> Unit = {}) {
+        val targetIds = selectedThreadIds.toSet()
+        if (targetIds.isEmpty()) return
+        viewModelScope.launch {
+            val count = targetIds.size
+            for (id in targetIds) {
+                val addr = _uiState.value.threads.find { it.threadId == id }?.address.orEmpty()
+                repository.pinConversation(id, addr)
+            }
+            val updated = _uiState.value.threads.map {
+                if (it.threadId in targetIds) it.copy(isPinned = true) else it
+            }.sortedWith(compareByDescending<ConversationThread> { it.isPinned }.thenByDescending { it.date })
+            _uiState.value = _uiState.value.copy(
+                threads = updated,
+                filteredThreads = filterThreads(updated, _uiState.value.searchQuery.trim())
+            )
+            repository.saveCachedThreads(updated)
+            clearSelection()
+            onComplete(count)
+        }
+    }
+
+    fun unpinSelectedConversations(onComplete: (Int) -> Unit = {}) {
+        val targetIds = selectedThreadIds.toSet()
+        if (targetIds.isEmpty()) return
+        viewModelScope.launch {
+            val count = targetIds.size
+            for (id in targetIds) {
+                val addr = _uiState.value.threads.find { it.threadId == id }?.address.orEmpty()
+                repository.unpinConversation(id, addr)
+            }
+            val updated = _uiState.value.threads.map {
+                if (it.threadId in targetIds) it.copy(isPinned = false) else it
+            }.sortedWith(compareByDescending<ConversationThread> { it.isPinned }.thenByDescending { it.date })
+            _uiState.value = _uiState.value.copy(
+                threads = updated,
+                filteredThreads = filterThreads(updated, _uiState.value.searchQuery.trim())
+            )
+            repository.saveCachedThreads(updated)
+            clearSelection()
+            onComplete(count)
+        }
+    }
+
+    fun togglePinConversation(thread: ConversationThread, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val willPin = !thread.isPinned
+            if (willPin) {
+                repository.pinConversation(thread.threadId, thread.address)
+            } else {
+                repository.unpinConversation(thread.threadId, thread.address)
+            }
+            val updated = _uiState.value.threads.map {
+                if (it.threadId == thread.threadId) it.copy(isPinned = willPin) else it
+            }.sortedWith(compareByDescending<ConversationThread> { it.isPinned }.thenByDescending { it.date })
+            _uiState.value = _uiState.value.copy(
+                threads = updated,
+                filteredThreads = filterThreads(updated, _uiState.value.searchQuery.trim())
+            )
+            repository.saveCachedThreads(updated)
+            onComplete(willPin)
         }
     }
 

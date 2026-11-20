@@ -635,6 +635,13 @@ class ChatViewModel(
         isSelectionMode = selectedMessageIds.isNotEmpty()
     }
 
+    fun selectAllMessages() {
+        val allIds = _uiState.value.messages.map { it.id }
+        selectedMessageIds.clear()
+        selectedMessageIds.addAll(allIds)
+        isSelectionMode = selectedMessageIds.isNotEmpty()
+    }
+
     fun clearSelection() {
         selectedMessageIds.clear()
         isSelectionMode = false

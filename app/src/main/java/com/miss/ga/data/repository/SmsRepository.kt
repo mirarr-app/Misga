@@ -317,6 +317,8 @@ class SmsRepository(
             val allDraftsByAddress = dbHelper.getAllDraftsByAddress()
             val markedUnreadIds = dbHelper.getMarkedUnreadThreadIds()
             val markedUnreadAddresses = dbHelper.getMarkedUnreadAddresses()
+            val pinnedThreadIds = dbHelper.getPinnedThreadIds()
+            val pinnedAddresses = dbHelper.getPinnedAddresses()
 
             for (row in threadRows) {
                 val threadId = row.threadId
@@ -332,6 +334,7 @@ class SmsRepository(
                 val isMuted = senderPref?.defaultAction == FilterAction.SILENT
                 val draft = allDrafts[threadId] ?: allDraftsByAddress[canonicalAddr]
                 val isMarkedUnread = threadId in markedUnreadIds || (canonicalAddr.isNotBlank() && canonicalAddr in markedUnreadAddresses)
+                val isPinned = threadId in pinnedThreadIds || (canonicalAddr.isNotBlank() && canonicalAddr in pinnedAddresses)
 
                 val unreadCount = unreadCounts[threadId] ?: 0
                 val lastInbox = latestInboxMessage[threadId]
@@ -367,10 +370,16 @@ class SmsRepository(
                         contactLookupUri = contactLookupUri,
                         isMuted = isMuted,
                         draft = draft,
-                        isMarkedUnread = isMarkedUnread
+                        isMarkedUnread = isMarkedUnread,
+                        isPinned = isPinned
                     )
                 )
             }
+
+            threads.sortWith(
+                compareByDescending<ConversationThread> { it.isPinned }
+                    .thenByDescending { it.date }
+            )
 
             if (pendingSpamMarks.isNotEmpty()) {
                 dbHelper.saveMessagesFilterMeta(pendingSpamMarks)
@@ -754,6 +763,18 @@ class SmsRepository(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to mark thread unread $threadId", e)
         }
+    }
+
+    suspend fun pinConversation(threadId: Long, address: String) {
+        dbHelper.pinThread(threadId, address)
+    }
+
+    suspend fun unpinConversation(threadId: Long, address: String = "") {
+        dbHelper.unpinThread(threadId, address)
+    }
+
+    suspend fun unpinConversations(threadIds: Collection<Long>) {
+        dbHelper.unpinThreads(threadIds)
     }
 
     suspend fun saveDraft(threadId: Long, address: String, text: String) {

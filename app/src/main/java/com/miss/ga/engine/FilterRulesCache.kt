@@ -52,7 +52,7 @@ class FilterRulesCache private constructor(private val dbHelper: MisgaDatabaseHe
                 cached = SmsFilterEngine.prepareRules(dbHelper.getAllRules())
                 cachedPrepared = cached
             } while (rulesDirty)
-            cached!!
+            cached
         }
     }
 
@@ -66,7 +66,7 @@ class FilterRulesCache private constructor(private val dbHelper: MisgaDatabaseHe
                 cached = dbHelper.getAllSenderPreferences()
                 cachedPrefs = cached
             } while (prefsDirty)
-            cached!!
+            cached
         }
     }
 

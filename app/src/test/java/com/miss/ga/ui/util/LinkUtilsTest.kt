@@ -113,4 +113,49 @@ class LinkUtilsTest {
         assertEquals(6, spanStyles[0].start)
         assertEquals(25, spanStyles[0].end)
     }
+
+    @Test
+    fun testPhoneExtraction() {
+        val input = "Call me at 09123456789 or office 02188887777, or intl +989351234567."
+        val phoneLinks = LinkUtils.extractPhoneLinks(input)
+        assertEquals(3, phoneLinks.size)
+
+        assertEquals("09123456789", phoneLinks[0].text)
+        assertEquals("tel:09123456789", phoneLinks[0].url)
+
+        assertEquals("02188887777", phoneLinks[1].text)
+        assertEquals("tel:02188887777", phoneLinks[1].url)
+
+        assertEquals("+989351234567", phoneLinks[2].text)
+        assertEquals("tel:+989351234567", phoneLinks[2].url)
+    }
+
+    @Test
+    fun testUssdExtraction() {
+        val input = "Dial *788# to check balance, or *140*11# for packages."
+        val ussdLinks = LinkUtils.extractPhoneLinks(input)
+        assertEquals(2, ussdLinks.size)
+
+        assertEquals("*788#", ussdLinks[0].text)
+        assertEquals("tel:*788%23", ussdLinks[0].url)
+
+        assertEquals("*140*11#", ussdLinks[1].text)
+        assertEquals("tel:*140*11%23", ussdLinks[1].url)
+    }
+
+    @Test
+    fun testAllInteractiveLinksCombined() {
+        val input = "لطفاً با 09123456789 تماس بگیرید یا به https://example.com بروید یا *100# را شماره‌گیری نمایید."
+        val allLinks = LinkUtils.extractAllInteractiveLinks(input)
+        assertEquals(3, allLinks.size)
+
+        assertEquals("09123456789", allLinks[0].text)
+        assertEquals("tel:09123456789", allLinks[0].url)
+
+        assertEquals("https://example.com", allLinks[1].text)
+        assertEquals("https://example.com", allLinks[1].url)
+
+        assertEquals("*100#", allLinks[2].text)
+        assertEquals("tel:*100%23", allLinks[2].url)
+    }
 }

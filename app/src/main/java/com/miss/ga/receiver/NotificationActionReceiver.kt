@@ -46,6 +46,34 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             }
                         }
                     }
+                    NotificationActions.ACTION_COPY_CARD -> {
+                        val cardNum = intent.getStringExtra(NotificationActions.EXTRA_CARD_NUMBER).orEmpty()
+                        if (cardNum.isNotBlank()) {
+                            withContext(Dispatchers.Main) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Card Number", cardNum))
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.card_copied_to_clipboard, cardNum),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                    NotificationActions.ACTION_COPY_SHEBA -> {
+                        val shebaNum = intent.getStringExtra(NotificationActions.EXTRA_SHEBA_NUMBER).orEmpty()
+                        if (shebaNum.isNotBlank()) {
+                            withContext(Dispatchers.Main) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Sheba Number", shebaNum))
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.sheba_copied_to_clipboard, shebaNum),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
                     NotificationActions.ACTION_REPLY -> {
                         val address = intent.getStringExtra(NotificationActions.EXTRA_ADDRESS).orEmpty()
                         val replyBody = extractReplyText(intent)
@@ -100,6 +128,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
 object NotificationActions {
     const val ACTION_COPY_OTP = "com.miss.ga.ACTION_NOTIFICATION_COPY_OTP"
     const val EXTRA_OTP_CODE = "EXTRA_OTP_CODE"
+    const val ACTION_COPY_CARD = "com.miss.ga.ACTION_NOTIFICATION_COPY_CARD"
+    const val EXTRA_CARD_NUMBER = "EXTRA_CARD_NUMBER"
+    const val ACTION_COPY_SHEBA = "com.miss.ga.ACTION_NOTIFICATION_COPY_SHEBA"
+    const val EXTRA_SHEBA_NUMBER = "EXTRA_SHEBA_NUMBER"
     const val ACTION_REPLY = "com.miss.ga.ACTION_NOTIFICATION_REPLY"
     const val ACTION_MARK_READ = "com.miss.ga.ACTION_NOTIFICATION_MARK_READ"
     const val ACTION_DELETE = "com.miss.ga.ACTION_NOTIFICATION_DELETE"

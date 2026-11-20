@@ -33,4 +33,16 @@
     <string name="swipe_mark_unread">Mark unread</string>
     <string name="swipe_delete">Delete</string>
     <string name="delete_conversation_confirm">Delete this conversation?</string>
+    <string name="notification_action_copy_card">Copy card %1$s</string>
+    <string name="notification_action_copy_sheba">Copy Sheba %1$s</string>
+    <string name="pin_conversation">Pin to top</string>
+    <string name="unpin_conversation">Unpin from top</string>
+    <string name="pinned_badge">Pinned</string>
+    <string name="action_copy_message">Copy</string>
+    <string name="action_share_message">Share</string>
+    <string name="action_select_all">Select all</string>
+    <string name="action_deselect_all">Deselect all</string>
+    <string name="message_copied">Message copied to clipboard</string>
+    <string name="messages_copied">%1$d messages copied to clipboard</string>
+    <string name="forward_message">Forward</string>
 </resources>

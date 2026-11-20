@@ -51,11 +51,14 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material.icons.filled.Tune
@@ -345,11 +348,88 @@ fun ChatScreen(
                         }
                     },
                     actions = {
+                        val allMessagesSelected = state.messages.isNotEmpty() && selectedMessageIds.size == state.messages.size
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            IconButton(onClick = {
+                                if (allMessagesSelected) {
+                                    viewModel.clearSelection()
+                                } else {
+                                    viewModel.selectAllMessages()
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = if (allMessagesSelected) Icons.Default.Deselect else Icons.Default.SelectAll,
+                                    contentDescription = stringResource(if (allMessagesSelected) R.string.action_deselect_all else R.string.action_select_all),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            IconButton(onClick = {
+                                val selectedMsgs = state.messages.filter { it.id in selectedMessageIds }
+                                    .sortedBy { it.date }
+                                val textToCopy = selectedMsgs.joinToString("\n\n") { it.body }
+                                if (textToCopy.isNotBlank()) {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("SMS Message", textToCopy))
+                                    val count = selectedMsgs.size
+                                    val msg = if (count <= 1) {
+                                        context.getString(R.string.message_copied)
+                                    } else {
+                                        context.getString(R.string.messages_copied, count)
+                                    }
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                                viewModel.clearSelection()
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = stringResource(R.string.action_copy_message),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            IconButton(onClick = {
+                                val selectedMsgs = state.messages.filter { it.id in selectedMessageIds }
+                                    .sortedBy { it.date }
+                                val shareText = selectedMsgs.joinToString("\n\n") { it.body }
+                                if (shareText.isNotBlank()) {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, shareText)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.action_share_message)))
+                                }
+                                viewModel.clearSelection()
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = stringResource(R.string.action_share_message),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
                         if (selectedMessageIds.size == 1) {
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.padding(end = 6.dp)
+                                modifier = Modifier.padding(end = 4.dp)
                             ) {
                                 IconButton(onClick = onShowInfoForSelected) {
                                     Icon(
@@ -363,7 +443,7 @@ fun ChatScreen(
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 6.dp)
                         ) {
                             IconButton(onClick = { showBatchDeleteConfirmDialog = true }) {
                                 Icon(

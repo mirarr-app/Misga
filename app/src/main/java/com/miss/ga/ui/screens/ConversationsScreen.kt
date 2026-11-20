@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
@@ -45,12 +46,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Deselect
-import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.MarkChatUnread
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Shield
@@ -206,6 +207,10 @@ fun ConversationsScreen(
     val currentlyVisibleThreads = remember(state.filteredThreads, state.showContactsOnly) {
         if (state.showContactsOnly) state.filteredThreads.filter { it.isContact } else state.filteredThreads
     }
+    val areAllSelectedPinned = remember(selectedThreadIds, state.threads) {
+        val selected = state.threads.filter { it.threadId in selectedThreadIds }
+        selected.isNotEmpty() && selected.all { it.isPinned }
+    }
     val isDebuggable = remember(context) {
         (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
@@ -219,6 +224,18 @@ fun ConversationsScreen(
                 showContactsOnly = state.showContactsOnly,
                 threads = state.threads,
                 isDebuggable = isDebuggable,
+                areAllSelectedPinned = areAllSelectedPinned,
+                onTogglePinSelected = {
+                    if (areAllSelectedPinned) {
+                        viewModel.unpinSelectedConversations { count ->
+                            Toast.makeText(context, "Unpinned $count conversation${if (count > 1) "s" else ""}", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        viewModel.pinSelectedConversations { count ->
+                            Toast.makeText(context, "Pinned $count conversation${if (count > 1) "s" else ""} to top", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
                 onClearSelection = { viewModel.clearSelection() },
                 onSelectAll = { viewModel.selectAllThreads() },
                 onMarkSelectedRead = {
@@ -922,6 +939,8 @@ private fun ConversationsTopBar(
     showContactsOnly: Boolean,
     threads: List<ConversationThread>,
     isDebuggable: Boolean,
+    areAllSelectedPinned: Boolean = false,
+    onTogglePinSelected: () -> Unit = {},
     onClearSelection: () -> Unit,
     onSelectAll: () -> Unit,
     onMarkSelectedRead: () -> Unit,
@@ -965,10 +984,18 @@ private fun ConversationsTopBar(
                     )
                 }
 
+                IconButton(onClick = onTogglePinSelected) {
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = stringResource(if (areAllSelectedPinned) R.string.unpin_conversation else R.string.pin_conversation),
+                        tint = if (areAllSelectedPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 if (showTabs) {
                     IconButton(onClick = onAddToTab) {
                         Icon(
-                            imageVector = Icons.Default.DriveFileMove,
+                            imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
                             contentDescription = "Add to Tab",
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -1465,6 +1492,15 @@ private fun ConversationItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (thread.isPinned) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = stringResource(R.string.pinned_badge),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                     if (thread.isMuted) {
                         Spacer(modifier = Modifier.width(5.dp))
                         Icon(
