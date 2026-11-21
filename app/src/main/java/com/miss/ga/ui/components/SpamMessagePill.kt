@@ -39,6 +39,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.res.stringResource
+import com.miss.ga.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -284,7 +286,7 @@ fun SpamMessagePill(
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Icon(
                                     imageVector = Icons.Default.Star,
-                                    contentDescription = "Starred",
+                                    contentDescription = stringResource(R.string.star_message),
                                     tint = MaterialTheme.colorScheme.tertiary,
                                     modifier = Modifier.size(12.dp)
                                 )

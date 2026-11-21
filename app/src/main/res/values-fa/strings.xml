@@ -71,4 +71,10 @@
     <string name="close_search">بستن جستجو</string>
     <string name="date_today">امروز</string>
     <string name="date_yesterday">دیروز</string>
+    <string name="starred_messages_count">%1$s پیام</string>
+    <string name="starred_messages_customization_desc">دسترسی سریع به تمام پیام‌های نشان‌شده و ستاره‌دار</string>
+    <string name="selected_messages_count">%1$s انتخاب شد</string>
+    <string name="action_clear">پاک کردن</string>
+    <string name="action_open">باز کردن</string>
+    <string name="message_info">اطلاعات پیام</string>
 </resources>

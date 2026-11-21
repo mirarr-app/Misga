@@ -131,4 +131,33 @@ class StarredMessagesTest {
         assertEquals(1, updatedList.size)
         assertEquals(2L, updatedList[0].message.id)
     }
+
+    @Test
+    fun unstarringForDeletedThreadsRemovesAssociatedMessages() {
+        val records = listOf(
+            createMessage(1L, "From thread 10", 1000L, threadId = 10L, isStarred = true),
+            createMessage(2L, "From thread 20", 2000L, threadId = 20L, isStarred = true),
+            createMessage(3L, "From thread 10", 3000L, threadId = 10L, isStarred = true),
+            createMessage(4L, "From thread 30", 4000L, threadId = 30L, isStarred = true)
+        )
+        val deletedThreads = setOf(10L, 30L)
+        val survivingRecords = records.filter { it.threadId !in deletedThreads }
+
+        assertEquals(1, survivingRecords.size)
+        assertEquals(2L, survivingRecords[0].id)
+    }
+
+    @Test
+    fun unstarringForDeletedAddressesRemovesAssociatedMessages() {
+        val records = listOf(
+            createMessage(1L, "From Ali", 1000L, address = "09121112233", isStarred = true),
+            createMessage(2L, "From Sara", 2000L, address = "09351234567", isStarred = true),
+            createMessage(3L, "From Ali again", 3000L, address = "09121112233", isStarred = true)
+        )
+        val deletedAddresses = setOf("09121112233")
+        val survivingRecords = records.filter { it.address !in deletedAddresses }
+
+        assertEquals(1, survivingRecords.size)
+        assertEquals(2L, survivingRecords[0].id)
+    }
 }

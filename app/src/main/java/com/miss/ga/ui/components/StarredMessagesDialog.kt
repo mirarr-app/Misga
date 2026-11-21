@@ -109,8 +109,9 @@ fun StarredMessagesDialog(
                             fontWeight = FontWeight.Bold
                         )
                         if (starredMessages.isNotEmpty()) {
+                            val countText = if (uiState.showShamsiDate) SmsDateFormats.toPersianDigits(starredMessages.size) else "${starredMessages.size}"
                             Text(
-                                text = "${starredMessages.size} messages",
+                                text = stringResource(R.string.starred_messages_count, countText),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -233,7 +234,7 @@ fun StarredMessagesDialog(
                                             Text(
                                                 text = SmsDateFormats.formatDateTimeWithYear(
                                                     item.message.date,
-                                                    useShamsi = false
+                                                    useShamsi = uiState.showShamsiDate
                                                 ),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

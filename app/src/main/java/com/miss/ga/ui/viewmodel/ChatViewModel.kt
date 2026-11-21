@@ -159,11 +159,17 @@ class ChatViewModel(
             dbHelper.starredChanged.collect {
                 val current = _uiState.value
                 val starredIds = dbHelper.getStarredMessageIdsForThread(current.threadId, current.address)
+                var changed = false
                 val updated = current.messages.map { msg ->
                     val starred = starredIds.contains(msg.id)
-                    if (msg.isStarred != starred) msg.copy(isStarred = starred) else msg
+                    if (msg.isStarred != starred) {
+                        changed = true
+                        msg.copy(isStarred = starred)
+                    } else msg
                 }
-                _uiState.value = current.copy(messages = updated)
+                if (changed) {
+                    _uiState.value = current.copy(messages = updated)
+                }
             }
         }
         viewModelScope.launch {
@@ -692,8 +698,8 @@ class ChatViewModel(
         viewModelScope.launch {
             repository.starMessage(
                 messageId = messageId,
-                threadId = msg.threadId,
-                address = msg.address,
+                threadId = if (msg.threadId > 0L) msg.threadId else _uiState.value.threadId,
+                address = msg.address.ifBlank { _uiState.value.address },
                 starred = newStarred
             )
             val updated = _uiState.value.messages.map {

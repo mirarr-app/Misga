@@ -42,9 +42,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.miss.ga.R
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleMediumShape
 
@@ -525,7 +527,7 @@ fun CustomizationSheet(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Starred messages",
+                                text = stringResource(R.string.starred_messages),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -533,7 +535,7 @@ fun CustomizationSheet(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Quick access to all your bookmarked messages",
+                                text = stringResource(R.string.starred_messages_customization_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -543,7 +545,7 @@ fun CustomizationSheet(
 
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Open",
+                            contentDescription = stringResource(R.string.action_open),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(18.dp)
                         )

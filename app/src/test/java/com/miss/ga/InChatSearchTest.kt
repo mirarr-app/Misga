@@ -125,4 +125,31 @@ class InChatSearchTest {
 
         assertTrue(matches.isEmpty())
     }
+
+    @Test
+    fun matchIndexSafelyCoercedWhenResultsShrink() {
+        val initialMatches = listOf(10L, 20L, 30L, 40L)
+        var currentIndex = 3 // user was on match 4 of 4
+
+        // Query narrowed down to 2 matches
+        val updatedMatches = listOf(10L, 20L)
+        val safeIndex = if (updatedMatches.isNotEmpty()) currentIndex.coerceIn(0, updatedMatches.lastIndex) else 0
+
+        assertEquals(1, safeIndex) // clamped to last available index without crashing
+    }
+
+    @Test
+    fun matchCounterPersianDigits() {
+        fun formatCounterPersian(currentIndex: Int, total: Int): String {
+            if (total == 0) return com.miss.ga.ui.util.SmsDateFormats.toPersianDigits("0 / 0")
+            val c = com.miss.ga.ui.util.SmsDateFormats.toPersianDigits(currentIndex + 1)
+            val t = com.miss.ga.ui.util.SmsDateFormats.toPersianDigits(total)
+            return "$c / $t"
+        }
+
+        assertEquals("۰ / ۰", formatCounterPersian(0, 0))
+        assertEquals("۱ / ۱", formatCounterPersian(0, 1))
+        assertEquals("۲ / ۵", formatCounterPersian(1, 5))
+        assertEquals("۱۰ / ۱۵", formatCounterPersian(9, 15))
+    }
 }

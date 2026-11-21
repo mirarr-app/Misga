@@ -106,6 +106,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
@@ -221,6 +223,13 @@ fun ChatScreen(
     var isSearchMode by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var currentMatchIndex by remember { mutableStateOf(0) }
+    val searchFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isSearchMode) {
+        if (isSearchMode) {
+            searchFocusRequester.requestFocus()
+        }
+    }
 
     val matchingMessageIds = remember(searchQuery, state.messages) {
         val q = searchQuery.trim()
@@ -231,9 +240,11 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(matchingMessageIds, currentMatchIndex, isSearchMode) {
-        if (isSearchMode && matchingMessageIds.isNotEmpty() && currentMatchIndex in matchingMessageIds.indices) {
-            val targetId = matchingMessageIds[currentMatchIndex]
+    val safeMatchIndex = if (matchingMessageIds.isNotEmpty()) currentMatchIndex.coerceIn(0, matchingMessageIds.lastIndex) else 0
+
+    LaunchedEffect(matchingMessageIds, safeMatchIndex, isSearchMode) {
+        if (isSearchMode && matchingMessageIds.isNotEmpty()) {
+            val targetId = matchingMessageIds[safeMatchIndex]
             highlightedMessageId = targetId
             val chronologicalIndex = state.messages.indexOfFirst { it.id == targetId }
             if (chronologicalIndex >= 0) {
@@ -253,8 +264,8 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(highlightedMessageId, hasInitiallyScrolled) {
-        if (highlightedMessageId != null && hasInitiallyScrolled) {
+    LaunchedEffect(highlightedMessageId, hasInitiallyScrolled, isSearchMode) {
+        if (highlightedMessageId != null && hasInitiallyScrolled && !isSearchMode) {
             kotlinx.coroutines.delay(2500)
             highlightedMessageId = null
         }
@@ -373,17 +384,18 @@ fun ChatScreen(
     Scaffold(
         topBar = {
             if (isSelectionMode) {
+                val selectedCountText = if (state.showShamsiDate) SmsDateFormats.toPersianDigits(selectedMessageIds.size) else "${selectedMessageIds.size}"
                 TopAppBar(
                     title = {
                         Text(
-                            text = "${selectedMessageIds.size} selected",
+                            text = stringResource(R.string.selected_messages_count, selectedCountText),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                     },
                     navigationIcon = {
                         IconButton(onClick = { viewModel.clearSelection() }) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel selection")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel))
                         }
                     },
                     actions = {
@@ -409,7 +421,7 @@ fun ChatScreen(
                         }
 
                         val anySelectedUnstarred = remember(selectedMessageIds, state.messages) {
-                            state.messages.filter { it.id in selectedMessageIds }.any { !it.isStarred }
+                            state.messages.any { it.id in selectedMessageIds && !it.isStarred }
                         }
                         Surface(
                             shape = CircleShape,
@@ -521,7 +533,7 @@ fun ChatScreen(
                                 IconButton(onClick = onShowInfoForSelected) {
                                     Icon(
                                         imageVector = Icons.Default.Info,
-                                        contentDescription = "Message info",
+                                        contentDescription = stringResource(R.string.message_info),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
@@ -561,14 +573,16 @@ fun ChatScreen(
                                 )
                             },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocusRequester),
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = {
                                         searchQuery = ""
                                         currentMatchIndex = 0
                                     }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_clear))
                                     }
                                 }
                             },
@@ -589,12 +603,15 @@ fun ChatScreen(
                     },
                     actions = {
                         if (searchQuery.isNotBlank()) {
+                            val counterText = if (matchingMessageIds.isNotEmpty()) {
+                                val currStr = if (state.showShamsiDate) SmsDateFormats.toPersianDigits(safeMatchIndex + 1) else "${safeMatchIndex + 1}"
+                                val totalStr = if (state.showShamsiDate) SmsDateFormats.toPersianDigits(matchingMessageIds.size) else "${matchingMessageIds.size}"
+                                "$currStr / $totalStr"
+                            } else {
+                                if (state.showShamsiDate) SmsDateFormats.toPersianDigits("0 / 0") else "0 / 0"
+                            }
                             Text(
-                                text = if (matchingMessageIds.isNotEmpty()) {
-                                    "${currentMatchIndex + 1} / ${matchingMessageIds.size}"
-                                } else {
-                                    "0 / 0"
-                                },
+                                text = counterText,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -603,7 +620,7 @@ fun ChatScreen(
                             IconButton(
                                 onClick = {
                                     if (matchingMessageIds.isNotEmpty()) {
-                                        currentMatchIndex = (currentMatchIndex + 1) % matchingMessageIds.size
+                                        currentMatchIndex = (safeMatchIndex + 1) % matchingMessageIds.size
                                     }
                                 },
                                 enabled = matchingMessageIds.size > 1
@@ -613,7 +630,7 @@ fun ChatScreen(
                             IconButton(
                                 onClick = {
                                     if (matchingMessageIds.isNotEmpty()) {
-                                        currentMatchIndex = if (currentMatchIndex > 0) currentMatchIndex - 1 else matchingMessageIds.lastIndex
+                                        currentMatchIndex = if (safeMatchIndex > 0) safeMatchIndex - 1 else matchingMessageIds.lastIndex
                                     }
                                 },
                                 enabled = matchingMessageIds.size > 1

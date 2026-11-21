@@ -70,4 +70,10 @@
     <string name="close_search">Close search</string>
     <string name="date_today">Today</string>
     <string name="date_yesterday">Yesterday</string>
+    <string name="starred_messages_count">%1$s messages</string>
+    <string name="starred_messages_customization_desc">Quick access to all your bookmarked messages</string>
+    <string name="selected_messages_count">%1$s selected</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_open">Open</string>
+    <string name="message_info">Message info</string>
 </resources>

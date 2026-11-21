@@ -1074,6 +1074,7 @@ class SmsRepository(
         val ids = threadIds.distinct()
         dbHelper.markThreadsRead(ids)
         dbHelper.unpinThreads(ids)
+        dbHelper.unstarMessagesForThreads(ids)
         for (id in ids) {
             dbHelper.clearDraft(id, "")
         }
@@ -1115,6 +1116,14 @@ class SmsRepository(
                 dbHelper.deleteSpamMetaForAddress(address)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete spam meta for ${PhoneNumberKeys.redact(address)}", e)
+            }
+        }
+
+        if (addresses.isNotEmpty()) {
+            try {
+                dbHelper.unstarMessagesForAddresses(addresses)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to unstar messages for deleted addresses", e)
             }
         }
 

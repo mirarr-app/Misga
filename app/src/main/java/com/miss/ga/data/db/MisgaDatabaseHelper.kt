@@ -2114,6 +2114,48 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         }
     }
 
+    suspend fun unstarMessagesForThreads(threadIds: Collection<Long>) = withContext(Dispatchers.IO) {
+        if (threadIds.isEmpty()) return@withContext
+        val db = writableDatabase
+        try {
+            db.beginTransaction()
+            try {
+                for (chunk in threadIds.chunked(SQLITE_IN_CHUNK_SIZE)) {
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    val args = chunk.map { it.toString() }.toTypedArray()
+                    db.delete("starred_messages", "thread_id IN ($placeholders)", args)
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            notifyStarredChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unstarring messages for threads", e)
+        }
+    }
+
+    suspend fun unstarMessagesForAddresses(addresses: Collection<String>) = withContext(Dispatchers.IO) {
+        if (addresses.isEmpty()) return@withContext
+        val db = writableDatabase
+        try {
+            db.beginTransaction()
+            try {
+                for (chunk in addresses.chunked(SQLITE_IN_CHUNK_SIZE)) {
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    val args = chunk.toTypedArray()
+                    db.delete("starred_messages", "address IN ($placeholders)", args)
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            notifyStarredChanged()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unstarring messages for addresses", e)
+        }
+    }
+
     suspend fun getStarredMessageIds(): Set<Long> = withContext(Dispatchers.IO) {
         val set = mutableSetOf<Long>()
         val db = readableDatabase

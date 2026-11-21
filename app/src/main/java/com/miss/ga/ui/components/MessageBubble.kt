@@ -24,6 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.stringResource
+import com.miss.ga.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -237,7 +239,7 @@ private fun BubbleContent(
             if (message.isStarred) {
                 Icon(
                     imageVector = Icons.Default.Star,
-                    contentDescription = "Starred",
+                    contentDescription = stringResource(R.string.star_message),
                     tint = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.size(12.dp)
                 )

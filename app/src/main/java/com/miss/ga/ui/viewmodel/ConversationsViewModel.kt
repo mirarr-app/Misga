@@ -51,6 +51,7 @@ data class ConversationsUiState(
     val selectedTabId: Long? = null,
     val availableSims: List<SimInfo> = emptyList(),
     val selectedSimFilterSubId: Int? = null,
+    val showShamsiDate: Boolean = false,
     val enableDateTapShamsiToggle: Boolean = true,
     val showNotificationDeleteAction: Boolean = false,
     val showTabs: Boolean = true,
@@ -80,6 +81,7 @@ class ConversationsViewModel(
     private val _uiState = MutableStateFlow(
         ConversationsUiState(
             showContactsOnly = userPreferences.showContactsOnly,
+            showShamsiDate = userPreferences.showShamsiDate,
             enableDateTapShamsiToggle = userPreferences.enableDateTapShamsiToggle,
             showNotificationDeleteAction = userPreferences.showNotificationDeleteAction,
             showTabs = userPreferences.showTabs,
@@ -126,7 +128,7 @@ class ConversationsViewModel(
             }
         }
         viewModelScope.launch {
-            dbHelper.starredChanged.collect {
+            dbHelper.starredChanged.drop(1).collect {
                 loadStarredMessages()
             }
         }
@@ -915,6 +917,12 @@ class ConversationsViewModel(
             repository.starMessage(messageId = messageId, starred = false)
             _starredMessages.value = _starredMessages.value.filter { it.message.id != messageId }
         }
+    }
+
+    fun toggleShamsiDate() {
+        val nextValue = !_uiState.value.showShamsiDate
+        userPreferences.showShamsiDate = nextValue
+        _uiState.value = _uiState.value.copy(showShamsiDate = nextValue)
     }
 }
 
