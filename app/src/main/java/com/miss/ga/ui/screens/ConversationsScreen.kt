@@ -91,6 +91,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
@@ -1200,12 +1201,17 @@ internal object SwipeActionDefaults {
         fallbackThresholdPx: Float
     ): Boolean {
         if (target == SwipeToDismissBoxValue.Settled) return true
+        if (offsetPx.isNaN()) return false
         val threshold = if (totalWidthPx > 0f) {
             totalWidthPx * THRESHOLD_FRACTION
         } else {
             fallbackThresholdPx
         }
-        return kotlin.math.abs(offsetPx) >= threshold
+        return when (target) {
+            SwipeToDismissBoxValue.StartToEnd -> offsetPx >= threshold
+            SwipeToDismissBoxValue.EndToStart -> offsetPx <= -threshold
+            SwipeToDismissBoxValue.Settled -> true
+        }
     }
 }
 
@@ -1236,7 +1242,7 @@ private fun SwipeableConversationItem(
         val haptic = LocalHapticFeedback.current
         val scope = rememberCoroutineScope()
         val currentThread by rememberUpdatedState(thread)
-        val density = LocalDensity.current
+        val currentDensity by rememberUpdatedState(LocalDensity.current)
         var itemWidthPx by remember { mutableFloatStateOf(0f) }
         val dismissStateRef = remember { arrayOfNulls<SwipeToDismissBoxState>(1) }
 
@@ -1253,21 +1259,38 @@ private fun SwipeableConversationItem(
                     target = target,
                     offsetPx = offset,
                     totalWidthPx = itemWidthPx,
-                    fallbackThresholdPx = with(density) { SwipeActionDefaults.FallbackThresholdDp.toPx() }
+                    fallbackThresholdPx = with(currentDensity) { SwipeActionDefaults.FallbackThresholdDp.toPx() }
                 )
             },
             positionalThreshold = { totalDistance ->
-                itemWidthPx = totalDistance
+                if (totalDistance > 0f) {
+                    itemWidthPx = totalDistance
+                }
                 SwipeActionDefaults.positionalThreshold(totalDistance)
             }
         )
         dismissStateRef[0] = dismissState
 
         LaunchedEffect(dismissState) {
-            snapshotFlow { dismissState.targetValue }
+            snapshotFlow {
+                val state = dismissStateRef[0]
+                val offset = try {
+                    state?.requireOffset() ?: 0f
+                } catch (_: Exception) {
+                    0f
+                }
+                val dir = dismissState.dismissDirection
+                dir != SwipeToDismissBoxValue.Settled && SwipeActionDefaults.isDismissAllowed(
+                    target = dir,
+                    offsetPx = offset,
+                    totalWidthPx = itemWidthPx,
+                    fallbackThresholdPx = with(currentDensity) { SwipeActionDefaults.FallbackThresholdDp.toPx() }
+                )
+            }
                 .drop(1)
-                .collect { target ->
-                    if (target != SwipeToDismissBoxValue.Settled) {
+                .distinctUntilChanged()
+                .collect { isThresholdReached ->
+                    if (isThresholdReached) {
                         haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                     }
                 }
