@@ -1,0 +1,2 @@
+• Reduced swipe action sensitivity on conversations to prevent accidental triggers during vertical scrolling and taps (solves #34)
+• Increased positional threshold to 40% of item width and required intentional swipe distance before committing swipe actions
