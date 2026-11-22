@@ -1,0 +1,3 @@
+• Fixed scheduled messages not sending on time, being delayed by Doze mode, or staying stuck until reopening the app (solves #35)
+• Improved scheduled SMS background dispatch reliability with WakeLock and exact alarm support
+• Prevented race conditions and duplicate SMS sends when tapping "Send now"

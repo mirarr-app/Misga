@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.miss.ga.engine.NotificationHelper
+import com.miss.ga.engine.ScheduledSmsManager
 import com.miss.ga.theme.MISGATheme
 import java.util.Locale
 
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         requestRequiredPermissions()
+        ScheduledSmsManager.processOverdueMessagesAsync(applicationContext)
 
         setContent {
             MISGATheme {
@@ -55,6 +57,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ScheduledSmsManager.processOverdueMessagesAsync(applicationContext)
     }
 
     override fun onNewIntent(intent: Intent) {

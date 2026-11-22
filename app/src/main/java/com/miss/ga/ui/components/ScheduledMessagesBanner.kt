@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.miss.ga.R
 import com.miss.ga.data.model.ScheduledMessage
 import com.miss.ga.data.model.ScheduledMessageStatus
+import com.miss.ga.engine.ScheduledSmsManager
 import com.miss.ga.ui.util.SmsDateFormats
 
 @Composable
@@ -83,6 +84,7 @@ private fun ScheduledMessageItem(
     onCancel: () -> Unit
 ) {
     val isFailed = message.status == ScheduledMessageStatus.FAILED
+    val isSending = ScheduledSmsManager.isDispatching(message.id)
     val containerColor = if (isFailed) {
         MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
     } else {
@@ -147,6 +149,13 @@ private fun ScheduledMessageItem(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.error
                         )
+                    } else if (isSending) {
+                        Text(
+                            text = "Sending now...",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     } else {
                         Text(
                             text = "Scheduled for ",
@@ -177,6 +186,7 @@ private fun ScheduledMessageItem(
 
             TextButton(
                 onClick = onSendNow,
+                enabled = !isSending,
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 colors = ButtonDefaults.textButtonColors(
@@ -198,6 +208,7 @@ private fun ScheduledMessageItem(
 
             IconButton(
                 onClick = onCancel,
+                enabled = !isSending,
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(

@@ -6,8 +6,6 @@ import android.content.Intent
 import android.os.PowerManager
 import android.util.Log
 import com.miss.ga.data.db.MisgaDatabaseHelper
-import com.miss.ga.data.model.ScheduledMessageStatus
-import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.engine.NotificationHelper
 import com.miss.ga.engine.ScheduledSmsManager
 import kotlinx.coroutines.CoroutineScope
@@ -31,13 +29,14 @@ class ScheduledSmsReceiver : BroadcastReceiver() {
             return
         }
 
+        val appContext = context.applicationContext ?: context
         if (action == ACTION_CANCEL_SCHEDULED_SMS) {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val dbHelper = MisgaDatabaseHelper.getInstance(context)
-                    ScheduledSmsManager.cancel(context, scheduledId)
-                    NotificationHelper.getInstance(context).cancelScheduledSmsFailureNotification(scheduledId)
+                    val dbHelper = MisgaDatabaseHelper.getInstance(appContext)
+                    ScheduledSmsManager.cancel(appContext, scheduledId)
+                    NotificationHelper.getInstance(appContext).cancelScheduledSmsFailureNotification(scheduledId)
                     dbHelper.deleteScheduledMessage(scheduledId)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error cancelling scheduled SMS $scheduledId", e)
@@ -48,8 +47,9 @@ class ScheduledSmsReceiver : BroadcastReceiver() {
             return
         }
 
+        val isRetry = (action == ACTION_RETRY_SCHEDULED_SMS)
         val pendingResult = goAsync()
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val wakeLock = powerManager?.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "misga:ScheduledSmsWakeLock"
@@ -62,64 +62,9 @@ class ScheduledSmsReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val dbHelper = MisgaDatabaseHelper.getInstance(context)
-                val scheduledMessage = dbHelper.getScheduledMessage(scheduledId)
-                if (scheduledMessage == null) {
-                    Log.w(TAG, "Scheduled message $scheduledId not found in database")
-                    return@launch
-                }
-
-                if (scheduledMessage.status == ScheduledMessageStatus.SENT ||
-                    scheduledMessage.status == ScheduledMessageStatus.CANCELLED
-                ) {
-                    Log.d(TAG, "Scheduled message $scheduledId is already ${scheduledMessage.status}, skipping")
-                    return@launch
-                }
-
-                Log.d(TAG, "Dispatching scheduled SMS $scheduledId to ${scheduledMessage.address} (action: $action)")
-                val smsRepository = SmsRepository(context)
-                val subId = if (scheduledMessage.subId >= 0) scheduledMessage.subId else null
-                val result = smsRepository.sendSms(
-                    address = scheduledMessage.address,
-                    body = scheduledMessage.body,
-                    subscriptionId = subId
-                )
-
-                if (result.sent) {
-                    Log.d(TAG, "Scheduled SMS $scheduledId dispatched successfully")
-                    NotificationHelper.getInstance(context).cancelScheduledSmsFailureNotification(scheduledId)
-                    dbHelper.deleteScheduledMessage(scheduledId)
-                } else {
-                    Log.e(TAG, "Failed to send scheduled SMS $scheduledId (no cellular signal, airplane mode, or network failure)")
-                    dbHelper.updateScheduledMessageStatus(scheduledId, ScheduledMessageStatus.FAILED)
-
-                    val contactName = smsRepository.resolveContactDetail(scheduledMessage.address)?.name
-                    NotificationHelper.getInstance(context).showScheduledSmsFailureNotification(
-                        threadId = scheduledMessage.threadId,
-                        address = scheduledMessage.address,
-                        body = scheduledMessage.body,
-                        scheduledId = scheduledId,
-                        contactName = contactName
-                    )
-                }
+                ScheduledSmsManager.dispatchScheduledMessage(appContext, scheduledId, isRetry = isRetry)
             } catch (e: Exception) {
-                Log.e(TAG, "Error executing scheduled SMS dispatch", e)
-                try {
-                    val dbHelper = MisgaDatabaseHelper.getInstance(context)
-                    dbHelper.updateScheduledMessageStatus(scheduledId, ScheduledMessageStatus.FAILED)
-                    val scheduledMessage = dbHelper.getScheduledMessage(scheduledId)
-                    if (scheduledMessage != null) {
-                        NotificationHelper.getInstance(context).showScheduledSmsFailureNotification(
-                            threadId = scheduledMessage.threadId,
-                            address = scheduledMessage.address,
-                            body = scheduledMessage.body,
-                            scheduledId = scheduledId,
-                            contactName = null
-                        )
-                    }
-                } catch (inner: Exception) {
-                    Log.e(TAG, "Error recording failure status", inner)
-                }
+                Log.e(TAG, "Error executing scheduled SMS dispatch in receiver", e)
             } finally {
                 try {
                     if (wakeLock?.isHeld == true) {
