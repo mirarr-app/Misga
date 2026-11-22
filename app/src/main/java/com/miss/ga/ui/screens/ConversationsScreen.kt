@@ -84,6 +84,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -100,7 +101,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -1174,6 +1177,38 @@ private fun ConversationsInboxList(
     }
 }
 
+internal object SwipeActionDefaults {
+    /**
+     * Required fraction of row width to commit a swipe action.
+     * Prevents accidental triggers from minor horizontal drift during normal vertical scrolls or taps.
+     */
+    const val THRESHOLD_FRACTION = 0.4f
+
+    /**
+     * Fallback minimum horizontal travel distance in dp when item width is not yet measured.
+     */
+    val FallbackThresholdDp = 140.dp
+
+    fun positionalThreshold(totalDistance: Float): Float {
+        return totalDistance * THRESHOLD_FRACTION
+    }
+
+    fun isDismissAllowed(
+        target: SwipeToDismissBoxValue,
+        offsetPx: Float,
+        totalWidthPx: Float,
+        fallbackThresholdPx: Float
+    ): Boolean {
+        if (target == SwipeToDismissBoxValue.Settled) return true
+        val threshold = if (totalWidthPx > 0f) {
+            totalWidthPx * THRESHOLD_FRACTION
+        } else {
+            fallbackThresholdPx
+        }
+        return kotlin.math.abs(offsetPx) >= threshold
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeableConversationItem(
@@ -1200,8 +1235,33 @@ private fun SwipeableConversationItem(
     } else {
         val haptic = LocalHapticFeedback.current
         val scope = rememberCoroutineScope()
-        val dismissState = rememberSwipeToDismissBoxState()
         val currentThread by rememberUpdatedState(thread)
+        val density = LocalDensity.current
+        var itemWidthPx by remember { mutableFloatStateOf(0f) }
+        val dismissStateRef = remember { arrayOfNulls<SwipeToDismissBoxState>(1) }
+
+        @Suppress("DEPRECATION")
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { target ->
+                val state = dismissStateRef[0]
+                val offset = try {
+                    state?.requireOffset() ?: 0f
+                } catch (_: Exception) {
+                    0f
+                }
+                SwipeActionDefaults.isDismissAllowed(
+                    target = target,
+                    offsetPx = offset,
+                    totalWidthPx = itemWidthPx,
+                    fallbackThresholdPx = with(density) { SwipeActionDefaults.FallbackThresholdDp.toPx() }
+                )
+            },
+            positionalThreshold = { totalDistance ->
+                itemWidthPx = totalDistance
+                SwipeActionDefaults.positionalThreshold(totalDistance)
+            }
+        )
+        dismissStateRef[0] = dismissState
 
         LaunchedEffect(dismissState) {
             snapshotFlow { dismissState.targetValue }
@@ -1217,6 +1277,11 @@ private fun SwipeableConversationItem(
             state = dismissState,
             enableDismissFromStartToEnd = true,
             enableDismissFromEndToStart = true,
+            modifier = Modifier.onSizeChanged { size ->
+                if (size.width > 0) {
+                    itemWidthPx = size.width.toFloat()
+                }
+            },
             onDismiss = { direction ->
                 when (direction) {
                     SwipeToDismissBoxValue.StartToEnd -> onSwipeToggleRead(currentThread)
