@@ -1,5 +1,6 @@
 package com.miss.ga.receiver
 
+import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -17,16 +18,20 @@ class BootReceiver : BroadcastReceiver() {
 
         val validActions = setOf(
             Intent.ACTION_BOOT_COMPLETED,
+            "android.intent.action.QUICKBOOT_POWERON",
+            "com.htc.intent.action.QUICKBOOT_POWERON",
             Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_TIME_CHANGED,
-            Intent.ACTION_TIMEZONE_CHANGED
+            Intent.ACTION_TIMEZONE_CHANGED,
+            AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
         )
 
         if (action in validActions) {
             val pendingResult = goAsync()
+            val appContext = context.applicationContext ?: context
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    ScheduledSmsManager.rescheduleAllPending(context)
+                    ScheduledSmsManager.rescheduleAllPending(appContext)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to reschedule pending messages on $action", e)
                 } finally {

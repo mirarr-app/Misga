@@ -404,7 +404,16 @@ class ChatViewModel(
             _uiState.value = _uiState.value.copy(scheduledMessages = list)
 
             scheduledMessageTimerJob?.cancel()
-            val nextUpcoming = list.minByOrNull { it.scheduledTime }
+            val pendingMessages = list.filter { it.status == com.miss.ga.data.model.ScheduledMessageStatus.PENDING }
+            val now = System.currentTimeMillis()
+            val overdue = pendingMessages.filter { it.scheduledTime <= now }
+
+            if (overdue.isNotEmpty()) {
+                ScheduledSmsManager.processOverdueMessagesAsync(getApplication())
+            }
+
+            val remainingPending = pendingMessages.filter { it.scheduledTime > now }
+            val nextUpcoming = remainingPending.minByOrNull { it.scheduledTime }
             if (nextUpcoming != null) {
                 val delayMs = (nextUpcoming.scheduledTime - System.currentTimeMillis()).coerceAtLeast(0L) + 500L
                 scheduledMessageTimerJob = viewModelScope.launch {
@@ -449,6 +458,7 @@ class ChatViewModel(
     }
 
     fun cancelScheduledMessage(scheduledId: Long) {
+        if (ScheduledSmsManager.isDispatching(scheduledId)) return
         viewModelScope.launch {
             ScheduledSmsManager.cancel(getApplication(), scheduledId)
             NotificationHelper.getInstance(getApplication()).cancelScheduledSmsFailureNotification(scheduledId)
@@ -458,6 +468,7 @@ class ChatViewModel(
     }
 
     fun sendScheduledMessageNow(scheduledMessage: ScheduledMessage) {
+        if (ScheduledSmsManager.isDispatching(scheduledMessage.id)) return
         viewModelScope.launch {
             ScheduledSmsManager.cancel(getApplication(), scheduledMessage.id)
             NotificationHelper.getInstance(getApplication()).cancelScheduledSmsFailureNotification(scheduledMessage.id)
@@ -467,6 +478,7 @@ class ChatViewModel(
     }
 
     fun rescheduleMessage(scheduledId: Long, newTimeMillis: Long) {
+        if (ScheduledSmsManager.isDispatching(scheduledId)) return
         viewModelScope.launch {
             dbHelper.updateScheduledMessageTime(scheduledId, newTimeMillis)
             val updated = dbHelper.getScheduledMessage(scheduledId)

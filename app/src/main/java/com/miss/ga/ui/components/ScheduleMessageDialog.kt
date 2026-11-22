@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -46,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.miss.ga.R
+import com.miss.ga.engine.ScheduledSmsManager
 import com.miss.ga.ui.util.SmsDateFormats
 import java.util.Calendar
 import java.util.TimeZone
@@ -149,6 +151,7 @@ fun ScheduleMessageDialog(
     var tempDateUtcMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     val is24Hour = remember(context) { DateFormat.is24HourFormat(context) }
+    val canScheduleExact = ScheduledSmsManager.canScheduleExactAlarms(context)
 
     if (showDatePicker) {
         val nowUtcMidnight = remember {
@@ -226,6 +229,45 @@ fun ScheduleMessageDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                if (!canScheduleExact) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                try {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                            data = android.net.Uri.parse("package:${context.packageName}")
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                } catch (_: Exception) {
+                                }
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Exact alarms permission is disabled. Tap to allow in Settings for timely delivery.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 

@@ -1,5 +1,6 @@
 package com.miss.ga
 
+import android.app.AlarmManager
 import com.miss.ga.data.model.ScheduledMessage
 import com.miss.ga.data.model.ScheduledMessageStatus
 import com.miss.ga.receiver.ScheduledSmsReceiver
@@ -53,6 +54,14 @@ class ScheduledMessageTest {
     }
 
     @Test
+    fun testExactAlarmPermissionStateChangedAction() {
+        assertEquals(
+            "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED",
+            AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+        )
+    }
+
+    @Test
     fun testPastTimeValidation() {
         val now = System.currentTimeMillis()
         val pastCalendar = Calendar.getInstance().apply {
@@ -102,5 +111,131 @@ class ScheduledMessageTest {
         assertTrue("Tomorrow afternoon must be strictly in the future", tomorrowAfternoon.timeInMillis > now)
         assertEquals(13, tomorrowAfternoon.get(Calendar.HOUR_OF_DAY))
         assertEquals(0, tomorrowAfternoon.get(Calendar.MINUTE))
+    }
+
+    @Test
+    fun testOverdueMessageFiltering() {
+        val now = 100_000L
+
+        val overduePending = ScheduledMessage(
+            id = 1L,
+            address = "+1234",
+            body = "Overdue",
+            scheduledTime = now - 5000L,
+            status = ScheduledMessageStatus.PENDING
+        )
+        val futurePending = ScheduledMessage(
+            id = 2L,
+            address = "+1234",
+            body = "Future",
+            scheduledTime = now + 5000L,
+            status = ScheduledMessageStatus.PENDING
+        )
+        val overdueFailed = ScheduledMessage(
+            id = 3L,
+            address = "+1234",
+            body = "Failed",
+            scheduledTime = now - 5000L,
+            status = ScheduledMessageStatus.FAILED
+        )
+        val overdueSent = ScheduledMessage(
+            id = 4L,
+            address = "+1234",
+            body = "Sent",
+            scheduledTime = now - 5000L,
+            status = ScheduledMessageStatus.SENT
+        )
+
+        val allMessages = listOf(overduePending, futurePending, overdueFailed, overdueSent)
+
+        val pending = allMessages.filter { it.status == ScheduledMessageStatus.PENDING }
+        assertEquals(2, pending.size)
+
+        val overdue = pending.filter { it.scheduledTime <= now }
+        assertEquals(1, overdue.size)
+        assertEquals(1L, overdue[0].id)
+
+        val upcoming = pending.filter { it.scheduledTime > now }
+        assertEquals(1, upcoming.size)
+        assertEquals(2L, upcoming[0].id)
+    }
+
+    @Test
+    fun testRequestCodeAndUriGeneration() {
+        val id1 = 1L
+        val idLarge = 0x80000005L // Exceeds signed 32-bit positive int
+
+        val reqCode1 = (id1 and 0x7FFFFFFF).toInt()
+        assertEquals(1, reqCode1)
+        assertTrue(reqCode1 >= 0)
+
+        val reqCodeLarge = (idLarge and 0x7FFFFFFF).toInt()
+        assertEquals(5, reqCodeLarge)
+        assertTrue(reqCodeLarge >= 0)
+
+        val uriString = "misga://scheduled_sms/$id1"
+        assertEquals("misga://scheduled_sms/1", uriString)
+    }
+
+    @Test
+    fun testIsDispatchingInitialState() {
+        assertFalse(com.miss.ga.engine.ScheduledSmsManager.isDispatching(9999L))
+    }
+
+    @Test
+    fun testBoundaryConditionsForOverdue() {
+        val now = 50_000L
+
+        val msgAtNow = ScheduledMessage(
+            id = 10L,
+            address = "123",
+            body = "At now",
+            scheduledTime = now,
+            status = ScheduledMessageStatus.PENDING
+        )
+        val msgJustPast = ScheduledMessage(
+            id = 11L,
+            address = "123",
+            body = "Just past",
+            scheduledTime = now - 1L,
+            status = ScheduledMessageStatus.PENDING
+        )
+        val msgJustFuture = ScheduledMessage(
+            id = 12L,
+            address = "123",
+            body = "Just future",
+            scheduledTime = now + 1L,
+            status = ScheduledMessageStatus.PENDING
+        )
+
+        val list = listOf(msgAtNow, msgJustPast, msgJustFuture)
+        val overdue = list.filter { it.scheduledTime <= now }
+        val future = list.filter { it.scheduledTime > now }
+
+        assertEquals(2, overdue.size)
+        assertTrue(overdue.any { it.id == 10L })
+        assertTrue(overdue.any { it.id == 11L })
+
+        assertEquals(1, future.size)
+        assertEquals(12L, future[0].id)
+    }
+
+    @Test
+    fun testFastBootActionConstants() {
+        val quickBoot = "android.intent.action.QUICKBOOT_POWERON"
+        val htcQuickBoot = "com.htc.intent.action.QUICKBOOT_POWERON"
+        val validActions = setOf(
+            android.content.Intent.ACTION_BOOT_COMPLETED,
+            quickBoot,
+            htcQuickBoot,
+            android.content.Intent.ACTION_MY_PACKAGE_REPLACED,
+            android.content.Intent.ACTION_TIME_CHANGED,
+            android.content.Intent.ACTION_TIMEZONE_CHANGED,
+            AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+        )
+
+        assertTrue(validActions.contains("android.intent.action.BOOT_COMPLETED"))
+        assertTrue(validActions.contains(quickBoot))
+        assertTrue(validActions.contains(htcQuickBoot))
     }
 }
