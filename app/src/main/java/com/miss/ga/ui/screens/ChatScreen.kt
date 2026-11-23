@@ -146,7 +146,8 @@ fun ChatScreen(
             initialThreadId = nav.threadId,
             initialAddress = nav.address,
             initialContactName = nav.contactName,
-            initialMessageId = nav.initialMessageId
+            initialMessageId = nav.initialMessageId,
+            initialSubId = nav.initialSubId
         )
     }
 

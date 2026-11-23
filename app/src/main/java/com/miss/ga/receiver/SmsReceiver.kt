@@ -75,22 +75,6 @@ class SmsReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun extractSubscriptionId(intent: Intent): Int {
-        val idFromExtra = intent.getIntExtra(
-            SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
-            SubscriptionManager.INVALID_SUBSCRIPTION_ID
-        )
-        if (idFromExtra != SubscriptionManager.INVALID_SUBSCRIPTION_ID) return idFromExtra
-
-        val legacySub = intent.getIntExtra("subscription", SubscriptionManager.INVALID_SUBSCRIPTION_ID)
-        if (legacySub != SubscriptionManager.INVALID_SUBSCRIPTION_ID) return legacySub
-
-        val legacySubId = intent.getIntExtra("sub_id", SubscriptionManager.INVALID_SUBSCRIPTION_ID)
-        if (legacySubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) return legacySubId
-
-        return SubscriptionManager.INVALID_SUBSCRIPTION_ID
-    }
-
     private suspend fun processIncomingMessages(
         context: Context,
         messages: Array<AndroidSmsMessage>,
@@ -362,5 +346,29 @@ class SmsReceiver : BroadcastReceiver() {
         private const val INBOX_LOOKUP_ATTEMPTS = 4
         private const val INBOX_LOOKUP_DELAY_MS = 400L
         private const val INBOX_LOOKUP_WINDOW_MS = 15_000L
+
+        fun extractSubscriptionId(intent: Intent): Int {
+            val extras = intent.extras ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            val keys = listOf(
+                SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
+                "subscription",
+                "sub_id",
+                "subscription_id",
+                "phone"
+            )
+            for (key in keys) {
+                val value = extras.get(key)
+                val subId = when (value) {
+                    is Int -> value
+                    is Long -> value.toInt()
+                    is String -> value.toIntOrNull()
+                    else -> null
+                }
+                if (subId != null && subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID && subId >= 0) {
+                    return subId
+                }
+            }
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        }
     }
 }

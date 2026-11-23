@@ -75,11 +75,13 @@ class MainActivity : ComponentActivity() {
         val threadId = intent.getLongExtra(NotificationHelper.EXTRA_THREAD_ID, -1L)
         val address = intent.getStringExtra(NotificationHelper.EXTRA_ADDRESS)
         val contactName = intent.getStringExtra(NotificationHelper.EXTRA_CONTACT_NAME)
+        val subId = intent.getIntExtra(NotificationHelper.EXTRA_SUB_ID, -1)
         if (threadId > 0 && !address.isNullOrBlank()) {
             pendingChatNav = ChatNav(
                 threadId = threadId,
                 address = address,
-                contactName = contactName
+                contactName = contactName,
+                initialSubId = subId
             )
             return
         }

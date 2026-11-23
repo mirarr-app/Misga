@@ -89,6 +89,9 @@ class NotificationHelper private constructor(
             putExtra(EXTRA_ADDRESS, sender)
             putExtra(EXTRA_CONTACT_NAME, contactName)
             putExtra(EXTRA_MESSAGE_ID, messageId)
+            if (subId != android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                putExtra(EXTRA_SUB_ID, subId)
+            }
         }
         val contentPendingIntent = PendingIntent.getActivity(
             context,
@@ -170,7 +173,7 @@ class NotificationHelper private constructor(
             builder.setSubText(simInfo.badgeLabel)
         }
 
-        buildActions(threadId, sender, messageId, body).forEach { builder.addAction(it) }
+        buildActions(threadId, sender, messageId, body, subId).forEach { builder.addAction(it) }
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
@@ -294,13 +297,22 @@ class NotificationHelper private constructor(
         return list
     }
 
-    private fun buildActions(threadId: Long, sender: String, messageId: Long, body: String): List<NotificationCompat.Action> {
+    private fun buildActions(
+        threadId: Long,
+        sender: String,
+        messageId: Long,
+        body: String,
+        subId: Int = android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID
+    ): List<NotificationCompat.Action> {
         fun actionIntent(action: String): Intent =
             Intent(context, NotificationActionReceiver::class.java).apply {
                 this.action = action
                 putExtra(NotificationActions.EXTRA_THREAD_ID, threadId)
                 putExtra(NotificationActions.EXTRA_ADDRESS, sender)
                 putExtra(NotificationActions.EXTRA_MESSAGE_ID, messageId)
+                if (subId != android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                    putExtra(NotificationActions.EXTRA_SUB_ID, subId)
+                }
             }
 
         val actions = mutableListOf<NotificationCompat.Action>()
@@ -395,6 +407,7 @@ class NotificationHelper private constructor(
         const val EXTRA_ADDRESS = "EXTRA_ADDRESS"
         const val EXTRA_CONTACT_NAME = "EXTRA_CONTACT_NAME"
         const val EXTRA_MESSAGE_ID = "EXTRA_MESSAGE_ID"
+        const val EXTRA_SUB_ID = "EXTRA_SUB_ID"
         const val MAX_NOTIFICATION_MESSAGES = 25
 
         private const val TAG = "NotificationHelper"

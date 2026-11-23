@@ -1,0 +1,2 @@
+• Default answering SIM card to match the incoming SMS SIM card on dual SIM devices unless changed manually
+• Retain explicit sender and system default SIM preferences

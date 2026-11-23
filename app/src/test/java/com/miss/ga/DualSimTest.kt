@@ -8,6 +8,7 @@ import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.model.displayLabel
+import com.miss.ga.ui.viewmodel.ChatViewModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -202,6 +203,323 @@ class DualSimTest {
             read = true
         )
         assertEquals(SubscriptionManager.INVALID_SUBSCRIPTION_ID, msg.subId)
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimAnswersIncomingSmsOnSameSim() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        // User receives SMS on SIM 2
+        val incomingSms = SmsMessage(
+            id = 101L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Hello on SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(incomingSms),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "Answering an SMS received on SIM 2 must default to SIM 2 even if default SIM is SIM 1",
+            sim2.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimAnswersIncomingSmsOnSameSimWhenOnSim1() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim2.subscriptionId
+
+        // User receives SMS on SIM 1, default SIM is SIM 2
+        val incomingSms = SmsMessage(
+            id = 102L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Hello on SIM 1",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim1.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(incomingSms),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "Answering an SMS received on SIM 1 must default to SIM 1 even if default SIM is SIM 2",
+            sim1.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimRespectsUserManualSessionToggle() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        // Received on SIM 2, but user explicitly toggled to SIM 1
+        val incomingSms = SmsMessage(
+            id = 101L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Hello on SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(incomingSms),
+            userSelectedSubId = sim1.subscriptionId,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "User manual SIM toggle must be respected over incoming SMS SIM",
+            sim1.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimFallsBackWhenUserSelectedSimIsDeactivated() {
+        val activeSims = listOf(sim2) // Only SIM 2 active now
+        val defaultSubId = sim2.subscriptionId
+
+        val incomingSms = SmsMessage(
+            id = 101L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Hello on SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        // User previously chose SIM 1, but SIM 1 is no longer active
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(incomingSms),
+            userSelectedSubId = 1,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "When user-chosen SIM is inactive, must fall back to valid message SIM",
+            sim2.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimHonorsExplicitSenderPreference() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim2.subscriptionId
+
+        // Received on SIM 2, but sender preference was configured specifically for SIM 1
+        val incomingSms = SmsMessage(
+            id = 101L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Hello on SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = sim1.subscriptionId,
+            messages = listOf(incomingSms),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "Explicit sender preference must override auto message SIM",
+            sim1.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimHonorsSystemDefaultSenderPreference() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        val incomingSms = SmsMessage(
+            id = 101L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Hello on SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.SYSTEM_DEFAULT,
+            messages = listOf(incomingSms),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "System default preference must use system default SIM",
+            sim1.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimUsesInitialSubIdWhenMessagesEmpty() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = emptyList(),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId,
+            initialSubId = sim2.subscriptionId
+        )
+
+        assertEquals(
+            "Initial subId from thread/notification should be used while messages are loading",
+            sim2.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimFallsBackToDefaultWhenNoMessagesAndNoInitialSubId() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim2.subscriptionId
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = emptyList(),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId,
+            initialSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        )
+
+        assertEquals(
+            "Fallback to default SIM when no messages exist",
+            sim2.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimFollowsNewestIncomingSmsInConversation() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        val msg1 = SmsMessage(
+            id = 1L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Old message on SIM 1",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim1.subscriptionId
+        )
+
+        val msg2 = SmsMessage(
+            id = 2L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "New message on SIM 2",
+            date = 2000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(msg1, msg2),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "Most recent message in thread must determine default answering SIM",
+            sim2.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimMaintainsSimAfterSendingReply() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        val incoming = SmsMessage(
+            id = 1L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Incoming on SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val outgoingReply = SmsMessage(
+            id = 2L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Reply on SIM 2",
+            date = 2000L,
+            type = Telephony.Sms.MESSAGE_TYPE_SENT,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(incoming, outgoingReply),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "Subsequent message after reply continues with SIM 2",
+            sim2.subscriptionId,
+            resolved?.subscriptionId
+        )
     }
 
     // Helper logic matching SimRepository.resolveOutgoingSubId

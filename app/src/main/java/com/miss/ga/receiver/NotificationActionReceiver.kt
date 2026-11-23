@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.telephony.SubscriptionManager
 import android.widget.Toast
 import com.miss.ga.R
 import kotlinx.coroutines.launch
@@ -53,7 +54,16 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             Log.w(TAG, "Direct reply ignored: missing ${PhoneNumberKeys.redact(address)} or body")
                             return@launch
                         }
-                        SmsRepository(context).sendSms(address, replyBody)
+                        val subIdFromIntent = intent.getIntExtra(
+                            NotificationActions.EXTRA_SUB_ID,
+                            SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                        ).takeIf { it != SubscriptionManager.INVALID_SUBSCRIPTION_ID }
+                        SmsRepository(context).sendSms(
+                            address = address,
+                            body = replyBody,
+                            subscriptionId = subIdFromIntent,
+                            threadId = threadId
+                        )
                     }
                     NotificationActions.ACTION_MARK_READ -> Unit
                     NotificationActions.ACTION_DELETE -> {
@@ -107,6 +117,7 @@ object NotificationActions {
     const val EXTRA_THREAD_ID = "EXTRA_THREAD_ID"
     const val EXTRA_ADDRESS = "EXTRA_ADDRESS"
     const val EXTRA_MESSAGE_ID = "EXTRA_MESSAGE_ID"
+    const val EXTRA_SUB_ID = "EXTRA_SUB_ID"
 
     fun cancel(context: Context, threadId: Long) {
         val notificationId = (threadId xor (threadId ushr 32)).toInt()

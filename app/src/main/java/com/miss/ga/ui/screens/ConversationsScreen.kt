@@ -539,7 +539,8 @@ fun ConversationsScreen(
                                             ChatNav(
                                                 threadId = thread.threadId,
                                                 address = thread.address,
-                                                contactName = thread.contactName
+                                                contactName = thread.contactName,
+                                                initialSubId = thread.subId
                                             )
                                         )
                                     },
@@ -585,7 +586,8 @@ fun ConversationsScreen(
                                                 threadId = msg.threadId,
                                                 address = msg.address,
                                                 contactName = msg.contactName,
-                                                initialMessageId = msg.messageId
+                                                initialMessageId = msg.messageId,
+                                                initialSubId = msg.subId
                                             )
                                         )
                                     },
@@ -1151,7 +1153,8 @@ private fun ConversationsInboxList(
                             ChatNav(
                                 threadId = thread.threadId,
                                 address = thread.address,
-                                contactName = thread.contactName
+                                contactName = thread.contactName,
+                                initialSubId = thread.subId
                             )
                         )
                     }

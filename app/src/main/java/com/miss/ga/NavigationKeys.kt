@@ -12,7 +12,8 @@ data class ChatNav(
     val address: String,
     val contactName: String? = null,
     val initialMessageId: Long? = null,
-    val initialBody: String? = null
+    val initialBody: String? = null,
+    val initialSubId: Int = -1
 ) : NavKey
 
 @Serializable
