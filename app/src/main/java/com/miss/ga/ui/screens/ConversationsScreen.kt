@@ -552,7 +552,8 @@ fun ConversationsScreen(
                                             contactName = thread.contactName,
                                             photoUri = thread.photoUri,
                                             contactLookupUri = thread.contactLookupUri,
-                                            isContact = thread.isContact
+                                            isContact = thread.isContact,
+                                            subId = thread.subId
                                         )
                                     }
                                 )
@@ -598,7 +599,8 @@ fun ConversationsScreen(
                                             contactName = msg.contactName,
                                             photoUri = msg.photoUri,
                                             contactLookupUri = msg.contactLookupUri,
-                                            isContact = !msg.contactName.isNullOrBlank()
+                                            isContact = !msg.contactName.isNullOrBlank(),
+                                            subId = msg.subId
                                         )
                                     }
                                 )
@@ -689,7 +691,8 @@ fun ConversationsScreen(
                             contactName = thread.contactName,
                             photoUri = thread.photoUri,
                             contactLookupUri = thread.contactLookupUri,
-                            isContact = thread.isContact
+                            isContact = thread.isContact,
+                            subId = thread.subId
                         )
                     },
                     onSwipeToggleRead = { thread ->
@@ -867,7 +870,8 @@ fun ConversationsScreen(
                     ChatNav(
                         threadId = profile.threadId,
                         address = profile.address,
-                        contactName = profile.contactName
+                        contactName = profile.contactName,
+                        initialSubId = profile.subId
                     )
                 )
             }
@@ -1849,5 +1853,6 @@ private data class ProfileDialogData(
     val contactName: String?,
     val photoUri: String? = null,
     val contactLookupUri: String? = null,
-    val isContact: Boolean = !contactName.isNullOrBlank()
+    val isContact: Boolean = !contactName.isNullOrBlank(),
+    val subId: Int = android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID
 )

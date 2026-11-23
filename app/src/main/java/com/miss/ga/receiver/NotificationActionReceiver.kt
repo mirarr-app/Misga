@@ -57,12 +57,12 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         val subIdFromIntent = intent.getIntExtra(
                             NotificationActions.EXTRA_SUB_ID,
                             SubscriptionManager.INVALID_SUBSCRIPTION_ID
-                        ).takeIf { it != SubscriptionManager.INVALID_SUBSCRIPTION_ID }
+                        ).takeIf { it != SubscriptionManager.INVALID_SUBSCRIPTION_ID && it >= 0 }
                         SmsRepository(context).sendSms(
                             address = address,
                             body = replyBody,
-                            subscriptionId = subIdFromIntent,
-                            threadId = threadId
+                            threadId = threadId,
+                            fallbackSubId = subIdFromIntent
                         )
                     }
                     NotificationActions.ACTION_MARK_READ -> Unit

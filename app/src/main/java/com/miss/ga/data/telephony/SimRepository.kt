@@ -168,36 +168,10 @@ class SimRepository(private val context: Context) {
      */
     fun resolveOutgoingSubId(
         preferredSetting: Int,
-        latestMessageSubId: Int?
-    ): Int {
-        val activeSims = getActiveSims()
-        val defaultSubId = getDefaultSmsSubscriptionId()
-
-        if (activeSims.isEmpty()) {
-            return defaultSubId
-        }
-
-        when {
-            preferredSetting >= 0 -> {
-                val matched = activeSims.find { it.subscriptionId == preferredSetting }
-                if (matched != null) return matched.subscriptionId
-            }
-            preferredSetting == PreferredSimMode.SYSTEM_DEFAULT -> {
-                val matched = activeSims.find { it.subscriptionId == defaultSubId }
-                if (matched != null) return matched.subscriptionId
-            }
-            else -> { // PreferredSimMode.AUTO
-                if (latestMessageSubId != null && latestMessageSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                    val matched = activeSims.find { it.subscriptionId == latestMessageSubId }
-                    if (matched != null) return matched.subscriptionId
-                }
-            }
-        }
-
-        // Fallback to default SMS subId or first active SIM
-        return activeSims.find { it.subscriptionId == defaultSubId }?.subscriptionId
-            ?: activeSims.first().subscriptionId
-    }
+        latestMessageSubId: Int?,
+        activeSims: List<SimInfo> = getActiveSims(),
+        defaultSubId: Int = getDefaultSmsSubscriptionId()
+    ): Int = resolveOutgoingSubId(preferredSetting, latestMessageSubId, activeSims, defaultSubId)
 
     private val refreshTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -247,4 +221,41 @@ class SimRepository(private val context: Context) {
             }
         }
     }.conflate()
+
+    companion object {
+        fun resolveOutgoingSubId(
+            preferredSetting: Int,
+            latestMessageSubId: Int?,
+            activeSims: List<SimInfo>,
+            defaultSubId: Int
+        ): Int {
+            if (activeSims.isEmpty()) {
+                return defaultSubId
+            }
+
+            when {
+                preferredSetting >= 0 -> {
+                    val matched = activeSims.find { it.subscriptionId == preferredSetting }
+                    if (matched != null) return matched.subscriptionId
+                }
+                preferredSetting == PreferredSimMode.SYSTEM_DEFAULT -> {
+                    val matched = activeSims.find { it.subscriptionId == defaultSubId }
+                    if (matched != null) return matched.subscriptionId
+                }
+                else -> { // PreferredSimMode.AUTO
+                    if (latestMessageSubId != null &&
+                        latestMessageSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID &&
+                        latestMessageSubId >= 0
+                    ) {
+                        val matched = activeSims.find { it.subscriptionId == latestMessageSubId }
+                        if (matched != null) return matched.subscriptionId
+                    }
+                }
+            }
+
+            // Fallback to default SMS subId or first active SIM
+            return activeSims.find { it.subscriptionId == defaultSubId }?.subscriptionId
+                ?: activeSims.first().subscriptionId
+        }
+    }
 }

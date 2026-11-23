@@ -199,7 +199,8 @@ object ScheduledSmsManager {
             val result = smsRepository.sendSms(
                 address = scheduledMessage.address,
                 body = scheduledMessage.body,
-                subscriptionId = subId
+                subscriptionId = subId,
+                threadId = scheduledMessage.threadId
             )
 
             if (result.sent) {

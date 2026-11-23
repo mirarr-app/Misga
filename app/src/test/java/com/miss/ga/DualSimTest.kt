@@ -8,8 +8,11 @@ import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.SmsMessage
 import com.miss.ga.data.model.displayLabel
+import com.miss.ga.data.telephony.SimRepository
+import com.miss.ga.receiver.SmsReceiver
 import com.miss.ga.ui.viewmodel.ChatViewModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,8 +60,8 @@ class DualSimTest {
         val defaultSubId = sim1.subscriptionId
 
         // User explicitly set preferred SIM to SIM 2
-        val resolved = resolveOutgoingSubId(
-            preferredSubId = sim2.subscriptionId,
+        val resolved = SimRepository.resolveOutgoingSubId(
+            preferredSetting = sim2.subscriptionId,
             latestMessageSubId = sim1.subscriptionId,
             defaultSubId = defaultSubId,
             activeSims = activeSims
@@ -72,8 +75,8 @@ class DualSimTest {
         val activeSims = listOf(sim1)
         val defaultSubId = sim1.subscriptionId
 
-        val resolved = resolveOutgoingSubId(
-            preferredSubId = sim2.subscriptionId,
+        val resolved = SimRepository.resolveOutgoingSubId(
+            preferredSetting = sim2.subscriptionId,
             latestMessageSubId = null,
             defaultSubId = defaultSubId,
             activeSims = activeSims
@@ -87,8 +90,8 @@ class DualSimTest {
         val activeSims = listOf(sim1, sim2)
         val defaultSubId = sim2.subscriptionId
 
-        val resolved = resolveOutgoingSubId(
-            preferredSubId = PreferredSimMode.SYSTEM_DEFAULT,
+        val resolved = SimRepository.resolveOutgoingSubId(
+            preferredSetting = PreferredSimMode.SYSTEM_DEFAULT,
             latestMessageSubId = sim1.subscriptionId,
             defaultSubId = defaultSubId,
             activeSims = activeSims
@@ -102,8 +105,8 @@ class DualSimTest {
         val defaultSubId = sim1.subscriptionId
 
         // Auto mode with latest message received on SIM 2
-        val resolved = resolveOutgoingSubId(
-            preferredSubId = PreferredSimMode.AUTO,
+        val resolved = SimRepository.resolveOutgoingSubId(
+            preferredSetting = PreferredSimMode.AUTO,
             latestMessageSubId = sim2.subscriptionId,
             defaultSubId = defaultSubId,
             activeSims = activeSims
@@ -111,8 +114,8 @@ class DualSimTest {
         assertEquals(sim2.subscriptionId, resolved)
 
         // Auto mode with latest message on SIM 1
-        val resolvedSim1 = resolveOutgoingSubId(
-            preferredSubId = PreferredSimMode.AUTO,
+        val resolvedSim1 = SimRepository.resolveOutgoingSubId(
+            preferredSetting = PreferredSimMode.AUTO,
             latestMessageSubId = sim1.subscriptionId,
             defaultSubId = defaultSubId,
             activeSims = activeSims
@@ -126,13 +129,35 @@ class DualSimTest {
         val defaultSubId = sim2.subscriptionId
 
         // Auto mode without existing messages
-        val resolved = resolveOutgoingSubId(
-            preferredSubId = PreferredSimMode.AUTO,
+        val resolved = SimRepository.resolveOutgoingSubId(
+            preferredSetting = PreferredSimMode.AUTO,
             latestMessageSubId = null,
             defaultSubId = defaultSubId,
             activeSims = activeSims
         )
         assertEquals(sim2.subscriptionId, resolved)
+    }
+
+    @Test
+    fun preferredSimResolutionAutoIgnoresNegativeOrInvalidSubId() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        val resolvedInvalid = SimRepository.resolveOutgoingSubId(
+            preferredSetting = PreferredSimMode.AUTO,
+            latestMessageSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
+            defaultSubId = defaultSubId,
+            activeSims = activeSims
+        )
+        assertEquals(sim1.subscriptionId, resolvedInvalid)
+
+        val resolvedNegative = SimRepository.resolveOutgoingSubId(
+            preferredSetting = PreferredSimMode.AUTO,
+            latestMessageSubId = -99,
+            defaultSubId = defaultSubId,
+            activeSims = activeSims
+        )
+        assertEquals(sim1.subscriptionId, resolvedNegative)
     }
 
     @Test
@@ -522,30 +547,181 @@ class DualSimTest {
         )
     }
 
-    // Helper logic matching SimRepository.resolveOutgoingSubId
-    private fun resolveOutgoingSubId(
-        preferredSubId: Int,
-        latestMessageSubId: Int?,
-        defaultSubId: Int,
-        activeSims: List<SimInfo>
-    ): Int {
-        if (preferredSubId >= 0 && activeSims.any { it.subscriptionId == preferredSubId }) {
-            return preferredSubId
-        }
-        if (preferredSubId == PreferredSimMode.SYSTEM_DEFAULT) {
-            if (activeSims.any { it.subscriptionId == defaultSubId }) {
-                return defaultSubId
-            }
-            return activeSims.firstOrNull()?.subscriptionId ?: defaultSubId
-        }
-        // AUTO (-1)
-        if (latestMessageSubId != null && latestMessageSubId >= 0 && activeSims.any { it.subscriptionId == latestMessageSubId }) {
-            return latestMessageSubId
-        }
-        if (activeSims.any { it.subscriptionId == defaultSubId }) {
-            return defaultSubId
-        }
-        return activeSims.firstOrNull()?.subscriptionId ?: defaultSubId
+    @Test
+    fun chatViewModelResolveSelectedSimSkipsDeactivatedSimsToFindActiveMessageSim() {
+        val sim3 = SimInfo(subscriptionId = 3, slotIndex = 2, displayName = "Deactivated")
+        val activeSims = listOf(sim1, sim2) // sim3 is inactive/removed
+        val defaultSubId = sim1.subscriptionId
+
+        val msg1OnSim2 = SmsMessage(
+            id = 1L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Msg on active SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val msg2OnInactiveSim3 = SmsMessage(
+            id = 2L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Msg on inactive SIM 3",
+            date = 2000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim3.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(msg1OnSim2, msg2OnInactiveSim3),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "Must skip deactivated SIM 3 message and resolve to latest message with active SIM 2",
+            sim2.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimIgnoresNegativeAndInvalidSubIds() {
+        val activeSims = listOf(sim1, sim2)
+        val defaultSubId = sim1.subscriptionId
+
+        val msgInvalid1 = SmsMessage(
+            id = 1L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Msg with INVALID subId",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        )
+
+        val msgInvalid2 = SmsMessage(
+            id = 2L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Msg with negative subId",
+            date = 2000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = -99
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(msgInvalid1, msgInvalid2),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId,
+            initialSubId = -1
+        )
+
+        assertEquals(
+            "Invalid message subIds should fall back to default SIM safely",
+            defaultSubId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimSingleActiveSimAlwaysUsesIt() {
+        val activeSims = listOf(sim1)
+        val defaultSubId = sim1.subscriptionId
+
+        val incomingSms = SmsMessage(
+            id = 1L,
+            threadId = 1L,
+            address = "09121111111",
+            body = "Msg received on SIM 2",
+            date = 1000L,
+            type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+            read = true,
+            subId = sim2.subscriptionId
+        )
+
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = activeSims,
+            prefSetting = PreferredSimMode.AUTO,
+            messages = listOf(incomingSms),
+            userSelectedSubId = null,
+            defaultSubId = defaultSubId
+        )
+
+        assertEquals(
+            "Device with single active SIM must always resolve to that single SIM",
+            sim1.subscriptionId,
+            resolved?.subscriptionId
+        )
+    }
+
+    @Test
+    fun chatViewModelResolveSelectedSimNoActiveSimsReturnsNull() {
+        val resolved = ChatViewModel.resolveSelectedSim(
+            activeSims = emptyList(),
+            prefSetting = PreferredSimMode.AUTO,
+            messages = emptyList(),
+            userSelectedSubId = null,
+            defaultSubId = 1
+        )
+        assertNull("Empty active SIMs must return null", resolved)
+    }
+
+    @Test
+    fun smsReceiverExtractSubscriptionIdFromMap() {
+        val activeSims = listOf(sim1, sim2)
+
+        // 1. EXTRA_SUBSCRIPTION_INDEX as Int
+        val map1 = mapOf(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX to 2)
+        assertEquals(2, SmsReceiver.extractSubscriptionIdFromMap(map1, activeSims))
+
+        // 2. Legacy "subscription" as Long
+        val map2 = mapOf("subscription" to 2L)
+        assertEquals(2, SmsReceiver.extractSubscriptionIdFromMap(map2, activeSims))
+
+        // 3. Legacy "sub_id" as String
+        val map3 = mapOf("sub_id" to "2")
+        assertEquals(2, SmsReceiver.extractSubscriptionIdFromMap(map3, activeSims))
+
+        // 4. Legacy "subscription_id" as Int
+        val map4 = mapOf("subscription_id" to 1)
+        assertEquals(1, SmsReceiver.extractSubscriptionIdFromMap(map4, activeSims))
+
+        // 5. Slot-based mapping: "slot" = 1 (matches sim2 slotIndex=1)
+        val mapSlot = mapOf("slot" to 1)
+        assertEquals(sim2.subscriptionId, SmsReceiver.extractSubscriptionIdFromMap(mapSlot, activeSims))
+
+        // 6. Slot-based mapping: "sim_slot" = 0 (matches sim1 slotIndex=0)
+        val mapSimSlot = mapOf("sim_slot" to 0)
+        assertEquals(sim1.subscriptionId, SmsReceiver.extractSubscriptionIdFromMap(mapSimSlot, activeSims))
+
+        // 7. Slot-based mapping: "sim_id" = 1 (matches sim2 slotIndex=1)
+        val mapSimId = mapOf("sim_id" to 1)
+        assertEquals(sim2.subscriptionId, SmsReceiver.extractSubscriptionIdFromMap(mapSimId, activeSims))
+
+        // 8. Ambiguous "phone" matching active subId directly
+        val mapPhoneSub = mapOf("phone" to 2)
+        assertEquals(2, SmsReceiver.extractSubscriptionIdFromMap(mapPhoneSub, activeSims))
+
+        // 9. Ambiguous "phone" matching slotIndex 0 -> returns sim1.subscriptionId
+        val mapPhoneSlot = mapOf("phone" to 0)
+        assertEquals(sim1.subscriptionId, SmsReceiver.extractSubscriptionIdFromMap(mapPhoneSlot, activeSims))
+
+        // 10. Missing or invalid extras return INVALID_SUBSCRIPTION_ID
+        val mapEmpty = emptyMap<String, Any?>()
+        assertEquals(SubscriptionManager.INVALID_SUBSCRIPTION_ID, SmsReceiver.extractSubscriptionIdFromMap(mapEmpty, activeSims))
+
+        val mapNegative = mapOf(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX to -1)
+        assertEquals(SubscriptionManager.INVALID_SUBSCRIPTION_ID, SmsReceiver.extractSubscriptionIdFromMap(mapNegative, activeSims))
     }
 
     private fun filterThreadsBySim(

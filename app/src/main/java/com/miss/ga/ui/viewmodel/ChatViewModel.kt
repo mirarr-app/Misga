@@ -796,7 +796,10 @@ class ChatViewModel(
         if (pending != null || unsaved != null) {
             CoroutineScope(Dispatchers.IO).launch {
                 if (unsaved != null) persistDraft(unsaved)
-                if (pending != null) repository.sendSms(initialAddress, pending.text, pending.subId)
+                if (pending != null) {
+                    val currentThreadId = _uiState.value.threadId.takeIf { it > 0L } ?: initialThreadId
+                    repository.sendSms(initialAddress, pending.text, pending.subId, currentThreadId)
+                }
             }
         }
         val observer = smsContentObserver
@@ -847,8 +850,8 @@ class ChatViewModel(
             }
 
             // 4. AUTO (default): answering should happen with the same SIM card the message was received on (or sent on)
-            val latestMessageWithSim = messages.lastOrNull {
-                it.subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            val latestMessageWithSim = messages.lastOrNull { msg ->
+                msg.subId >= 0 && activeSims.any { it.subscriptionId == msg.subId }
             }
             if (latestMessageWithSim != null) {
                 val matched = activeSims.find { it.subscriptionId == latestMessageWithSim.subId }
@@ -856,7 +859,7 @@ class ChatViewModel(
             }
 
             // If messages are not yet loaded or have no SIM, check initialSubId if valid and active
-            if (initialSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            if (initialSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID && initialSubId >= 0) {
                 val matched = activeSims.find { it.subscriptionId == initialSubId }
                 if (matched != null) return matched
             }

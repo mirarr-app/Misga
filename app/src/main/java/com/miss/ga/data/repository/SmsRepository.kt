@@ -296,13 +296,16 @@ class SmsRepository(
                         val subIdIdx = sCursor.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
                         while (sCursor.moveToNext() && remainingThreadIdsForSub.isNotEmpty()) {
                             val tId = sCursor.getLong(tIdIdx)
-                            if (remainingThreadIdsForSub.remove(tId)) {
+                            if (tId in remainingThreadIdsForSub) {
                                 val subId = if (subIdIdx >= 0 && !sCursor.isNull(subIdIdx)) {
                                     sCursor.getInt(subIdIdx)
                                 } else {
                                     SubscriptionManager.INVALID_SUBSCRIPTION_ID
                                 }
-                                threadSubIds[tId] = subId
+                                if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID && subId >= 0) {
+                                    threadSubIds[tId] = subId
+                                    remainingThreadIdsForSub.remove(tId)
+                                }
                             }
                         }
                     }
@@ -550,7 +553,11 @@ class SmsRepository(
         messages
     }
 
-    suspend fun getLatestMessageSubId(address: String, threadId: Long = 0L): Int? {
+    suspend fun getLatestMessageSubId(
+        address: String,
+        threadId: Long = 0L,
+        activeSubIds: Set<Int>? = null
+    ): Int? {
         try {
             val effectiveThreadId = if (threadId > 0L) {
                 threadId
@@ -579,6 +586,7 @@ class SmsRepository(
                 selectionArgs,
                 "${Telephony.Sms.DATE} DESC"
             )
+            var firstValidSubId: Int? = null
             cursor?.use {
                 val subIdIdx = it.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
                 if (subIdIdx >= 0) {
@@ -586,12 +594,18 @@ class SmsRepository(
                         if (!it.isNull(subIdIdx)) {
                             val id = it.getInt(subIdIdx)
                             if (id != SubscriptionManager.INVALID_SUBSCRIPTION_ID && id >= 0) {
-                                return id
+                                if (activeSubIds == null || activeSubIds.isEmpty() || id in activeSubIds) {
+                                    return id
+                                }
+                                if (firstValidSubId == null) {
+                                    firstValidSubId = id
+                                }
                             }
                         }
                     }
                 }
             }
+            if (firstValidSubId != null) return firstValidSubId
         } catch (e: Exception) {
             Log.w(TAG, "Could not query latest message subId for ${PhoneNumberKeys.redact(address)}", e)
         }
@@ -602,19 +616,41 @@ class SmsRepository(
         address: String,
         body: String,
         subscriptionId: Int? = null,
-        threadId: Long = 0L
+        threadId: Long = 0L,
+        fallbackSubId: Int? = null
     ): SendSmsResult = withContext(Dispatchers.IO) {
         if (address.isBlank() || body.isBlank()) {
             return@withContext SendSmsResult(sent = false, storedInProvider = false)
         }
 
-        val targetSubId = if (subscriptionId != null && subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            subscriptionId
+        val activeSims = simRepository.getActiveSims()
+        val defaultSubId = simRepository.getDefaultSmsSubscriptionId()
+
+        val targetSubId = if (subscriptionId != null &&
+            subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID &&
+            subscriptionId >= 0
+        ) {
+            if (activeSims.isEmpty() || activeSims.any { it.subscriptionId == subscriptionId }) {
+                subscriptionId
+            } else {
+                activeSims.find { it.subscriptionId == defaultSubId }?.subscriptionId
+                    ?: activeSims.firstOrNull()?.subscriptionId
+                    ?: defaultSubId
+            }
         } else {
             val senderPref = dbHelper.getSenderPreference(address)
             val prefSetting = senderPref?.preferredSubId ?: PreferredSimMode.AUTO
-            val latestSubId = getLatestMessageSubId(address, threadId)
-            simRepository.resolveOutgoingSubId(prefSetting, latestSubId)
+            val latestSubId = getLatestMessageSubId(
+                address = address,
+                threadId = threadId,
+                activeSubIds = activeSims.map { it.subscriptionId }.toSet()
+            ) ?: fallbackSubId?.takeIf { it != SubscriptionManager.INVALID_SUBSCRIPTION_ID && it >= 0 }
+            simRepository.resolveOutgoingSubId(
+                preferredSetting = prefSetting,
+                latestMessageSubId = latestSubId,
+                activeSims = activeSims,
+                defaultSubId = defaultSubId
+            )
         }
 
         val smsManager = smsManager(targetSubId)

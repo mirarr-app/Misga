@@ -48,7 +48,12 @@ class SmsReceiver : BroadcastReceiver() {
         }
         if (messages.isNullOrEmpty()) return
 
-        val incomingSubId = extractSubscriptionId(intent)
+        val activeSims = try {
+            SmsRepository(context).simRepository.getActiveSims()
+        } catch (_: Exception) {
+            null
+        }
+        val incomingSubId = extractSubscriptionId(intent, activeSims)
         val pendingResult = goAsync()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
@@ -347,17 +352,18 @@ class SmsReceiver : BroadcastReceiver() {
         private const val INBOX_LOOKUP_DELAY_MS = 400L
         private const val INBOX_LOOKUP_WINDOW_MS = 15_000L
 
-        fun extractSubscriptionId(intent: Intent): Int {
-            val extras = intent.extras ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
-            val keys = listOf(
+        fun extractSubscriptionIdFromMap(
+            extrasMap: Map<String, Any?>,
+            activeSims: List<com.miss.ga.data.model.SimInfo>? = null
+        ): Int {
+            val directSubIdKeys = listOf(
                 SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
                 "subscription",
                 "sub_id",
-                "subscription_id",
-                "phone"
+                "subscription_id"
             )
-            for (key in keys) {
-                val value = extras.get(key)
+            for (key in directSubIdKeys) {
+                val value = extrasMap[key]
                 val subId = when (value) {
                     is Int -> value
                     is Long -> value.toInt()
@@ -368,7 +374,60 @@ class SmsReceiver : BroadcastReceiver() {
                     return subId
                 }
             }
+
+            // Ambiguous key "phone" (used on some chipsets as subId, or 0/1 slot index)
+            val phoneVal = extrasMap["phone"]
+            val phoneInt = when (phoneVal) {
+                is Int -> phoneVal
+                is Long -> phoneVal.toInt()
+                is String -> phoneVal.toIntOrNull()
+                else -> null
+            }
+            if (phoneInt != null && phoneInt != SubscriptionManager.INVALID_SUBSCRIPTION_ID && phoneInt >= 0) {
+                if (activeSims != null && activeSims.any { it.subscriptionId == phoneInt }) {
+                    return phoneInt
+                }
+                if (activeSims != null) {
+                    val bySlot = activeSims.find { it.slotIndex == phoneInt }
+                    if (bySlot != null) return bySlot.subscriptionId
+                }
+                return phoneInt
+            }
+
+            // Slot-based fallback keys ("slot", "slot_id", "sim_slot", "sim_id", "phone_id")
+            if (activeSims != null) {
+                val slotKeys = listOf("slot", "slot_id", "sim_slot", "sim_id", "phone_id")
+                for (key in slotKeys) {
+                    val value = extrasMap[key]
+                    val slot = when (value) {
+                        is Int -> value
+                        is Long -> value.toInt()
+                        is String -> value.toIntOrNull()
+                        else -> null
+                    }
+                    if (slot != null && slot >= 0) {
+                        val matched = activeSims.find { it.slotIndex == slot }
+                        if (matched != null) {
+                            return matched.subscriptionId
+                        }
+                    }
+                }
+            }
+
             return SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        }
+
+        fun extractSubscriptionId(
+            intent: Intent,
+            activeSims: List<com.miss.ga.data.model.SimInfo>? = null
+        ): Int {
+            val extras = intent.extras ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            val map = buildMap<String, Any?> {
+                for (key in extras.keySet()) {
+                    put(key, extras.get(key))
+                }
+            }
+            return extractSubscriptionIdFromMap(map, activeSims)
         }
     }
 }
