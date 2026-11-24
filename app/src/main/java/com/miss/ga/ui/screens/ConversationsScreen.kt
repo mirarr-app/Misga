@@ -675,6 +675,8 @@ fun ConversationsScreen(
                     }
                 }
             } else {
+                val markReadToast = stringResource(R.string.swipe_mark_read)
+                val markUnreadToast = stringResource(R.string.swipe_mark_unread)
                 ConversationsInboxList(
                     threads = displayedThreads,
                     selectedIds = selectedThreadIds,
@@ -697,7 +699,7 @@ fun ConversationsScreen(
                     },
                     onSwipeToggleRead = { thread ->
                         viewModel.toggleThreadRead(thread) { isNowUnread ->
-                            val msg = if (isNowUnread) context.getString(R.string.swipe_mark_unread) else context.getString(R.string.swipe_mark_read)
+                            val msg = if (isNowUnread) markUnreadToast else markReadToast
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
                     },

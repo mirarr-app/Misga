@@ -39,6 +39,13 @@ class SimRepository(private val context: Context) {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    fun hasPhoneNumbersPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_PHONE_NUMBERS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     /**
      * Checks if the device hardware supports multiple SIMs/modems.
      * Does not require READ_PHONE_STATE permission.
@@ -80,7 +87,11 @@ class SimRepository(private val context: Context) {
                     val carrierName = sub.carrierName?.toString().orEmpty()
                     val number = try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            sm.getPhoneNumber(sub.subscriptionId)
+                            if (hasPhoneNumbersPermission()) {
+                                sm.getPhoneNumber(sub.subscriptionId)
+                            } else {
+                                ""
+                            }
                         } else {
                             @Suppress("DEPRECATION")
                             sub.number.orEmpty()

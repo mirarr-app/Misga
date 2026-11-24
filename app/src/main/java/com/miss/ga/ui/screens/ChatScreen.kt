@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material.icons.filled.Tune
@@ -568,6 +569,7 @@ fun ChatScreen(
                         }
 
                         val canSend = inputText.isNotBlank() && !state.isSending
+                        val sendFailedMsg = stringResource(R.string.send_failed_check_signal)
                         Surface(
                             shape = CircleShape,
                             color = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -583,8 +585,10 @@ fun ChatScreen(
                                             inputText = ""
                                             viewModel.sendMessage(text) { result ->
                                                 if (!result.sent) {
-                                                    inputText = text
-                                                    Toast.makeText(context, "Couldn't send message. Check signal and default SMS app.", Toast.LENGTH_SHORT).show()
+                                                    if (inputText.isEmpty()) {
+                                                        inputText = text
+                                                    }
+                                                    Toast.makeText(context, sendFailedMsg, Toast.LENGTH_SHORT).show()
                                                 } else if (!result.storedInProvider) {
                                                     Toast.makeText(
                                                         context,
@@ -835,6 +839,11 @@ fun ChatScreen(
                                 Icons.Default.ErrorOutline,
                                 "Failed",
                                 MaterialTheme.colorScheme.error
+                            )
+                            msg.isPending -> Triple(
+                                Icons.Default.Schedule,
+                                "Sending...",
+                                MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             msg.isDelivered -> Triple(
                                 Icons.Default.DoneAll,

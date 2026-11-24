@@ -33,6 +33,7 @@ import com.miss.ga.engine.PreparedFilterRules
 import com.miss.ga.engine.SmsFilterEngine
 import com.miss.ga.receiver.SmsSendTracker
 import com.miss.ga.receiver.SmsSentReceiver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -255,7 +256,8 @@ class SmsRepository(
                     if (prepared == null) {
                         FilterAction.NORMAL
                     } else {
-                        val pref = senderPrefs[dbHelper.normalizeAddress(address)]
+                        val pref = senderPrefs[PhoneNumberKeys.canonical(address)]
+                            ?: PhoneNumberKeys.lookupValue(senderPrefs, address)
                         val eval = SmsFilterEngine.evaluateMessage(
                             sender = address,
                             body = body,
@@ -381,8 +383,11 @@ class SmsRepository(
             if (threadsCursorOk) {
                 dbHelper.replaceCachedThreads(threads)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error reading threads", e)
+            throw e
         }
 
         threads
@@ -439,6 +444,7 @@ class SmsRepository(
         }
 
         try {
+            val rawRows = mutableListOf<RawSmsRow>()
             val cursor = contentResolver.query(
                 uri,
                 projection,
@@ -446,13 +452,6 @@ class SmsRepository(
                 selectionArgs,
                 "${Telephony.Sms.DATE} DESC"
             )
-
-            val spamMeta = dbHelper.getSpamMetaMapForThread(address)
-            val cache = FilterRulesCache.getInstance(dbHelper)
-            val preparedRules = cache.preparedRules()
-            val senderPref = cache.senderPreference(address)
-            val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
-            val isContact = !resolveContactName(address).isNullOrBlank()
 
             cursor?.use {
                 val idIdx = it.getColumnIndexOrThrow(Telephony.Sms._ID)
@@ -465,81 +464,94 @@ class SmsRepository(
                 val statusIdx = it.getColumnIndexOrThrow(Telephony.Sms.STATUS)
                 val subIdIdx = it.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
 
-                while (it.moveToNext() && messages.size < limit) {
-                    val msgId = it.getLong(idIdx)
-                    val tId = it.getLong(threadIdIdx)
+                while (it.moveToNext() && rawRows.size < limit) {
                     val addr = it.getString(addrIdx) ?: address
                     val body = it.getString(bodyIdx) ?: ""
-                    val date = it.getLong(dateIdx)
-                    val type = it.getInt(typeIdx)
-                    val read = it.getInt(readIdx) == 1
-                    val status = it.getInt(statusIdx)
+                    if (IncomingSmsPolicy.isGhostConversation(addr, body)) {
+                        continue
+                    }
                     val subId = if (subIdIdx >= 0 && !it.isNull(subIdIdx)) {
                         it.getInt(subIdIdx)
                     } else {
                         SubscriptionManager.INVALID_SUBSCRIPTION_ID
                     }
-
-                    if (IncomingSmsPolicy.isGhostConversation(addr, body)) {
-                        continue
-                    }
-
-                    val meta = spamMeta[msgId]
-                    val isSpam: Boolean
-                    val matchedRule: String?
-                    val isRevealed: Boolean
-
-                    if (meta != null) {
-                        isSpam = if (userPreferences.noSpamForContacts && isContact) false else meta.action == FilterAction.SPAM
-                        matchedRule = meta.matchedRuleName
-                        isRevealed = meta.isRevealed
-                    } else {
-                        if (type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
-                            val eval = SmsFilterEngine.evaluateMessage(
-                                sender = addr,
-                                body = body,
-                                prepared = preparedRules,
-                                senderPreference = senderPref,
-                                isContact = isContact,
-                                noSpamForContacts = userPreferences.noSpamForContacts
-                            )
-                            isSpam = eval.action == FilterAction.SPAM
-                            matchedRule = eval.matchedRuleName
-                            isRevealed = false
-                            if (eval.action != FilterAction.NORMAL) {
-                                pendingSpamMarks.add(
-                                    SpamMetaWrite(
-                                        messageId = msgId,
-                                        address = addr,
-                                        matchedRuleName = matchedRule,
-                                        action = eval.action
-                                    )
-                                )
-                            }
-                        } else {
-                            isSpam = false
-                            matchedRule = null
-                            isRevealed = false
-                        }
-                    }
-
-                    messages.add(
-                        SmsMessage(
-                            id = msgId,
-                            threadId = tId,
+                    rawRows.add(
+                        RawSmsRow(
+                            id = it.getLong(idIdx),
+                            threadId = it.getLong(threadIdIdx),
                             address = addr,
                             body = body,
-                            date = date,
-                            type = type,
-                            read = read,
-                            isSpam = isSpam,
-                            matchedRuleName = matchedRule,
-                            isRevealed = isRevealed,
-                            status = status,
+                            date = it.getLong(dateIdx),
+                            type = it.getInt(typeIdx),
+                            read = it.getInt(readIdx) == 1,
+                            status = it.getInt(statusIdx),
                             subId = subId
                         )
                     )
                 }
+            }
+
+            val spamMeta = dbHelper.getSpamMetaMapForIds(rawRows.map { it.id })
+            val cache = FilterRulesCache.getInstance(dbHelper)
+            val preparedRules = cache.preparedRules()
+            val senderPref = cache.senderPreference(address)
+            val pendingSpamMarks = mutableListOf<SpamMetaWrite>()
+            val isContact = !resolveContactName(address).isNullOrBlank()
+
+            for (row in rawRows) {
+                val meta = spamMeta[row.id]
+                val isSpam: Boolean
+                val matchedRule: String?
+                val isRevealed: Boolean
+
+                if (meta != null) {
+                    isSpam = if (userPreferences.noSpamForContacts && isContact) false else meta.action == FilterAction.SPAM
+                    matchedRule = meta.matchedRuleName
+                    isRevealed = meta.isRevealed
+                } else if (row.type == Telephony.Sms.MESSAGE_TYPE_INBOX) {
+                    val eval = SmsFilterEngine.evaluateMessage(
+                        sender = row.address,
+                        body = row.body,
+                        prepared = preparedRules,
+                        senderPreference = senderPref,
+                        isContact = isContact,
+                        noSpamForContacts = userPreferences.noSpamForContacts
+                    )
+                    isSpam = eval.action == FilterAction.SPAM
+                    matchedRule = eval.matchedRuleName
+                    isRevealed = false
+                    if (eval.action != FilterAction.NORMAL) {
+                        pendingSpamMarks.add(
+                            SpamMetaWrite(
+                                messageId = row.id,
+                                address = row.address,
+                                matchedRuleName = matchedRule,
+                                action = eval.action
+                            )
+                        )
+                    }
+                } else {
+                    isSpam = false
+                    matchedRule = null
+                    isRevealed = false
+                }
+
+                messages.add(
+                    SmsMessage(
+                        id = row.id,
+                        threadId = row.threadId,
+                        address = row.address,
+                        body = row.body,
+                        date = row.date,
+                        type = row.type,
+                        read = row.read,
+                        isSpam = isSpam,
+                        matchedRuleName = matchedRule,
+                        isRevealed = isRevealed,
+                        status = row.status,
+                        subId = row.subId
+                    )
+                )
             }
 
             if (pendingSpamMarks.isNotEmpty()) {
@@ -725,14 +737,39 @@ class SmsRepository(
             }
         } catch (e: Exception) {
             SmsSendTracker.cancel(token)
+            markOutgoingFailedIfPending(messageId)
             Log.e(TAG, "Failed to dispatch SMS to ${PhoneNumberKeys.redact(address)}", e)
             return@withContext SendSmsResult(sent = false, storedInProvider = storedInProvider)
         }
 
         // Wait for radio-level acknowledgement; carriers normally ack within seconds.
         val confirmed = runCatching { withTimeoutOrNull(SEND_ACK_TIMEOUT_MS) { sentAck.await() } }.getOrNull() == true
+        if (!confirmed) {
+            markOutgoingFailedIfPending(messageId)
+        }
 
         SendSmsResult(sent = confirmed, storedInProvider = storedInProvider)
+    }
+
+    private fun markOutgoingFailedIfPending(messageId: Long) {
+        if (messageId <= 0L) return
+        try {
+            val values = ContentValues().apply {
+                put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_FAILED)
+                put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_FAILED)
+            }
+            context.contentResolver.update(
+                ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, messageId),
+                values,
+                "${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.STATUS} = ?",
+                arrayOf(
+                    Telephony.Sms.MESSAGE_TYPE_SENT.toString(),
+                    Telephony.Sms.STATUS_PENDING.toString()
+                )
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not mark outgoing SMS $messageId as failed", e)
+        }
     }
 
     suspend fun markThreadRead(threadId: Long, address: String = "") = withContext(Dispatchers.IO) {
@@ -1154,7 +1191,8 @@ class SmsRepository(
                     if (prepared == null) {
                         false
                     } else {
-                        val pref = senderPrefs[dbHelper.normalizeAddress(hit.address)]
+                        val pref = senderPrefs[PhoneNumberKeys.canonical(hit.address)]
+                            ?: PhoneNumberKeys.lookupValue(senderPrefs, hit.address)
                         val eval = SmsFilterEngine.evaluateMessage(
                             sender = hit.address,
                             body = hit.body,
@@ -1545,6 +1583,18 @@ data class ContactItem(
     val photoUri: String? = null,
     val threadId: Long? = null,
     val snippet: String? = null
+)
+
+private data class RawSmsRow(
+    val id: Long,
+    val threadId: Long,
+    val address: String,
+    val body: String,
+    val date: Long,
+    val type: Int,
+    val read: Boolean,
+    val status: Int,
+    val subId: Int
 )
 
 private data class ThreadProviderRow(

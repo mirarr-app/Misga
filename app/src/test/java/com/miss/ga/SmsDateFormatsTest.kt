@@ -66,4 +66,20 @@ class SmsDateFormatsTest {
         assertEquals("22 Shahrivar", shamsi)
         assertTrue(gregorian.contains("13") || gregorian.contains("Sep"))
     }
+
+    @Test
+    fun conversationListFormatsYesterdayAsWeekdayAndPriorYearsWithYear() {
+        val zone = ZoneId.systemDefault()
+        val now = LocalDate.of(2026, 9, 13).atTime(10, 0).atZone(zone).toInstant().toEpochMilli()
+        val todayEarlier = LocalDate.of(2026, 9, 13).atTime(8, 30).atZone(zone).toInstant().toEpochMilli()
+        // Yesterday at 22:00 is only 12 hours before 10:00 today, but is a different calendar day
+        val yesterdayNight = LocalDate.of(2026, 9, 12).atTime(22, 0).atZone(zone).toInstant().toEpochMilli()
+        val lastYear = LocalDate.of(2025, 9, 13).atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+
+        assertEquals(SmsDateFormats.clock(todayEarlier), SmsDateFormats.conversationList(todayEarlier, now))
+        val yesterdayText = SmsDateFormats.conversationList(yesterdayNight, now)
+        assertTrue("Yesterday under 24h should not format as HH:mm: $yesterdayText", !yesterdayText.contains(":"))
+        val lastYearText = SmsDateFormats.conversationList(lastYear, now)
+        assertTrue("Previous year should include 2025: $lastYearText", lastYearText.contains("2025"))
+    }
 }

@@ -104,6 +104,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 is_revealed INTEGER NOT NULL DEFAULT 0,
                 is_spam INTEGER NOT NULL DEFAULT 1,
                 action TEXT NOT NULL DEFAULT 'SPAM',
+                is_manual_override INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
             )
             """.trimIndent()
@@ -199,6 +200,13 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 createMarkedUnreadThreadsTable(db)
             } catch (e: Exception) {}
             try { db.execSQL("ALTER TABLE cached_threads ADD COLUMN is_marked_unread INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
+        }
+        if (oldVersion < 9) {
+            try {
+                db.execSQL("ALTER TABLE spam_message_meta ADD COLUMN is_manual_override INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE spam_message_meta SET is_manual_override = 1 WHERE action = 'NORMAL' AND is_revealed = 1")
+                clearAutoSpamMeta(db)
+            } catch (e: Exception) {}
         }
 
     }
@@ -334,6 +342,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             put("created_at", System.currentTimeMillis())
         }
         val id = writableDatabase.insert("filter_rules", null, cv)
+        if (id != -1L) {
+            clearAutoSpamMeta(writableDatabase)
+        }
         _rulesChanged.value = System.currentTimeMillis()
         id
     }
@@ -358,6 +369,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 cv,
                 SQLiteDatabase.CONFLICT_REPLACE
             )
+            clearAutoSpamMeta(writableDatabase)
             _rulesChanged.value = System.currentTimeMillis()
             rows > 0
         } else {
@@ -378,6 +390,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 "id = ?",
                 arrayOf(rule.id.toString())
             )
+            clearAutoSpamMeta(writableDatabase)
             _rulesChanged.value = System.currentTimeMillis()
             rows > 0
         }
@@ -391,10 +404,12 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 put("is_enabled", 0)
             }
             val ok = updateOrInsertPredefinedSettings(db, ruleId, flags)
+            clearAutoSpamMeta(db)
             _rulesChanged.value = System.currentTimeMillis()
             ok
         } else {
             val rows = db.delete("filter_rules", "id = ?", arrayOf(ruleId.toString()))
+            clearAutoSpamMeta(db)
             _rulesChanged.value = System.currentTimeMillis()
             rows > 0
         }
@@ -412,6 +427,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             }
             writableDatabase.update("filter_rules", cv, "id = ?", arrayOf(ruleId.toString()))
         }
+        clearAutoSpamMeta(writableDatabase)
         _rulesChanged.value = System.currentTimeMillis()
     }
 
@@ -458,7 +474,10 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         result
     }
 
-    suspend fun saveSenderPreference(pref: SenderPreference) = withContext(Dispatchers.IO) {
+    suspend fun saveSenderPreference(
+        pref: SenderPreference,
+        invalidateAutoSpamCache: Boolean = true
+    ) = withContext(Dispatchers.IO) {
         val cv = ContentValues().apply {
             put("address", normalizeAddress(pref.address))
             put("display_name", pref.displayName)
@@ -475,6 +494,9 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             cv,
             SQLiteDatabase.CONFLICT_REPLACE
         )
+        if (invalidateAutoSpamCache) {
+            clearAutoSpamMetaForAddress(writableDatabase, pref.address)
+        }
         _prefsChanged.value = System.currentTimeMillis()
     }
 
@@ -486,7 +508,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 preferredSubId = preferredSubId,
                 updatedAt = System.currentTimeMillis()
             )
-        saveSenderPreference(updated)
+        saveSenderPreference(updated, invalidateAutoSpamCache = false)
     }
 
     suspend fun deleteSenderPreference(address: String): Boolean = withContext(Dispatchers.IO) {
@@ -494,6 +516,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
         val placeholders = variants.joinToString(",") { "?" }
         val rows = writableDatabase.delete("sender_preferences", "address IN ($placeholders)", variants)
         if (rows > 0) {
+            clearAutoSpamMetaForAddress(writableDatabase, address)
             _prefsChanged.value = System.currentTimeMillis()
         }
         rows > 0
@@ -596,6 +619,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                     put("is_revealed", 0)
                     put("is_spam", if (entry.action == FilterAction.SPAM) 1 else 0)
                     put("action", entry.action.name)
+                    put("is_manual_override", 0)
                     put("created_at", now)
                 }
                 db.insertWithOnConflict(
@@ -625,9 +649,34 @@ class MisgaDatabaseHelper private constructor(context: Context) :
             put("is_spam", 0)
             put("action", FilterAction.NORMAL.name)
             put("is_revealed", 1)
+            put("is_manual_override", 1)
         }
         writableDatabase.update("spam_message_meta", cv, "message_id = ?", arrayOf(messageId.toString()))
         _spamMetaChanged.value = System.currentTimeMillis()
+    }
+
+    private fun clearAutoSpamMeta(db: SQLiteDatabase) {
+        try {
+            db.delete("spam_message_meta", "IFNULL(is_manual_override, 0) = 0", null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear cached spam metadata", e)
+        }
+    }
+
+    private fun clearAutoSpamMetaForAddress(db: SQLiteDatabase, address: String) {
+        if (address.isBlank()) return
+        val variants = addressLookupKeys(address)
+        if (variants.isEmpty()) return
+        val placeholders = variants.joinToString(",") { "?" }
+        try {
+            db.delete(
+                "spam_message_meta",
+                "IFNULL(is_manual_override, 0) = 0 AND address IN ($placeholders)",
+                variants
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear cached spam metadata for ${PhoneNumberKeys.redact(address)}", e)
+        }
     }
 
     suspend fun getSpamMetaMapForThread(address: String): Map<Long, SpamMessageMeta> =
@@ -1588,7 +1637,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting draft for thread $threadId, address $address", e)
+            Log.e(TAG, "Error getting draft for thread $threadId, address ${PhoneNumberKeys.redact(address)}", e)
         }
         null
     }
@@ -1824,7 +1873,7 @@ class MisgaDatabaseHelper private constructor(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "misga_filters.db"
-        private const val DATABASE_VERSION = 8
+        private const val DATABASE_VERSION = 9
         private const val SQLITE_IN_CHUNK_SIZE = 500
 
         @Volatile

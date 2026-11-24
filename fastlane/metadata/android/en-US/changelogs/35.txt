@@ -1,0 +1,4 @@
+• Fix +98 commercial shortcodes and 021 landline spam rules not matching incoming sender numbers
+• Re-evaluate existing messages automatically when filter rules or blocked senders change
+• Fix outgoing failed/pending SMS status tracking and prevent Undo Send failures from overwriting typed drafts
+• Fix overdue scheduled messages after reboot, multipart SMS segment counter, and Android Lint errors

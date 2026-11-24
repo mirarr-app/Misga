@@ -274,6 +274,7 @@ fun ComposeScreen(
                             }
                         }
 
+                        val sendFailedMessage = stringResource(R.string.send_failed_check_signal)
                         FilledIconButton(
                             onClick = {
                                 if (recipient.isNotBlank() && messageBody.isNotBlank() && !isSending) {
@@ -291,7 +292,7 @@ fun ComposeScreen(
                                         if (!result.sent) {
                                             Toast.makeText(
                                                 context,
-                                                context.getString(R.string.send_failed_check_signal),
+                                                sendFailedMessage,
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         } else if (result.storedInProvider) {

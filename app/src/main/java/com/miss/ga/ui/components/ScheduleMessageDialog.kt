@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.miss.ga.R
@@ -180,6 +181,7 @@ fun ScheduleMessageDialog(
 
     if (showTimePicker) {
         val initialCal = Calendar.getInstance().apply { timeInMillis = selectedTimeMillis }
+        val timePassedError = stringResource(R.string.scheduled_time_passed_error)
         Material3TimePickerDialog(
             initialHour = initialCal.get(Calendar.HOUR_OF_DAY),
             initialMinute = initialCal.get(Calendar.MINUTE),
@@ -193,7 +195,7 @@ fun ScheduleMessageDialog(
                 } else {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.scheduled_time_passed_error),
+                        timePassedError,
                         Toast.LENGTH_SHORT
                     ).show()
                 }

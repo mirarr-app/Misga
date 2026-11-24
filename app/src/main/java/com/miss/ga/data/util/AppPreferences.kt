@@ -77,6 +77,12 @@ class AppPreferences(
             prefs.edit().putInt(KEY_UNDO_SEND_DELAY_SECONDS, value.coerceIn(3, 5)).apply()
         }
 
+    var hasRequestedStartupPermissions: Boolean
+        get() = prefs.getBoolean(KEY_HAS_REQUESTED_STARTUP_PERMISSIONS, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_HAS_REQUESTED_STARTUP_PERMISSIONS, value).apply()
+        }
+
     companion object {
         const val PREFS_NAME = "misga_preferences"
         const val KEY_SHOW_CONTACTS_ONLY = "show_contacts_only"
@@ -88,5 +94,6 @@ class AppPreferences(
         const val KEY_NO_SPAM_FOR_CONTACTS = "no_spam_for_contacts"
         const val KEY_UNDO_SEND_ENABLED = "undo_send_enabled"
         const val KEY_UNDO_SEND_DELAY_SECONDS = "undo_send_delay_seconds"
+        const val KEY_HAS_REQUESTED_STARTUP_PERMISSIONS = "has_requested_startup_permissions"
     }
 }

@@ -614,4 +614,35 @@ l.snpy.ir/iouvc"""
             nonContactResult.action
         )
     }
+
+    @Test
+    fun testPlus98ShortcodesAndLandlinesBlockedByEvaluateMessage() {
+        val rules = PredefinedRules.getDefaultRules()
+        val spamSenders = listOf("+9810001234", "9810001234", "010001234", "+982188776655", "982188776655", "02188776655")
+        for (sender in spamSenders) {
+            val result = SmsFilterEngine.evaluateMessage(
+                sender = sender,
+                body = "سلام اطلاع رسانی",
+                rules = rules,
+                senderPreference = null
+            )
+            assertEquals("Expected $sender to be blocked as SPAM", FilterAction.SPAM, result.action)
+        }
+    }
+
+    @Test
+    fun testEnglishOtpKeywordsWithPersianDigitsAreAllowlisted() {
+        val rules = PredefinedRules.getDefaultRules()
+        val samples = listOf("OTP: ۱۲۳۴۵۶", "Code: ۵۹۲۱۰۴")
+        for (sample in samples) {
+            val result = SmsFilterEngine.evaluateMessage(
+                sender = "+9810001234",
+                body = sample,
+                rules = rules,
+                senderPreference = null
+            )
+            assertEquals("Expected '$sample' to be NORMAL", FilterAction.NORMAL, result.action)
+            assertTrue("Expected '$sample' to be allowlisted", result.isAllowlisted)
+        }
+    }
 }

@@ -34,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +67,7 @@ import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SimInfo
 import com.miss.ga.data.model.displayLabel
+import com.miss.ga.engine.SmsFilterEngine
 import com.miss.ga.theme.OnSuccessContainerDark
 import com.miss.ga.theme.OnSuccessContainerLight
 import com.miss.ga.theme.PillShape
@@ -629,6 +631,10 @@ fun AddSenderRuleDialog(
     var pattern by remember { mutableStateOf("") }
     var isRegex by remember { mutableStateOf(true) }
     var action by remember { mutableStateOf(FilterAction.SPAM) }
+    val patternValidation = remember(pattern, isRegex) {
+        if (pattern.isBlank()) null else SmsFilterEngine.testPattern(pattern, isRegex, "")
+    }
+    val isPatternValid = pattern.isNotBlank() && (patternValidation?.isValid != false)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -654,12 +660,23 @@ fun AddSenderRuleDialog(
                 OutlinedTextField(
                     value = pattern,
                     onValueChange = { pattern = it },
-                    label = { Text("Regex Pattern (e.g. تخفیف|حراج)") },
+                    label = { Text(if (isRegex) "Regex Pattern (e.g. تخفیف|حراج)" else "Text Pattern") },
+                    isError = patternValidation?.isValid == false,
+                    supportingText = if (patternValidation?.isValid == false) {
+                        { Text("Error: ${patternValidation.errorMessage}", color = MaterialTheme.colorScheme.error) }
+                    } else null,
                     textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                FilterChip(
+                    selected = isRegex,
+                    onClick = { isRegex = !isRegex },
+                    label = { Text("Regex") },
+                    shape = PillShape
+                )
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = "Trigger Action:",
                     style = MaterialTheme.typography.labelMedium,
@@ -686,10 +703,11 @@ fun AddSenderRuleDialog(
         confirmButton = {
             FilledTonalButton(
                 onClick = {
-                    if (pattern.isNotBlank()) {
+                    if (isPatternValid) {
                         onSave(pattern, isRegex, action, name)
                     }
                 },
+                enabled = isPatternValid,
                 shape = PillShape
             ) {
                 Text("Save Rule", fontWeight = FontWeight.Bold)

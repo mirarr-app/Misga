@@ -11,23 +11,40 @@ import com.miss.ga.data.repository.SmsRepository
 import com.miss.ga.data.util.PhoneNumberKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 class HeadlessSmsSendService : Service() {
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val activeRequests = AtomicInteger(0)
+    @Volatile
+    private var latestStartId: Int = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        CoroutineScope(Dispatchers.IO).launch {
+        latestStartId = startId
+        activeRequests.incrementAndGet()
+        serviceScope.launch {
             try {
                 handleIntent(intent)
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling respond-via-message", e)
             } finally {
-                stopSelf(startId)
+                if (activeRequests.decrementAndGet() <= 0) {
+                    stopSelf(latestStartId)
+                }
             }
         }
         return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     private suspend fun handleIntent(intent: Intent?) {

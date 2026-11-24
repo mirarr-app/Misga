@@ -71,13 +71,15 @@ fun BankCardCopyButton(
         }
     }
 
+    val copiedToastText = stringResource(R.string.card_copied_to_clipboard, bankCard.formatted)
+
     Surface(
         onClick = {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("Bank Card", bankCard.number))
             Toast.makeText(
                 context,
-                context.getString(R.string.card_copied_to_clipboard, bankCard.formatted),
+                copiedToastText,
                 Toast.LENGTH_SHORT
             ).show()
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -162,13 +164,15 @@ fun ShebaCopyButton(
         }
     }
 
+    val copiedToastText = stringResource(R.string.sheba_copied_to_clipboard, sheba.iban)
+
     Surface(
         onClick = {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("Sheba Number", sheba.iban))
             Toast.makeText(
                 context,
-                context.getString(R.string.sheba_copied_to_clipboard, sheba.iban),
+                copiedToastText,
                 Toast.LENGTH_SHORT
             ).show()
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)

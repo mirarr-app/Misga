@@ -56,13 +56,15 @@ fun OtpCopyButton(
         }
     }
 
+    val copiedToastText = stringResource(R.string.otp_copied_to_clipboard, otpCode)
+
     Surface(
         onClick = {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("OTP Code", otpCode))
             Toast.makeText(
                 context,
-                context.getString(R.string.otp_copied_to_clipboard, otpCode),
+                copiedToastText,
                 Toast.LENGTH_SHORT
             ).show()
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)

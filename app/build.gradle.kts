@@ -14,8 +14,8 @@ android {
         applicationId = "com.miss.ga"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "1.3.20"
+        versionCode = 35
+        versionName = "1.3.21"
     }
 
     signingConfigs {

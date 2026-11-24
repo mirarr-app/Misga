@@ -193,7 +193,10 @@ object ScheduledSmsManager {
                 dbHelper.updateScheduledMessageStatus(scheduledId, ScheduledMessageStatus.PENDING)
             }
 
-            Log.d(TAG, "Dispatching scheduled SMS $scheduledId to ${scheduledMessage.address} (retry=$isRetry)")
+            Log.d(
+                TAG,
+                "Dispatching scheduled SMS $scheduledId to ${com.miss.ga.data.util.PhoneNumberKeys.redact(scheduledMessage.address)} (retry=$isRetry)"
+            )
             val smsRepository = SmsRepository(appContext)
             val subId = if (scheduledMessage.subId >= 0) scheduledMessage.subId else null
             val result = smsRepository.sendSms(
@@ -294,7 +297,7 @@ object ScheduledSmsManager {
             }
         }
         if (hasOverdue) {
-            processOverdueMessagesAsync(appContext)
+            processOverdueMessages(appContext)
         }
     }
 }

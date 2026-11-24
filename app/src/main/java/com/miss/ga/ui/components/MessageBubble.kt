@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -257,6 +258,11 @@ private fun BubbleContent(
                         Icons.Default.ErrorOutline,
                         "Failed",
                         MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
+                    )
+                    message.isPending -> Triple(
+                        Icons.Default.Schedule,
+                        "Sending",
+                        contentColor.copy(alpha = 0.65f)
                     )
                     message.isDelivered -> Triple(
                         Icons.Default.DoneAll,

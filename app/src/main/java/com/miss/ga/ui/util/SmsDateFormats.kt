@@ -13,18 +13,8 @@ object SmsDateFormats {
     private val zone: ZoneId
         get() = ZoneId.systemDefault()
 
-    private val clock: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
-    private val weekday: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
-    private val monthDay: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
-    private val monthDayYear: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
-    private val monthDayClock: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("MMM d, HH:mm", Locale.getDefault())
-    private val yearMonthDayClock: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy MMMM d, HH:mm", Locale.getDefault())
+    private fun formatter(pattern: String): DateTimeFormatter =
+        DateTimeFormatter.ofPattern(pattern, Locale.getDefault())
 
     private val SHAMSI_MONTH_NAMES = arrayOf(
         "Farvardin",
@@ -106,9 +96,9 @@ object SmsDateFormats {
         val messageDate = Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()
         val currentDate = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         return if (messageDate.year == currentDate.year) {
-            messageDate.format(monthDay)
+            messageDate.format(formatter("MMM d"))
         } else {
-            messageDate.format(monthDayYear)
+            messageDate.format(formatter("MMM d, yyyy"))
         }
     }
 
@@ -144,24 +134,25 @@ object SmsDateFormats {
             val timePart = clock(timestamp)
             "${jDate.year} $monthName ${jDate.day}, $timePart"
         } else {
-            Instant.ofEpochMilli(timestamp).atZone(zone).format(yearMonthDayClock)
+            Instant.ofEpochMilli(timestamp).atZone(zone).format(formatter("yyyy MMMM d, HH:mm"))
         }
     }
 
     fun clock(timestamp: Long): String =
-        Instant.ofEpochMilli(timestamp).atZone(zone).toLocalTime().format(clock)
+        Instant.ofEpochMilli(timestamp).atZone(zone).toLocalTime().format(formatter("HH:mm"))
 
     fun monthDayClock(timestamp: Long): String =
-        Instant.ofEpochMilli(timestamp).atZone(zone).format(monthDayClock)
+        Instant.ofEpochMilli(timestamp).atZone(zone).format(formatter("MMM d, HH:mm"))
 
     fun conversationList(timestamp: Long, now: Long = System.currentTimeMillis()): String {
-        val diff = now - timestamp
-        val oneDay = 24 * 60 * 60 * 1000L
         val local = Instant.ofEpochMilli(timestamp).atZone(zone)
+        val messageDate = local.toLocalDate()
+        val currentDate = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         return when {
-            diff < oneDay -> local.toLocalTime().format(clock)
-            diff < 7 * oneDay -> local.toLocalDate().format(weekday)
-            else -> local.toLocalDate().format(monthDay)
+            !messageDate.isBefore(currentDate) -> local.toLocalTime().format(formatter("HH:mm"))
+            !messageDate.isBefore(currentDate.minusDays(6)) -> messageDate.format(formatter("EEE"))
+            messageDate.year == currentDate.year -> messageDate.format(formatter("MMM d"))
+            else -> messageDate.format(formatter("MMM d, yyyy"))
         }
     }
 }

@@ -15,6 +15,48 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.miss.ga.theme.PillShape
 
+data class SmsSegmentInfo(
+    val charCount: Int,
+    val maxPerSegment: Int,
+    val segments: Int,
+    val isUnicode: Boolean
+)
+
+internal object SmsSegmentCalculator {
+    private const val GSM7_BASIC_CHARS =
+        "@£\$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\u001BÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?" +
+            "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà"
+    private const val GSM7_EXTENDED_CHARS = "^{}\\[~]|€"
+
+    fun measure(text: String): SmsSegmentInfo {
+        if (text.isEmpty()) {
+            return SmsSegmentInfo(charCount = 0, maxPerSegment = 160, segments = 1, isUnicode = false)
+        }
+        var septets = 0
+        var isUnicode = false
+        for (ch in text) {
+            when {
+                ch in GSM7_BASIC_CHARS -> septets += 1
+                ch in GSM7_EXTENDED_CHARS -> septets += 2
+                else -> {
+                    isUnicode = true
+                    break
+                }
+            }
+        }
+        return if (isUnicode) {
+            val count = text.length
+            val segments = if (count <= 70) 1 else (count + 66) / 67
+            val maxPerSegment = if (segments > 1) 67 else 70
+            SmsSegmentInfo(charCount = count, maxPerSegment = maxPerSegment, segments = segments, isUnicode = true)
+        } else {
+            val segments = if (septets <= 160) 1 else (septets + 152) / 153
+            val maxPerSegment = if (segments > 1) 153 else 160
+            SmsSegmentInfo(charCount = septets, maxPerSegment = maxPerSegment, segments = segments, isUnicode = false)
+        }
+    }
+}
+
 @Composable
 fun SmsSegmentCounter(
     text: String,
@@ -22,10 +64,11 @@ fun SmsSegmentCounter(
 ) {
     if (text.isEmpty()) return
 
-    val isUnicode = text.any { it.code > 127 }
-    val maxPerSegment = if (isUnicode) 70 else 160
-    val count = text.length
-    val segments = if (count == 0) 1 else (count + maxPerSegment - 1) / maxPerSegment
+    val info = SmsSegmentCalculator.measure(text)
+    val maxPerSegment = info.maxPerSegment
+    val count = info.charCount
+    val segments = info.segments
+    val isUnicode = info.isUnicode
 
     Row(
         modifier = modifier

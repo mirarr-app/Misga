@@ -82,6 +82,7 @@ import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.RuleListType
 import com.miss.ga.data.model.displayLabel
+import com.miss.ga.engine.SmsFilterEngine
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.SquircleMediumShape
@@ -477,13 +478,10 @@ fun FilterStudioScreen(
             initialListType = initialAddListType,
             onDismiss = { showAddDialog = false },
             onSave = { pattern, isRegex, action, name, listType ->
-                viewModel.onPlaygroundPatternChanged(pattern)
-                viewModel.onPlaygroundIsRegexChanged(isRegex)
-                viewModel.onPlaygroundActionChanged(action)
-                viewModel.onPlaygroundListTypeChanged(listType)
-                viewModel.savePlaygroundRuleAsCustom(
+                viewModel.addCustomRule(
                     name = name,
-                    description = "",
+                    pattern = pattern,
+                    isRegex = isRegex,
                     listType = listType,
                     action = action
                 )
@@ -1258,6 +1256,10 @@ private fun EditRuleDialog(
     var selectedListType by remember { mutableStateOf(rule.listType) }
     var selectedAction by remember { mutableStateOf(rule.action) }
     var isRegex by remember { mutableStateOf(rule.isRegex) }
+    val patternValidation = remember(pattern, isRegex) {
+        if (pattern.isBlank()) null else SmsFilterEngine.testPattern(pattern, isRegex, "")
+    }
+    val isPatternValid = pattern.isNotBlank() && (patternValidation?.isValid != false)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1286,6 +1288,10 @@ private fun EditRuleDialog(
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = { Text(if (isRegex) "Regex Pattern" else "Pattern") },
+                    isError = patternValidation?.isValid == false,
+                    supportingText = if (patternValidation?.isValid == false) {
+                        { Text("Error: ${patternValidation.errorMessage}", color = MaterialTheme.colorScheme.error) }
+                    } else null,
                     textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
@@ -1379,7 +1385,7 @@ private fun EditRuleDialog(
         confirmButton = {
             FilledTonalButton(
                 onClick = {
-                    if (name.isNotBlank() && pattern.isNotBlank()) {
+                    if (name.isNotBlank() && isPatternValid) {
                         onSave(
                             rule.copy(
                                 name = name,
@@ -1392,6 +1398,7 @@ private fun EditRuleDialog(
                         )
                     }
                 },
+                enabled = name.isNotBlank() && isPatternValid,
                 shape = PillShape
             ) {
                 Text("Save Changes", fontWeight = FontWeight.Bold)
@@ -1415,6 +1422,10 @@ fun AddGlobalRuleDialog(
     var isRegex by remember { mutableStateOf(true) }
     var listType by remember { mutableStateOf(initialListType) }
     var action by remember { mutableStateOf(if (initialListType == RuleListType.ALLOWLIST) FilterAction.NORMAL else FilterAction.SPAM) }
+    val patternValidation = remember(pattern, isRegex) {
+        if (pattern.isBlank()) null else SmsFilterEngine.testPattern(pattern, isRegex, "")
+    }
+    val isPatternValid = pattern.isNotBlank() && (patternValidation?.isValid != false)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1444,12 +1455,23 @@ fun AddGlobalRuleDialog(
                 OutlinedTextField(
                     value = pattern,
                     onValueChange = { pattern = it },
-                    label = { Text("Regex Pattern") },
+                    label = { Text(if (isRegex) "Regex Pattern" else "Text Pattern") },
+                    isError = patternValidation?.isValid == false,
+                    supportingText = if (patternValidation?.isValid == false) {
+                        { Text("Error: ${patternValidation.errorMessage}", color = MaterialTheme.colorScheme.error) }
+                    } else null,
                     textStyle = LocalTextStyle.current.contentAware(),
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                FilterChip(
+                    selected = isRegex,
+                    onClick = { isRegex = !isRegex },
+                    label = { Text("Regex") },
+                    shape = PillShape
+                )
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
                     text = "List Classification:",
@@ -1510,10 +1532,11 @@ fun AddGlobalRuleDialog(
         confirmButton = {
             FilledTonalButton(
                 onClick = {
-                    if (pattern.isNotBlank()) {
+                    if (isPatternValid) {
                         onSave(pattern, isRegex, action, name, listType)
                     }
                 },
+                enabled = isPatternValid,
                 shape = PillShape
             ) {
                 Text("Save Rule", fontWeight = FontWeight.Bold)

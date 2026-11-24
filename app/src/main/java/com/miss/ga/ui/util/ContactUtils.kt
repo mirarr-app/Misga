@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.ContactsContract
 import android.util.Log
 import android.widget.Toast
+import com.miss.ga.data.util.PhoneNumberKeys
 
 object ContactUtils {
     private const val TAG = "ContactUtils"
@@ -44,7 +45,7 @@ object ContactUtils {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to resolve contact lookup URI for $address", e)
+            Log.w(TAG, "Failed to resolve contact lookup URI for ${PhoneNumberKeys.redact(address)}", e)
         }
         return null
     }
@@ -61,7 +62,7 @@ object ContactUtils {
             context.startActivity(dialIntent)
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Cannot open dialer for $address", e)
+            Log.e(TAG, "Cannot open dialer for ${PhoneNumberKeys.redact(address)}", e)
             Toast.makeText(context, "Cannot open dialer", Toast.LENGTH_SHORT).show()
             false
         }
@@ -87,7 +88,7 @@ object ContactUtils {
                 return true
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Cannot open contact info for $address", e)
+            Log.e(TAG, "Cannot open contact info for ${PhoneNumberKeys.redact(address)}", e)
         }
         return false
     }
@@ -108,7 +109,7 @@ object ContactUtils {
             context.startActivity(intent)
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Cannot open add to contacts for $address", e)
+            Log.e(TAG, "Cannot open add to contacts for ${PhoneNumberKeys.redact(address)}", e)
             Toast.makeText(context, "Cannot open contacts", Toast.LENGTH_SHORT).show()
             false
         }

@@ -663,6 +663,7 @@ class ConversationsViewModel(
                     it
                 }
             }
+            val hasChanges = updatedThreads != _uiState.value.threads
             _uiState.value = _uiState.value.copy(
                 threads = updatedThreads,
                 filteredThreads = _uiState.value.filteredThreads.map {
@@ -682,7 +683,7 @@ class ConversationsViewModel(
             } else {
                 repository.markThreadUnread(thread.threadId, thread.address)
             }
-            if (updatedThreads != _uiState.value.threads) {
+            if (hasChanges) {
                 repository.saveCachedThreads(updatedThreads)
             }
             loadThreads(silent = true, force = true)

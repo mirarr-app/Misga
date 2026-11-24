@@ -51,26 +51,41 @@ class SmsSentReceiver : BroadcastReceiver() {
 
     private fun updateStatus(context: Context, messageId: Long, action: String, ok: Boolean) {
         try {
-            val values = android.content.ContentValues().apply {
-                when {
-                    action == ACTION_SMS_SENT && !ok -> {
+            val resolver = context.contentResolver
+            val msgUri = android.content.ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, messageId)
+            when {
+                action == ACTION_SMS_SENT && ok -> {
+                    // Only clear STATUS_PENDING -> STATUS_NONE if another part hasn't already failed.
+                    val values = android.content.ContentValues().apply {
+                        put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_NONE)
+                    }
+                    resolver.update(
+                        msgUri,
+                        values,
+                        "${Telephony.Sms.STATUS} = ?",
+                        arrayOf(Telephony.Sms.STATUS_PENDING.toString())
+                    )
+                }
+                action == ACTION_SMS_SENT && !ok -> {
+                    val values = android.content.ContentValues().apply {
+                        put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_FAILED)
                         put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_FAILED)
                         put(Telephony.Sms.ERROR_CODE, resultCode)
                     }
-                    action == ACTION_SMS_DELIVERED && ok ->
-                        put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_COMPLETE)
-                    action == ACTION_SMS_DELIVERED && !ok ->
-                        put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_FAILED)
-                    // Sent ack OK: leave STATUS_PENDING until a delivery report arrives.
+                    resolver.update(msgUri, values, null, null)
                 }
-            }
-            if (values.size() > 0) {
-                context.contentResolver.update(
-                    android.content.ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, messageId),
-                    values,
-                    null,
-                    null
-                )
+                action == ACTION_SMS_DELIVERED && ok -> {
+                    val values = android.content.ContentValues().apply {
+                        put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_COMPLETE)
+                    }
+                    resolver.update(msgUri, values, null, null)
+                }
+                action == ACTION_SMS_DELIVERED && !ok -> {
+                    val values = android.content.ContentValues().apply {
+                        put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_FAILED)
+                    }
+                    resolver.update(msgUri, values, null, null)
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Could not update send status for message $messageId", e)

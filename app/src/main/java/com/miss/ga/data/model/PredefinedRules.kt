@@ -33,7 +33,7 @@ object PredefinedRules {
             FilterRule(
                 id = -103,
                 name = "Direct OTP Key-Value Syntax (کد: / رمز: / رمز فعالسازی: / OTP: / Code:)",
-                pattern = "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز(\\s*(فعالسازی|فعال\\s*سازی))?\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9]{4,8}|code\\s*[:=]\\s*[0-9]{4,8})",
+                pattern = "(?i)(کد\\s*[:=]\\s*[0-9۰-۹]{4,8}|رمز(\\s*(فعالسازی|فعال\\s*سازی))?\\s*[:=]\\s*[0-9۰-۹]{4,8}|otp\\s*[:=]?\\s*[0-9۰-۹]{4,8}|code\\s*[:=]\\s*[0-9۰-۹]{4,8})",
                 isRegex = true,
                 action = FilterAction.NORMAL,
                 listType = RuleListType.ALLOWLIST,
@@ -49,7 +49,7 @@ object PredefinedRules {
             FilterRule(
                 id = -1,
                 name = "Commercial Shortcodes (1000/2000/3000/3333/5000/9000)",
-                pattern = "^(\\+98|0)?(1000|2000|3000|3333|5000|9000)\\d*$",
+                pattern = "^(\\+?98|0)?(1000|2000|3000|3333|5000|9000)\\d*$",
                 isRegex = true,
                 action = FilterAction.SPAM,
                 listType = RuleListType.BLOCKLIST,
@@ -61,7 +61,7 @@ object PredefinedRules {
             FilterRule(
                 id = -2,
                 name = "Tehran Landline Commercial SMS (021)",
-                pattern = "^(\\+98|0)?21\\d{8}$",
+                pattern = "^(\\+?98|0)?21\\d{8}$",
                 isRegex = true,
                 action = FilterAction.SPAM,
                 listType = RuleListType.BLOCKLIST,

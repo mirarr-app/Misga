@@ -19,12 +19,23 @@ data class SmsMessage(
     val status: Int = Telephony.Sms.STATUS_NONE,
     val subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
 ) {
-    val isInbox: Boolean get() = type == 1
-    val isSent: Boolean get() = type == 2
+    val isInbox: Boolean get() = type == Telephony.Sms.MESSAGE_TYPE_INBOX
+    val isSent: Boolean
+        get() = type == Telephony.Sms.MESSAGE_TYPE_SENT ||
+            type == Telephony.Sms.MESSAGE_TYPE_OUTBOX ||
+            type == Telephony.Sms.MESSAGE_TYPE_FAILED ||
+            type == Telephony.Sms.MESSAGE_TYPE_QUEUED
+    val isPending: Boolean
+        get() = isSent && !isFailed && (
+            status == Telephony.Sms.STATUS_PENDING ||
+                type == Telephony.Sms.MESSAGE_TYPE_OUTBOX ||
+                type == Telephony.Sms.MESSAGE_TYPE_QUEUED
+            )
     val isDelivered: Boolean
-        get() = isSent && status == Telephony.Sms.STATUS_COMPLETE
+        get() = isSent && !isFailed && status == Telephony.Sms.STATUS_COMPLETE
     val isFailed: Boolean
-        get() = isSent && (status == Telephony.Sms.STATUS_FAILED || type == Telephony.Sms.MESSAGE_TYPE_FAILED)
+        get() = type == Telephony.Sms.MESSAGE_TYPE_FAILED ||
+            (isSent && status == Telephony.Sms.STATUS_FAILED)
 }
 
 @Immutable

@@ -19,6 +19,7 @@ import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.PreferredSimMode
 import com.miss.ga.data.model.RuleCategory
+import com.miss.ga.data.model.RuleListType
 import com.miss.ga.data.model.SenderPreference
 import com.miss.ga.data.model.SenderTab
 import com.miss.ga.data.model.SimInfo
@@ -176,7 +177,7 @@ class ChatViewModel(
                 }
             }
             if (markAsRead && currentThreadId > 0L) {
-                repository.markThreadRead(currentThreadId)
+                repository.markThreadRead(currentThreadId, initialAddress)
             }
             val hadMessages = _uiState.value.messages.isNotEmpty()
             if (!hadMessages) {
@@ -665,14 +666,17 @@ class ChatViewModel(
 
     fun addSenderRule(pattern: String, isRegex: Boolean, action: FilterAction, name: String) {
         viewModelScope.launch {
+            val listType = if (action == FilterAction.NORMAL) RuleListType.ALLOWLIST else RuleListType.BLOCKLIST
+            val category = if (action == FilterAction.NORMAL) RuleCategory.CUSTOM_ALLOWLIST else RuleCategory.CUSTOM
             val rule = FilterRule(
                 name = name.ifBlank { "Custom Rule for $initialAddress" },
                 pattern = pattern,
                 isRegex = isRegex,
                 action = action,
+                listType = listType,
                 isEnabled = true,
                 isPredefined = false,
-                category = RuleCategory.CUSTOM,
+                category = category,
                 senderTarget = initialAddress,
                 description = "Sender-specific rule"
             )

@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.miss.ga.data.util.AppPreferences
 import com.miss.ga.engine.NotificationHelper
 import com.miss.ga.engine.ScheduledSmsManager
 import com.miss.ga.theme.MISGATheme
@@ -116,10 +117,17 @@ class MainActivity : ComponentActivity() {
         }
 
         if (recipient.isBlank() && body.isBlank()) return null
-        return ComposeNav(address = recipient.trim(), body = body.trim())
+        val singleRecipient = recipient.split(',', ';')
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+        return ComposeNav(address = singleRecipient, body = body.trim())
     }
 
     private fun requestRequiredPermissions() {
+        val prefs = AppPreferences(this)
+        if (prefs.hasRequestedStartupPermissions) return
+
         val permissions = mutableListOf(
             Manifest.permission.READ_SMS,
             Manifest.permission.RECEIVE_SMS,
@@ -135,6 +143,7 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
+        prefs.hasRequestedStartupPermissions = true
         if (ungranted.isNotEmpty()) {
             permissionLauncher.launch(ungranted.toTypedArray())
         }

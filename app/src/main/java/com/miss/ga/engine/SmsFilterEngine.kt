@@ -73,12 +73,13 @@ class SmsFilterEngine(
             isContact: Boolean = false,
             noSpamForContacts: Boolean = false
         ): FilterResult {
+            val sanitizedSender = PhoneNumberKeys.sanitizeAddress(sender)
             val normalizedSender = normalizeAddress(sender)
             val normalizedBody = normalizePersianText(body.trim())
 
             // 1. HIGHEST PRIORITY: Check Allowlist Rules (OTP, Passcodes, Verification & Custom Allowlist)
-            prepared.senderAllow[normalizedSender]?.forEach { compiled ->
-                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
+            matchingSenderRules(prepared.senderAllow, sender, normalizedSender).forEach { compiled ->
+                if (matchesRule(compiled, sanitizedSender, normalizedSender, normalizedBody)) {
                     return FilterResult(
                         action = FilterAction.NORMAL,
                         matchedRuleName = "${compiled.rule.name} (Allowlist)",
@@ -88,7 +89,7 @@ class SmsFilterEngine(
                 }
             }
             for (compiled in prepared.globalAllow) {
-                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
+                if (matchesRule(compiled, sanitizedSender, normalizedSender, normalizedBody)) {
                     return FilterResult(
                         action = FilterAction.NORMAL,
                         matchedRuleName = "${compiled.rule.name} (Allowlist)",
@@ -118,8 +119,8 @@ class SmsFilterEngine(
             }
 
             // 4. Sender-specific custom blocklist rules
-            prepared.senderBlock[normalizedSender]?.forEach { compiled ->
-                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
+            matchingSenderRules(prepared.senderBlock, sender, normalizedSender).forEach { compiled ->
+                if (matchesRule(compiled, sanitizedSender, normalizedSender, normalizedBody)) {
                     return FilterResult(
                         action = compiled.rule.action,
                         matchedRuleName = compiled.rule.name,
@@ -130,7 +131,7 @@ class SmsFilterEngine(
 
             // 4. Custom Global Blocklist Rules
             for (compiled in prepared.customGlobalBlock) {
-                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
+                if (matchesRule(compiled, sanitizedSender, normalizedSender, normalizedBody)) {
                     return FilterResult(
                         action = compiled.rule.action,
                         matchedRuleName = compiled.rule.name,
@@ -141,7 +142,7 @@ class SmsFilterEngine(
 
             // 5. Predefined Iranian Spam Blocklist Rules
             for (compiled in prepared.predefinedBlock) {
-                if (matchesRule(compiled, normalizedSender, normalizedBody)) {
+                if (matchesRule(compiled, sanitizedSender, normalizedSender, normalizedBody)) {
                     return FilterResult(
                         action = compiled.rule.action,
                         matchedRuleName = compiled.rule.name,
@@ -173,16 +174,35 @@ class SmsFilterEngine(
             }
         }
 
-        private fun matchesRule(compiled: CompiledFilterRule, sender: String, body: String): Boolean {
+        private fun matchingSenderRules(
+            map: Map<String, List<CompiledFilterRule>>,
+            rawSender: String,
+            normalizedSender: String
+        ): List<CompiledFilterRule> {
+            if (map.isEmpty()) return emptyList()
+            map[normalizedSender]?.let { return it }
+            for (key in PhoneNumberKeys.keys(rawSender)) {
+                map[key]?.let { return it }
+            }
+            return emptyList()
+        }
+
+        private fun matchesRule(
+            compiled: CompiledFilterRule,
+            sanitizedSender: String,
+            normalizedSender: String,
+            body: String
+        ): Boolean {
             val rule = compiled.rule
             return try {
                 if (rule.category == com.miss.ga.data.model.RuleCategory.PROMO_PREFIX) {
                     if (rule.isRegex) {
-                        compiledPattern(rule.pattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
-                            .matcher(sender)
-                            .find()
+                        val pattern = compiledPattern(rule.pattern, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE)
+                        pattern.matcher(sanitizedSender).find() ||
+                            (normalizedSender != sanitizedSender && pattern.matcher(normalizedSender).find())
                     } else {
-                        sender.contains(rule.pattern, ignoreCase = true)
+                        sanitizedSender.contains(rule.pattern, ignoreCase = true) ||
+                            normalizedSender.contains(rule.pattern, ignoreCase = true)
                     }
                 } else {
                     if (rule.isRegex) {

@@ -126,11 +126,29 @@ class FilterStudioViewModel(application: Application) : AndroidViewModel(applica
         listType: RuleListType = _uiState.value.simulatedListType,
         action: FilterAction = _uiState.value.simulatedAction
     ) {
+        addCustomRule(
+            name = name,
+            pattern = _uiState.value.testPattern,
+            isRegex = _uiState.value.isRegex,
+            listType = listType,
+            action = action,
+            description = description
+        )
+    }
+
+    fun addCustomRule(
+        name: String,
+        pattern: String,
+        isRegex: Boolean,
+        listType: RuleListType,
+        action: FilterAction,
+        description: String = ""
+    ) {
         viewModelScope.launch {
             val rule = FilterRule(
                 name = name.ifBlank { if (listType == RuleListType.ALLOWLIST) "Custom Allowlist Filter" else "Custom Blocklist Filter" },
-                pattern = _uiState.value.testPattern,
-                isRegex = _uiState.value.isRegex,
+                pattern = pattern,
+                isRegex = isRegex,
                 action = if (listType == RuleListType.ALLOWLIST) FilterAction.NORMAL else action,
                 listType = listType,
                 isEnabled = true,

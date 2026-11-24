@@ -48,12 +48,6 @@ class SmsReceiver : BroadcastReceiver() {
         }
         if (messages.isNullOrEmpty()) return
 
-        val activeSims = try {
-            SmsRepository(context).simRepository.getActiveSims()
-        } catch (_: Exception) {
-            null
-        }
-        val incomingSubId = extractSubscriptionId(intent, activeSims)
         val pendingResult = goAsync()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
@@ -65,6 +59,12 @@ class SmsReceiver : BroadcastReceiver() {
                 ) {
                     return@launch
                 }
+                val activeSims = try {
+                    SmsRepository(context).simRepository.getActiveSims()
+                } catch (_: Exception) {
+                    null
+                }
+                val incomingSubId = extractSubscriptionId(intent, activeSims)
                 processIncomingMessages(
                     context = context,
                     messages = messages,
@@ -161,7 +161,9 @@ class SmsReceiver : BroadcastReceiver() {
                     // if the carrier SMSC clock or timezone differs). DATE_SENT is the network timestamp.
                     put(Telephony.Sms.DATE, receiveTime)
                     put(Telephony.Sms.DATE_SENT, timestamp)
-                    put(Telephony.Sms.READ, if (filterResult.action == FilterAction.SPAM) 1 else 0)
+                    val readFlag = if (filterResult.action == FilterAction.SPAM) 1 else 0
+                    put(Telephony.Sms.READ, readFlag)
+                    put(Telephony.Sms.SEEN, readFlag)
                     put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
                     if (incomingSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
                         put(Telephony.Sms.SUBSCRIPTION_ID, incomingSubId)
