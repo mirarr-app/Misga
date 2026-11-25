@@ -1,0 +1,1 @@
+• Fix crash when opening Filter Studio or Blocked & Muted Senders caused by Navigation 3 ViewModel creation extras missing Application context

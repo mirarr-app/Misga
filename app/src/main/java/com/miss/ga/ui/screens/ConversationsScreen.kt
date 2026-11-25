@@ -110,7 +110,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import com.miss.ga.ChatNav
@@ -134,6 +133,7 @@ import com.miss.ga.ui.components.SimBadge
 import com.miss.ga.ui.components.SimFilterRow
 import com.miss.ga.ui.components.TabOptionsMenuSheet
 import com.miss.ga.ui.util.SmsDateFormats
+import com.miss.ga.ui.util.applicationViewModel
 import com.miss.ga.ui.util.senderDisplayName
 import com.miss.ga.ui.util.contentAware
 import com.miss.ga.ui.viewmodel.ConversationsViewModel
@@ -152,7 +152,7 @@ fun ConversationsScreen(
     onNavigateToCompose: () -> Unit,
     onNavigateToTestLab: () -> Unit = {},
     onNavigateToBlockedSenders: () -> Unit = {},
-    viewModel: ConversationsViewModel = viewModel(),
+    viewModel: ConversationsViewModel = applicationViewModel(),
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()

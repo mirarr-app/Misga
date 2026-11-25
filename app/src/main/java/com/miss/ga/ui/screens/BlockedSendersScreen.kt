@@ -87,7 +87,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.ChatNav
 import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SilentDark
@@ -97,6 +96,7 @@ import com.miss.ga.theme.SilentOnLight
 import com.miss.ga.theme.SquircleMediumShape
 import com.miss.ga.ui.components.ConversationAvatar
 import com.miss.ga.ui.util.ContactUtils
+import com.miss.ga.ui.util.applicationViewModel
 import com.miss.ga.ui.viewmodel.BlockedFilterTab
 import com.miss.ga.ui.viewmodel.BlockedSenderItem
 import com.miss.ga.ui.viewmodel.BlockedSendersUiState
@@ -109,7 +109,7 @@ import kotlinx.coroutines.launch
 fun BlockedSendersScreen(
     onBackClick: () -> Unit,
     onNavigateToChat: (ChatNav) -> Unit,
-    viewModel: BlockedSendersViewModel = viewModel(),
+    viewModel: BlockedSendersViewModel = applicationViewModel(),
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()

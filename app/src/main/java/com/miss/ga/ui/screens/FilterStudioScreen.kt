@@ -77,7 +77,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.miss.ga.data.model.FilterAction
 import com.miss.ga.data.model.FilterRule
 import com.miss.ga.data.model.RuleListType
@@ -87,6 +86,7 @@ import com.miss.ga.theme.PillShape
 import com.miss.ga.theme.SquircleCardShape
 import com.miss.ga.theme.SquircleMediumShape
 import com.miss.ga.theme.TagShape
+import com.miss.ga.ui.util.applicationViewModel
 import com.miss.ga.ui.viewmodel.FilterStudioUiState
 import com.miss.ga.ui.viewmodel.FilterStudioViewModel
 
@@ -96,7 +96,7 @@ private enum class FilterStudioTab { Playground, Allowlist, Blocklist, Presets }
 @Composable
 fun FilterStudioScreen(
     onBackClick: () -> Unit,
-    viewModel: FilterStudioViewModel = viewModel(),
+    viewModel: FilterStudioViewModel = applicationViewModel(),
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
